@@ -1,0 +1,111 @@
+"""Execute ISO4 and verify the three real MFI read sites and ownership."""
+import unittest
+from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
+from test_patch import Machine, RING, RING_DMA, ENTRY, MMIO, MANAGER, CTX
+import test_event_audit
+
+
+class PublicationAuditTests(unittest.TestCase):
+    def setUp(self):
+        self.m = Machine('A')
+        if self.m.meta.get('diagnostics_magic') != 'ISO4':
+            self.skipTest('requires --publication-audit package')
+
+    def machine(self, slot=0):
+        m = Machine('A')
+        for off in (0x18, 0x20): m.write(ENTRY + off, '<Q', RING + slot*16)
+        return m
+
+    def ptr(self, slot, packet, ed=True):
+        return (RING if ed else RING_DMA) + ((slot + 2*packet + int(ed)) % 247)*16
+
+    def test_actual_read_sites_bracket_gate_and_leave_the_original_doorbell(self):
+        for slot in (0, 216, 217, 246):
+            for selected, before, after in ((0,0,0),(7,9,10),(0x3ffc,0x3ffe,1)):
+                m = self.machine(slot)
+                samples = dict(zip(('frame_select_read','before_publish_read','before_doorbell_read'),
+                                   (selected,before,after)))
+                trace = []
+                def instruction(uc, address, size, data):
+                    for name, value in samples.items():
+                        if address == m.symbols[name]:
+                            trace.append(name)
+                            m.write(MMIO+0x48,'<I',value)
+                writes = []
+                def write(uc, access, address, size, value, data):
+                    writes.append((address,size,value))
+                    if address == RING+slot*16+12: trace.append('gate')
+                    if address == MMIO+4: trace.append('doorbell')
+                    if address == RING+0xfd4: trace.append('valid'+str(value))
+                hooks = [m.uc.hook_add(UC_HOOK_CODE,instruction),m.uc.hook_add(UC_HOOK_MEM_WRITE,write)]
+                self.assertEqual(m.submit(3072),0)
+                for hook in hooks: m.uc.hook_del(hook)
+                self.assertEqual(trace, ['valid0','frame_select_read','gate','before_publish_read',
+                                         'gate','before_doorbell_read','valid1','doorbell'])
+                self.assertEqual(m.read(RING+0xfc8,'<IIII'),(selected,before,after,1))
+                self.assertEqual(m.read(RING+0xf88,'<I')[0],
+                                 ((((selected>>3)+32)&2047)<<20)|0x1411)
+                self.assertEqual([w for w in writes if MMIO <= w[0] < MMIO+0x1000],[(MMIO+4,4,0x700)])
+                self.assertEqual(m.symbols['iso_end'],0x69000)
+
+    def test_filtered_and_post_terminal_events_do_not_touch_phase_or_ownership(self):
+        m = self.machine(240);self.assertEqual(m.submit(3072),0)
+        phase = bytes(m.uc.mem_read(RING+0xfc8,40))
+        for ptr,ed,cc,count in ((0,False,14,0),(RING+100*16,True,23,0),
+                                (self.ptr(240,0)+1,True,1,192),
+                                (self.ptr(240,0,False),False,1,192)):
+            self.assertEqual(m.event(ptr,ed,cc,count),[])
+            self.assertEqual(m.read(RING+0xf8c,'<III'),(0,0,0))
+        for p in range(16):
+            calls=m.event(self.ptr(240,p),True)
+            self.assertEqual(calls,[] if p<15 else [(0x2a980,[MANAGER,0x83,0,1,3072,1])])
+        self.assertEqual(m.event(0,False,14,0),[])
+        self.assertEqual(bytes(m.uc.mem_read(RING+0xfc8,40)),phase)
+        self.assertEqual(m.read(RING+0xf8c,'<III'),(1,0xffff,3072))
+
+    def test_error_priority_and_first_two_success_records_still_hold(self):
+        for slot in (0,230,246):
+            for p in (0,1,2,15):
+                m=self.machine(slot);self.assertEqual(m.submit(3072),0)
+                for packet in (0,1):m.event(self.ptr(slot,packet),True)
+                m.write(MMIO+0x48,'<I',0x3fff)
+                error=self.ptr(slot,p,False)
+                self.assertEqual(m.event(error,False,23,0),[])
+                self.assertEqual(m.read(RING+0xfb4,'<QIII'),
+                                 (error,23<<24,(7<<16)|(32<<10)|1,0x3fff))
+                self.assertEqual(m.read(RING+0xf84,'<I')[0],p*32)
+                self.assertEqual(m.read(RING+0xf8c,'<III'),(0x80000017,3,384))
+                for packet in range(16):self.assertEqual(m.event(self.ptr(slot,packet),True),[])
+                self.assertEqual(m.read(ENTRY+0x20,'<Q')[0],RING+slot*16)
+                self.assertEqual(m.submit(3072),0x1908c)
+
+    def test_reuse_clears_phase_sentinel_before_all_new_reads(self):
+        m=self.machine()
+        observed=[]
+        def inspect(uc,address,size,data):
+            if address==m.symbols['frame_select_read']:
+                observed.append(m.read(RING+0xfac,'<I')[0])
+                observed.append(m.read(RING+0xfc0,'<I')[0])
+                observed.append(m.read(RING+0xfd4,'<I')[0])
+        h=m.uc.hook_add(UC_HOOK_CODE,inspect)
+        self.assertEqual(m.submit(3072),0)
+        for p in range(16):m.event(self.ptr(0,p),True)
+        m.uc.mem_write(RING+0xf80,b'\xff'*112)
+        observed.clear()
+        self.assertEqual(m.submit(3072),0);m.uc.hook_del(h)
+        self.assertEqual(observed,[0,0,0])
+        # Unused bytes remain deliberately stale. The decoder must exclude them.
+        self.assertEqual(bytes(m.uc.mem_read(RING+0xfd8,24)),b'\xff'*24)
+
+    def test_original_report_epilogue_and_input_rejection(self):
+        # These checks exercise the shared real ABI against the ISO4 binary.
+        helper=test_event_audit.EventAuditTests()
+        helper.test_original_copy_and_report_epilogue_restore_saved_registers()
+        helper.test_combined_validation_still_rejects_every_bad_input()
+        m=self.machine();self.assertEqual(m.submit(3072),0)
+        writes=[]
+        h=m.uc.hook_add(UC_HOOK_MEM_WRITE,lambda u,a,address,size,value,_:writes.append((address,size)))
+        m.event(self.ptr(0,0),True);m.event(self.ptr(0,1),True,13,192)
+        m.uc.hook_del(h)
+        self.assertTrue(writes)
+        self.assertTrue(all(RING+0xf80 <= a and a+n <= RING+0xfc8 for a,n in writes))

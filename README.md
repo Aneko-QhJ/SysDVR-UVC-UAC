@@ -159,13 +159,22 @@ See `docs/RESEARCH.md` for the full investigation.
 
 ## Audio
 
-There is none, and there cannot be: standard USB audio (UAC) requires an
-isochronous endpoint, and the Switch's `usb:ds` service cannot build a
-configuration containing one (it corrupts the whole config descriptor and
-the device stops enumerating).
+Audio is currently disabled. The configuration corruption was traced to an
+independent 8-bit length bug. Stock `usb:ds` still lacks a device-side Isoch
+TRB producer and installs endpoints only in alternate setting 0.
 
-The verdict and a planned vendor-bulk fallback (PCM over a vendor interface + a small PC tool exposing a virtual
-microphone) are documented in `docs/RESEARCH.md` §6.
+The device-side ISO experiment uses a vendor alt0 endpoint, a
+Build-ID-specific HOS patch and a macOS libusb receiver. See
+[the experiment instructions](research/usb-ds-iso/README.md). Single-packet HS
+capture has passed hardware testing; stable 16-packet bursts remain unverified.
+A23's first 125 µs HS burst passed strict packet and completion checks, confirmed
+by its full device log. A subsequent reboot reproduction failed native packet
+status checks despite correct continuous raw payloads; its full device log now matches.
+One capture with the isolated host microframe observation build passed strict checks;
+its full device log is verified. The same observation build passed two independent single captures, both confirmed
+by full device logs. A bounded16-burst serial test with per-attempt native checks
+is prepared to examine ring wrap. Stability and cause remain unverified.
+UAC and PCM remain disabled.
 
 ### Workaround: Bluetooth audio (A2DP sink)
 
@@ -295,7 +304,7 @@ Note this knob affects *audio* latency, not video: for video lag, lower `RTBUFSI
 - **`config descriptor too short` in dmesg**: the USB configuration is
   corrupt - if you modified descriptor code, see the warnings in
   `uvc_device.c` (appended config data can never be removed; iso
-  endpoints are unsupported).
+  endpoints need the experimental controller patch).
 - **Enumerates but no `/dev/video` (Linux)**: permissions (are you in the
   `video` group?) or a descriptor regression - `sudo dmesg` will show
   uvcvideo parse errors.

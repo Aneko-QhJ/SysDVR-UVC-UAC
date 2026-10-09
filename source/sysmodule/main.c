@@ -111,9 +111,8 @@ static void VideoStreamThread(void* arg)
 // Audio Streaming Thread
 // ============================================================================
 
-// NOTE: audio is currently disabled (UAC/isochronous is impossible on
-// usb:ds, see docs/RESEARCH.md §6) - UacDeviceIsStreaming() is always false
-// and this thread just idles in its 50ms sleep branch.
+// UAC remains disabled while the separate ISO_PROBE experiment validates
+// device-side Isoch TDs; this thread idles until UAC lifecycle is implemented.
 static void AudioStreamThread(void* arg)
 {
     (void)arg;

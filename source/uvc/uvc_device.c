@@ -1,6 +1,13 @@
 #include <string.h>
 #include "uvc_device.h"
 #include "../core.h"
+#ifdef ISO_PROBE
+#include "iso_probe_protocol.h"
+#ifdef ISO_RUNTIME_PATCH
+#include "iso_runtime_patch.h"
+#include "iso_runtime_payload.h"
+#endif
+#endif
 
 // USB class codes not defined in libnx
 #ifndef USB_CLASS_MISC
@@ -30,6 +37,220 @@ static u8 alignas(0x1000) g_endpointInBuffer[0x4000];  // Video transfer staging
 static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer staging buffer
 
 static UvcDeviceContext g_uvcCtx;
+
+#ifdef ISO_PROBE
+static UsbDsInterface* g_isoInterface;
+static UsbDsEndpoint* g_isoEndpoint;
+static u8 alignas(0x1000) g_isoBuffer[0x1000];
+static IsoProbeStatus g_isoStatus;
+
+#ifdef ISO_RUNTIME_PATCH
+typedef struct { Handle debug; u64 base; Result last_result; } IsoPatchContext;
+static int _isoPatchRead(void *context, uint32_t offset, void *bytes, size_t size)
+{
+    IsoPatchContext *c = context;
+    c->last_result = svcReadDebugProcessMemory(bytes, c->debug, c->base + offset, size);
+    return R_FAILED(c->last_result);
+}
+static int _isoPatchWrite(void *context, uint32_t offset, void *bytes, size_t size)
+{
+    IsoPatchContext *c = context;
+    c->last_result = svcWriteDebugProcessMemory(c->debug, bytes, c->base + offset, size);
+    return R_FAILED(c->last_result);
+}
+#endif
+
+static bool _logIsoTarget(void)
+{
+#ifdef ISO_PROBE_BURST_MODE
+#ifdef ISO_PROBE_INTERVAL_EXPERIMENT
+    LOG("ISO diagnostic revision A23 HS ISO7 bInterval1 followup-SIA experiment\n");
+#elif defined(ISO_PROBE_FOLLOWUP_SIA)
+    LOG("ISO diagnostic revision A22 HS ISO6 first-explicit followup-SIA experiment\n");
+#elif defined(ISO_PROBE_CONTEXT_AUDIT)
+    LOG("ISO diagnostic revision A21 HS ISO6 pre-publication context audit\n");
+#elif defined(ISO_PROBE_DOORBELL_AUDIT)
+    LOG("ISO diagnostic revision A20 HS ISO5 doorbell-tail/MFI audit\n");
+#elif defined(ISO_PROBE_PUBLICATION_AUDIT)
+    LOG("ISO diagnostic revision A19 HS ISO4 publication/MFI audit\n");
+#elif defined(ISO_PROBE_EVENT_AUDIT)
+    LOG("ISO diagnostic revision A18 HS bounded ISO3 event/MFI audit\n");
+#else
+    LOG("ISO diagnostic revision A17 HS defer submit log until after ACK\n");
+#endif
+#else
+    LOG("ISO diagnostic revision A12 EP0 ownership fix\n");
+#endif
+    Result rc = setsysInitialize();
+    if (R_SUCCEEDED(rc)) {
+        SetSysFirmwareVersion fw = {0};
+        rc = setsysGetFirmwareVersion(&fw);
+        if (R_SUCCEEDED(rc)) LOG("ISO HOS %u.%u.%u\n", fw.major, fw.minor, fw.micro);
+        setsysExit();
+    }
+    LOG("ISO firmware query rc=0x%x\n", rc);
+    rc = pmdmntInitialize();
+    if (R_FAILED(rc)) { LOG("ISO pm:dmnt init rc=0x%x\n", rc); return false; }
+    u64 pid = 0;
+    rc = pmdmntGetProcessId(&pid, 0x0100000000000006ULL);
+    pmdmntExit();
+    LOG("ISO usb pid=%llu query rc=0x%x\n", (unsigned long long)pid, rc);
+    if (R_FAILED(rc)) return false;
+    rc = ldrDmntInitialize();
+    if (R_FAILED(rc)) { LOG("ISO ldr:dmnt init rc=0x%x\n", rc); return false; }
+    LoaderModuleInfo modules[4] = {0};
+    s32 count = 0;
+    rc = ldrDmntGetProcessModuleInfo(pid, modules, 4, &count);
+    ldrDmntExit();
+    LOG("ISO usb module query rc=0x%x count=%d\n", rc, count);
+    if (R_FAILED(rc)) return false;
+    for (s32 i = 0; i < count && i < 4; ++i) {
+        char build[65];
+        static const char hex[] = "0123456789ABCDEF";
+        for (unsigned j = 0; j < 32; ++j) {
+            build[j*2] = hex[modules[i].build_id[j] >> 4];
+            build[j*2+1] = hex[modules[i].build_id[j] & 15];
+        }
+        build[64] = 0;
+        LOG("ISO usb module[%d] BuildID=%s base=%llx size=%llx\n", i, build,
+            (unsigned long long)modules[i].base_address, (unsigned long long)modules[i].size);
+    }
+#ifdef ISO_RUNTIME_PATCH
+    if (count != 1 || modules[0].size != 0x369000 ||
+        memcmp(modules[0].build_id, isoRuntimeBuildId, sizeof(isoRuntimeBuildId))) {
+        LOG("ISO runtime target mismatch; refusing writes\n");
+        return false;
+    }
+#endif
+    /* Close before later usb:ds calls; all preflight/writes/readback happen
+       while the target is paused. Failed writes restore the original ranges. */
+    Handle debug = INVALID_HANDLE;
+    rc = svcDebugActiveProcess(&debug, pid);
+    LOG("ISO usb debug attach rc=0x%x\n", rc);
+    bool ready = false;
+    if (R_SUCCEEDED(rc)) {
+        if (count == 1 && modules[0].size >= 0x69000) {
+            const u32 offsets[] = {0x30364, 0x2cbe0, 0x68d54};
+            for (unsigned i = 0; i < sizeof(offsets)/sizeof(offsets[0]); ++i) {
+                u32 words[4] = {0};
+                Result read = svcReadDebugProcessMemory(words, debug,
+                    modules[0].base_address + offsets[i], sizeof(words));
+                LOG("ISO usb memory +%x rc=0x%x words=%08x %08x %08x %08x\n",
+                    offsets[i], read, words[0], words[1], words[2], words[3]);
+            }
+        }
+#ifdef ISO_RUNTIME_PATCH
+        IsoPatchContext context = {debug, modules[0].base_address, 0};
+        size_t failed = 0;
+        int result = isoApplyRuntimePatch(isoRuntimeEdits,
+            sizeof(isoRuntimeEdits)/sizeof(isoRuntimeEdits[0]),
+            _isoPatchRead, _isoPatchWrite, &context, &failed);
+        LOG("ISO runtime patch result=%d record=%u last-rc=0x%x\n",
+            result, (unsigned)failed, context.last_result);
+        ready = result >= 0;
+        if (result == -4) {
+            /* Do not resume a target whose original code cannot be restored. */
+            LOG("ISO rollback unverified; usb remains paused, reboot required\n");
+            for (;;) svcSleepThread(1000000000ULL);
+        }
+#else
+        ready = true;
+#endif
+        svcCloseHandle(debug);
+    }
+    return ready;
+}
+
+static Result _setupIsoProbe(void)
+{
+#ifndef ISO_PROBE_MPS
+#define ISO_PROBE_MPS 192
+#endif
+#ifndef ISO_PROBE_INTERVAL
+#define ISO_PROBE_INTERVAL 4
+#endif
+    if (!_logIsoTarget()) return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    Result rc = usbDsRegisterInterface(&g_isoInterface);
+    if (R_FAILED(rc)) return rc;
+    /* The matching controller patch is deliberately restricted to EP 83. */
+    if (g_isoInterface->interface_index != 2)
+        return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    const struct usb_interface_descriptor iface = {
+        .bLength = USB_DT_INTERFACE_SIZE, .bDescriptorType = USB_DT_INTERFACE,
+        .bInterfaceNumber = 2, .bAlternateSetting = 0, .bNumEndpoints = 1,
+        .bInterfaceClass = 0xff, .bInterfaceSubClass = 0x49, .bInterfaceProtocol = 1,
+    };
+    const struct usb_endpoint_descriptor ep = {
+        .bLength = USB_DT_ENDPOINT_SIZE, .bDescriptorType = USB_DT_ENDPOINT,
+        .bEndpointAddress = 0x83, .bmAttributes = USB_TRANSFER_TYPE_ISOCHRONOUS,
+        .wMaxPacketSize = ISO_PROBE_MPS, .bInterval = ISO_PROBE_INTERVAL,
+    };
+    const struct usb_ss_endpoint_companion_descriptor companion = {
+        .bLength = sizeof(companion), .bDescriptorType = USB_DT_SS_ENDPOINT_COMPANION,
+        .bMaxBurst = 0, .bmAttributes = 0, .wBytesPerInterval = ISO_PROBE_PACKET_SIZE,
+    };
+    const UsbDeviceSpeed speeds[] = {UsbDeviceSpeed_High, UsbDeviceSpeed_Super};
+    for (unsigned i = 0; i < 2; ++i) {
+        struct usb_endpoint_descriptor speed_ep = ep;
+        if (speeds[i] == UsbDeviceSpeed_Super) speed_ep.bInterval = 4;
+        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i], &iface, sizeof(iface));
+        if (R_FAILED(rc)) return rc;
+        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i], &speed_ep, USB_DT_ENDPOINT_SIZE);
+        if (R_FAILED(rc)) return rc;
+        if (speeds[i] == UsbDeviceSpeed_Super) {
+            rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i], &companion, sizeof(companion));
+            if (R_FAILED(rc)) return rc;
+        }
+    }
+    rc = usbDsInterface_RegisterEndpoint(g_isoInterface, &g_isoEndpoint, 0x83);
+    if (R_FAILED(rc)) return rc;
+    g_isoStatus.magic = ISO_PROBE_STATUS_MAGIC;
+    g_isoStatus.version = 1;
+    g_isoStatus.endpoint = 0x83;
+    return usbDsInterface_EnableInterface(g_isoInterface);
+}
+
+static void _pollIsoProbe(void)
+{
+    if (!g_isoEndpoint) return;
+    UsbDsReportData report = {0};
+    Result rc = usbDsEndpoint_GetReportData(g_isoEndpoint, &report);
+    g_isoStatus.report_result = rc;
+    if (R_FAILED(rc)) return;
+    g_isoStatus.report_count = report.report_count;
+    if (report.report_count <= 1) {
+        IsoProbeDiagnostics diag;
+        memcpy(&diag, &report.report[1], sizeof(diag));
+        if (diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic) || diag.magic == ISO_PROBE_REPORT_MARKER ||
+            diag.magic == ISO_PROBE_ENTER_MARKER)
+            memcpy(&g_isoStatus.diagnostics, &diag, sizeof(diag));
+        if ((diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic)) &&
+            ((diag.terminal & 0x80000000u) || diag.terminal == ISO_PROBE_SUCCESS_RETAINED) &&
+            (g_isoStatus.state == ISO_PROBE_PENDING || g_isoStatus.state == ISO_PROBE_RETAINED))
+            g_isoStatus.state = ISO_PROBE_RETAINED;
+    }
+    for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+        const UsbDsReportEntry* r = &report.report[i];
+        if (r->id != g_isoStatus.urb_id) continue;
+        g_isoStatus.report_id = r->id;
+        g_isoStatus.requested = r->requestedSize;
+        g_isoStatus.transferred = r->transferredSize;
+        g_isoStatus.urb_status = r->urb_status;
+        /* usb:ds states 3/4/5 are terminal; 1/2 retain DMA ownership. */
+        if (r->urb_status >= 3 && r->urb_status <= 5) {
+            g_isoStatus.state = r->urb_status == 3 ? ISO_PROBE_COMPLETE : ISO_PROBE_FAILED;
+            eventClear(&g_isoEndpoint->CompletionEvent);
+#ifdef ISO_PROBE_BURST_MODE
+            LOG("ISO seq=%u URB=%u requested=%u raw-count=%u status=%u diag-word2=%u\n",
+#else
+            LOG("ISO seq=%u URB=%u requested=%u raw-count=%u status=%u events=%u\n",
+#endif
+                g_isoStatus.sequence, r->id, r->requestedSize, r->transferredSize,
+                r->urb_status, g_isoStatus.diagnostics.event_count);
+        }
+    }
+}
+#endif
 
 // UAC (Audio) context
 static struct {
@@ -267,11 +488,9 @@ static struct usb_ss_endpoint_companion_descriptor g_ssCompanionDesc = {
 // ============================================================================
 // UAC (Audio) Descriptor Data - DEAD CODE, kept for reference only.
 //
-// UAC audio is impossible on usb:ds: its configuration assembler cannot
-// handle an isochronous endpoint descriptor in the appended data. Appending
-// these descriptors makes the device serve a corrupt configuration
-// descriptor and enumeration fails entirely, taking video down with it
-// (host: "config index 0 descriptor too short"). See docs/RESEARCH.md §6.
+// Stock usb:ds has no device-side Isoch producer and only installs alt0
+// endpoints. The independent configuration-length bug has been identified
+// and patched. Keep UAC disabled while ISO_PROBE verifies the device engine.
 // ============================================================================
 
 // Interface Association Descriptor for Audio
@@ -408,8 +627,7 @@ static const struct __attribute__((packed)) {
     },
 };
 
-// Audio isochronous endpoint. This is the exact descriptor usb:ds cannot
-// assemble into a valid configuration (see section banner above).
+// Reference audio endpoint; ISO_PROBE uses a separate vendor alt0 endpoint.
 static struct usb_endpoint_descriptor g_audioEndpointDesc = {
     .bLength = USB_DT_ENDPOINT_SIZE,
     .bDescriptorType = USB_DT_ENDPOINT,
@@ -646,9 +864,8 @@ static Result _setupInterfaces5x(void)
 // ============================================================================
 // UAC Interface Setup - DEAD CODE, never called.
 //
-// Do NOT wire this back in: appended configuration data cannot be removed,
-// so once these descriptors are appended the whole device is broken even if
-// the audio setup "fails gracefully" afterwards. See docs/RESEARCH.md §6.
+// Re-enable only after device Isoch submission and alt-setting lifecycle are
+// verified. Appended configuration data cannot be removed for fallback.
 // ============================================================================
 
 static Result _setupAudioInterfaces5x(void)
@@ -840,11 +1057,14 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
             goto cleanup;
         }
 
-        // Audio is intentionally DISABLED: usb:ds cannot assemble a config
-        // containing an isochronous endpoint - calling this corrupts the
-        // entire configuration descriptor and the device stops enumerating.
-        // See docs/RESEARCH.md §6 for the verdict and the bulk fallback plan.
+        // UAC remains disabled until device ISO and alt-setting support are
+        // verified. ISO_PROBE tests a separate vendor alt0 interface first.
         (void)_setupAudioInterfaces5x;  // suppress unused warning
+
+#ifdef ISO_PROBE
+        rc = _setupIsoProbe();
+        if (R_FAILED(rc)) goto cleanup;
+#endif
 
         rc = usbDsEnable();
         if (R_FAILED(rc)) {
@@ -880,6 +1100,13 @@ cleanup:
 
 void UvcDeviceExit(void)
 {
+#ifdef ISO_PROBE
+    if (g_isoInterface) {
+        usbDsInterface_Close(g_isoInterface);
+        g_isoInterface = NULL;
+        g_isoEndpoint = NULL;
+    }
+#endif
     if (!g_uvcCtx.initialized) {
         return;
     }
@@ -1338,6 +1565,154 @@ static void _handleVcSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #define USB_REQUEST_GET_INTERFACE 0x0A
 #define USB_REQUEST_SET_INTERFACE 0x0B
 
+#ifdef ISO_PROBE
+static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
+{
+    if (setup->wIndex != iface->interface_index) {
+        /* usb:ds broadcasts SetupEvent. Another interface owns this request;
+           stalling shared EP0 here breaks that owner's Probe/Commit transfer. */
+        LOG("ISO EP0: request for interface %u, ignoring\n", setup->wIndex);
+        return;
+    }
+    if (setup->bmRequestType == 0xc1 && setup->bRequest == ISO_PROBE_FRAMES &&
+        setup->wLength == sizeof(IsoProbeFrameReport) && setup->wValue == 0) {
+        if (g_isoStatus.state == ISO_PROBE_PENDING || g_isoStatus.state == ISO_PROBE_RETAINED) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        static IsoProbeFrameReport frames;
+        memset(&frames, 0, sizeof(frames));
+        frames.magic = ISO_PROBE_FRAMES_MAGIC;
+        frames.version = 1;
+        frames.count = ISO_PROBE_FRAME_SAMPLES;
+        frames.tick_frequency = armGetSystemTickFreq();
+        frames.verified = 1;
+        for (unsigned i = 0; i < ISO_PROBE_FRAME_SAMPLES; ++i) {
+            IsoProbeFrameSample *s = &frames.samples[i];
+            s->ticks_before = svcGetSystemTick();
+            _pollIsoProbe();
+            s->ticks_after = svcGetSystemTick();
+            s->result = g_isoStatus.report_result;
+            if (!s->result && (g_isoStatus.diagnostics.magic != ISO_PROBE_REPORT_MARKER ||
+                              !g_isoStatus.diagnostics.iso_physical))
+                s->result = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+            s->raw_mfi = g_isoStatus.diagnostics.context[0];
+            s->control = g_isoStatus.diagnostics.context[1];
+            s->portsc = g_isoStatus.diagnostics.context[2];
+            s->mmio = g_isoStatus.diagnostics.iso_physical;
+            if (s->result || (s->raw_mfi & ~0x3fffu)) frames.verified = 0;
+            if (i) {
+                const IsoProbeFrameSample *p = &frames.samples[i-1];
+                u64 dt = (s->ticks_before/2 + s->ticks_after/2) -
+                         (p->ticks_before/2 + p->ticks_after/2);
+                u64 du = (s->raw_mfi - p->raw_mfi) & 0x3fff;
+                u64 measured = du * frames.tick_frequency;
+                if (!dt || measured < dt*7200 || measured > dt*8800) frames.verified = 0;
+            }
+            LOG("ISO frame[%u] ticks=%llu..%llu mfi=%x ctrl=%x port=%x rc=0x%x mmio=%llx\n",
+                i, (unsigned long long)s->ticks_before, (unsigned long long)s->ticks_after,
+                s->raw_mfi, s->control, s->portsc, s->result, (unsigned long long)s->mmio);
+            if (i + 1 < ISO_PROBE_FRAME_SAMPLES) svcSleepThread(20000000ULL);
+        }
+        LOG("ISO frame unit verified=%u tick-frequency=%u (no TD submitted)\n",
+            frames.verified, frames.tick_frequency);
+        _ctrlWrite(iface, &frames, sizeof(frames));
+        return;
+    }
+    if (setup->bmRequestType == 0xc1 && setup->bRequest == ISO_PROBE_STATUS &&
+        setup->wLength == sizeof(g_isoStatus) && setup->wValue == 0) {
+        _pollIsoProbe();
+        _ctrlWrite(iface, &g_isoStatus, sizeof(g_isoStatus));
+        return;
+    }
+    if (setup->bmRequestType == 0x41 && setup->bRequest ==
+#ifdef ISO_PROBE_BURST_MODE
+        ISO_PROBE_BURST
+#else
+        ISO_PROBE_TRIGGER
+#endif
+        && setup->wLength == 0) {
+        u64 triggerTicks = svcGetSystemTick();
+        _pollIsoProbe();
+        if (g_isoStatus.state == ISO_PROBE_PENDING || g_isoStatus.state == ISO_PROBE_RETAINED) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        UsbDeviceSpeed speed;
+        Result rc = usbDsGetSpeed(&speed);
+        if (R_FAILED(rc) || (speed != UsbDeviceSpeed_High && speed != UsbDeviceSpeed_Super)) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+#ifdef ISO_PROBE_BURST_MODE
+        if (speed != UsbDeviceSpeed_High) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        const unsigned packetCount = ISO_PROBE_BURST_PACKETS;
+#else
+        const unsigned packetCount = 1;
+#endif
+        const unsigned length = packetCount * ISO_PROBE_PACKET_SIZE;
+        memset(&g_isoStatus, 0, sizeof(g_isoStatus));
+        g_isoStatus.magic = ISO_PROBE_STATUS_MAGIC;
+        g_isoStatus.version = 1;
+        g_isoStatus.sequence = setup->wValue;
+        g_isoStatus.speed = speed;
+        g_isoStatus.endpoint = 0x83;
+        for (unsigned packet = 0; packet < packetCount; ++packet)
+            for (unsigned i = 0; i < ISO_PROBE_PACKET_SIZE; ++i)
+                g_isoBuffer[packet * ISO_PROBE_PACKET_SIZE + i] =
+                    isoProbeByte((uint16_t)(setup->wValue + packet), i);
+        armDCacheFlush(g_isoBuffer, sizeof(g_isoBuffer));
+        eventClear(&g_isoEndpoint->CompletionEvent);
+        u32 urbId = 0;
+        u64 postBeforeTicks = svcGetSystemTick();
+        rc = usbDsEndpoint_PostBufferAsync(g_isoEndpoint, g_isoBuffer,
+            length, &urbId);
+        u64 postAfterTicks = svcGetSystemTick();
+        g_isoStatus.urb_id = urbId;
+        g_isoStatus.post_result = rc;
+        g_isoStatus.state = R_SUCCEEDED(rc) ? ISO_PROBE_PENDING : ISO_PROBE_FAILED;
+        u64 ackBeforeTicks = svcGetSystemTick();
+        _ctrlAck(iface);
+        u64 ackAfterTicks = svcGetSystemTick();
+        LOG("ISO submit seq=%u speed=%u length=%u rc=0x%x urb=%u\n",
+            setup->wValue, speed, length, rc, urbId);
+        LOG("ISO timing seq=%u urb=%u frequency=%u trigger=%llu post-before=%llu post-after=%llu ack-before=%llu ack-after=%llu\n",
+            setup->wValue, urbId, armGetSystemTickFreq(),
+            (unsigned long long)triggerTicks, (unsigned long long)postBeforeTicks,
+            (unsigned long long)postAfterTicks, (unsigned long long)ackBeforeTicks,
+            (unsigned long long)ackAfterTicks);
+        return;
+    }
+    if (setup->bmRequestType == 0x41 && setup->bRequest == ISO_PROBE_CANCEL &&
+        setup->wLength == 0 && setup->wValue == 0) {
+        if (g_isoStatus.state == ISO_PROBE_PENDING || g_isoStatus.state == ISO_PROBE_RETAINED) {
+            g_isoStatus.state = ISO_PROBE_RETAINED;
+            usbDsEndpoint_Cancel(g_isoEndpoint);
+            /* Reap synchronously before ACK; unknown ownership blocks retrigger. */
+            eventWait(&g_isoEndpoint->CompletionEvent, 500E+6);
+            _pollIsoProbe();
+        }
+        _ctrlAck(iface);
+        return;
+    }
+    if (setup->bmRequestType == 0x01 && setup->bRequest == USB_REQUEST_SET_INTERFACE &&
+        setup->wValue == 0 && setup->wLength == 0) {
+        _ctrlAck(iface);
+        return;
+    }
+    if (setup->bmRequestType == 0x81 && setup->bRequest == USB_REQUEST_GET_INTERFACE &&
+        setup->wValue == 0 && setup->wLength == 1) {
+        u8 alt = 0;
+        _ctrlWrite(iface, &alt, 1);
+        return;
+    }
+    usbDsInterface_StallCtrl(iface);
+}
+#endif
+
 static void _handleSetupPacket(UsbDsInterface* iface)
 {
     UsbSetupPacket setup;
@@ -1346,6 +1721,13 @@ static void _handleSetupPacket(UsbDsInterface* iface)
         LOG("GetSetupPacket failed: 0x%x\n", rc);
         return;
     }
+
+#ifdef ISO_PROBE
+    if (iface == g_isoInterface) {
+        _handleIsoSetup(iface, &setup);
+        return;
+    }
+#endif
 
     LOG("EP0[%u]: reqType=0x%02x req=0x%02x wVal=0x%04x wIdx=0x%04x wLen=%u\n",
         iface->interface_index, setup.bmRequestType, setup.bRequest,
@@ -1412,6 +1794,9 @@ static bool _serviceSetup(UsbDsInterface* iface)
 
 void UvcDeviceProcessRequests(void)
 {
+#ifdef ISO_PROBE
+    _pollIsoProbe();
+#endif
     u32 state = 0;
     if (R_FAILED(usbDsGetState(&state))) {
         return;
@@ -1423,6 +1808,10 @@ void UvcDeviceProcessRequests(void)
             g_uvcCtx.state = UVC_STATE_DISCONNECTED;
             g_uacCtx.streaming = false;
             g_lastErrorCode = UVC_ERROR_NONE;
+#ifdef ISO_PROBE
+            if (g_isoStatus.state == ISO_PROBE_PENDING)
+                g_isoStatus.state = ISO_PROBE_RETAINED;
+#endif
         }
         return;
     }
@@ -1440,17 +1829,31 @@ void UvcDeviceProcessRequests(void)
     // for the follow-up so the sequence isn't paced by our caller's sleep.
     bool serviced = _serviceSetup(g_uvcCtx.controlInterface);
     serviced |= _serviceSetup(g_uvcCtx.streamingInterface);
+#ifdef ISO_PROBE
+    serviced |= _serviceSetup(g_isoInterface);
+#endif
 
     while (serviced &&
            g_uvcCtx.controlInterface && g_uvcCtx.streamingInterface) {
         s32 idx;
+#ifdef ISO_PROBE
+        if (R_FAILED(waitMulti(&idx, 20E+6,
+                waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
+                waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),
+                waiterForEvent(&g_isoInterface->SetupEvent))))
+            break;
+#else
         if (R_FAILED(waitMulti(&idx, 20E+6,  // 20ms
                 waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
                 waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent))))
             break;  // no follow-up request - burst is over
+#endif
 
         serviced = _serviceSetup(g_uvcCtx.controlInterface);
         serviced |= _serviceSetup(g_uvcCtx.streamingInterface);
+#ifdef ISO_PROBE
+        serviced |= _serviceSetup(g_isoInterface);
+#endif
     }
 }
 

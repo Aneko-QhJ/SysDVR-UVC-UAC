@@ -82,23 +82,42 @@ bad frame immediately.
 short packet, so the host cannot see the payload boundary (~1/512 frames
 corrupted). A ZLP is now sent to terminate those.
 
-## 6. Audio: UAC/isochronous is impossible on usb:ds
+## 6. Audio: device-side ISO experiment
 
 - On HOS 5.x+ `RegisterEndpoint` takes only an endpoint **address**; the
   transfer type lives in the appended descriptor blobs.
-- The usb sysmodule's **configuration assembler chokes on an isochronous
-  endpoint descriptor**: the device then serves a corrupt configuration
-  descriptor and stops enumerating entirely
-  (`config index 0 descriptor too short (expected 9, got 1)` on the host).
-  Video dies with it.
+- The former `expected 9, got 1` failure came from an independent u8
+  configuration length/offset wrap at 257 bytes. The assembly cache is
+  1024 bytes; the separate per-interface/per-speed limit is 128 bytes.
+- Device submission rejects ISO in `FUN_000302E0`. Bypassing the rejection
+  reaches the Normal producer, which cannot schedule Isoch transfers.
+- The device Endpoint Context already writes ISO parameters. The host
+  `FUN_0004CE10` supplies reference TRB math but belongs to a different
+  controller/object system and cannot be called by usb:ds.
+- Only alt0 endpoints are installed by the descriptor walk; full UAC alt1
+  support remains a later step.
 - Appended configuration data **cannot be removed** - closing the interface
   does not clean the config, so "graceful fallback after appending" is
   impossible. Anything risky must happen before the first append.
-- Bulk and interrupt are the only endpoint types with working precedent
-  (all gadget homebrew is bulk; haze adds interrupt).
-- Standard audio (UAC) **requires** iso - `snd-usb-audio` hard-rejects
-  non-iso streaming endpoints. Therefore: no standard USB microphone is
-  possible from this device.
+- A12 passed single-packet HS capture, normal completion, 100 serial attempts,
+  ring wrap and reconnect tests over the vendor alt0 interface. Stable
+  16-packet bursts remain unverified: A22's raw payload was continuous, but
+  native packet statuses failed. Its full installation/completion log is verified.
+- A23 changes the HS service interval to125µs and extends the host window to960
+  slots/120ms. It passed47 local tests and its first HS burst: all16 payloads were
+  exact, consecutive, native/public status0 with overall0 and full URB completion.
+  Its full installation/submission log is verified. The next reboot reproduction
+  failed with native E00002ED/overall E000400E despite correct continuous raw data;
+  that boot's full4551byte device log is verified. An isolated host microframe
+  observation build passed local validation and one strict HS capture; its full
+ 2631byte device log is verified. The same host build passed two independent single captures; both full logs are
+  verified. A native-gated16-burst serial test is locally validated and prepared. All four host microframe counts were multiples of8,
+  so true microframe phase remains unresolved;
+  stability remains unverified. This also changes the
+  measurement window, so it is not a strict single-variable causal comparison.
+  Details and evidence are in `research/usb-ds-iso/INTERVAL_EXPERIMENT.md`.
+- SS acceptance, the hardware cause of burst gaps/errors, and robust continuous
+  streaming remain unverified. UAC audio is not enabled by this experiment.
 
 ## 7. Latency - the H.264 SPS was the stream-side root cause
 
