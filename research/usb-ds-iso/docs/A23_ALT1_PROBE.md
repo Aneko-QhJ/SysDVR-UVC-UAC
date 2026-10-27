@@ -93,6 +93,31 @@ ALT1 trigger rc=0x2628c urb=0
 下一步：把同一个 bulk 端点同时放进 alt0（`ALT1_PROBE_ENDPOINT_ALT0`），先测 alt0，
 再测 alt1；这样才能区分“descriptor walk 需要 alt0”与“alt 切换仍会失效”。
 
+## alt0 端点变体（2026-10-27 20:55）
+
+NSP `c9d1aaa6…`：同一个 bulk 端点同时放进 alt0 和 alt1。同一 boot 先跑 alt0，再跑 alt1。
+
+| 阶段 | set_alt | post | urb_status | bulk | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| alt0 | skipped | 0 | 3 | 64B，`ALT1` 图样 | **通过** |
+| alt1 | 1 | 0 | 3 | `LIBUSB_ERROR_TIMEOUT`，0B | 失败 |
+
+- **alt0 可用**：端点放进 alt0 后，`PostBufferAsync` 成功、host 收到 64B。说明 `usb:ds`
+  的 descriptor walk 只把 alt0 的端点装成可用的控制器上下文；仅靠
+  `usbDsInterface_RegisterEndpoint`（alt1-only 描述符）不够。
+- **alt1 仍不可用**：`SET_INTERFACE(1)` 后设备侧 post 仍成功（urb 404、transferred 64、
+  urb_status 3），但 host 的 alt1 bulk 读超时、0B。即端点仍停在 alt0 上下文，
+  host 的 alt1 pipe 收不到这批数据；不是 post 失败，而是 alt 切换后端点与 host pipe 不匹配。
+- 这条路径给出了一个**非标准但可工作的 alt0 数据面**；标准 UAC 宿主是否愿意在 alt0
+  流，仍需单独验证。
+
+下一步：
+
+1. **alt0-only UAC 描述符**：AS 只保留带端点的 alt0（或 alt0 有端点、alt1 无端点），
+   用 Linux `snd-usb-audio`/`arecord` 看宿主是否选择 alt0 并收到 PCM。
+2. **patch `usb:ds`**：在 `SET_INTERFACE(1)` 时重配端点上下文；需要 usb NSO/Ghidra。
+3. **custom host alt0 only**：只能作为诊断，不是免客户端产品。
+
 ## 判读
 
 | 观察 | 含义 | 下一步 |

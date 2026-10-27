@@ -14,9 +14,9 @@
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
-- ALT1 vendor 探针已实测两次：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
-  alt1 与 alt0 的 `PostBufferAsync` 都返回 `0x2628c`，端点注册成功但从未成为可用的
-  控制器上下文。下一步是 `ALT1_PROBE_ENDPOINT_ALT0` 变体。
+- ALT1 vendor 探针已实测：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
+  alt1-only 描述符的 post 为 `0x2628c`；把端点同时放进 alt0 后 alt0 收到 64B，
+  但 `SET_INTERFACE(1)` 后 host 读超时。下一步是 alt0-only UAC 或 patch `usb:ds`。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

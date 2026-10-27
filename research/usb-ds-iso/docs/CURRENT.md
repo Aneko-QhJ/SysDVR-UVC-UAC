@@ -61,8 +61,12 @@
   Usb(140)/49 `ResultUsbEndpointAlreadyOpen`，额外 bit17 的具体名称未知。
 - alt0 对照（同一 NSP，不 `set_alt`）：同样 `post=0x2628c`、bulk `NOT_FOUND`；
   说明不是 alt 切换导致，而是 alt1-only 描述符注册的端点从未成为可用的控制器上下文。
-- 下一步：`ALT1_PROBE_ENDPOINT_ALT0` 变体（端点同时在 alt0/alt1），先测 alt0 再测 alt1；
-  若 alt0 可用而 alt1 失效，则只剩 alt 切换/patched walk 问题。
+- `ALT1_PROBE_ENDPOINT_ALT0` 变体（端点同时在 alt0/alt1）结果：
+  - alt0：post 0、urb 388、64B、bulk 收到 `ALT1`，**通过**。
+  - alt1：`set_alt(1)` 成功、设备 post 0/urb 404/64B/urb_status 3，但 host bulk 读超时、0B。
+  - 结论：alt0 端点可用；alt1 切换后端点仍停在 alt0 上下文，host alt1 pipe 收不到数据。
+- 下一步二选一：alt0-only UAC 描述符 + Linux 标准宿主测试；或 patch `usb:ds` 的
+  `SET_INTERFACE(1)` 端点重配（需要 usb NSO/Ghidra）。custom host alt0 只作诊断。
 
 ## 工程状态（2026-10-27）
 
