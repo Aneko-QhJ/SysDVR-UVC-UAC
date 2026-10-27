@@ -13,9 +13,10 @@
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
-  alt1 端点安装仍未验证，UAC 仍禁用。
-- ALT1 vendor 探针已准备：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
-  一个 NSP（无 IPS）+ libusb host，等待完全关机插卡。
+  alt1 数据路径已被首次探针否定，UAC 仍禁用。
+- ALT1 vendor 探针已实测一次：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
+  `set_alt(1)`/trigger 成功，但 bulk 失败、`post=0x0002628c`，数据路径未建立；不重试。
+  下一步是读 `/logfile.txt`，再决定 alt0 变通或 patch。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

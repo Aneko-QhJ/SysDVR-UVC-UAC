@@ -51,7 +51,11 @@
 - 卡操作：完全关机后插入 SD；备份 `exefs.nsp`/`logfile.txt`/旧 `.ips`，只替换 `exefs.nsp`，
   移除旧 IPS，回读并安全弹出。
 - 本轮独立计一次：一次 boot、一次 `set_alt(1)`、一次 trigger、一次 64B 读；不重试，
-  不恢复 short24 的旧次数。当前尚未部署/开机，没有新证据。
+  不恢复 short24 的旧次数。
+- **首次结果（20:45）**：`set_alt(1)`/trigger 成功；bulk `LIBUSB_ERROR_IO`；
+  status `alt=1 state=3 post=0x0002628c triggers=1`。控制路径接受，端点 post 失败，
+  数据路径未建立；不通过、不重试。证据 `private/runs/A-alt1-probe-20261027/`。
+- 下一步：关机取卡读 `/logfile.txt`，确认 setup/post；再决定 alt0 变通或 patch。
 
 ## 工程状态（2026-10-27）
 

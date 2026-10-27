@@ -35,6 +35,25 @@
 4. 用户装卡、接 USB、开机；sysmodule 约 20 秒后接管 USB。
 5. 运行 `./research/usb-ds-iso/host/alt1-probe`，保存 stdout。
 
+## 首次结果（2026-10-27 20:45）
+
+| 项 | 观察 |
+| --- | --- |
+| `claim_interface(2)` | 0 |
+| `set_alt(1)` | 0（宿主接受 alt1） |
+| trigger | 0 |
+| bulk `0x84` | `-1` / `LIBUSB_ERROR_IO`，0 字节 |
+| status | magic `31544c41`、alt `1`、state `3`、post `0x0002628c`、urb `0`、triggers `1`、reports `0` |
+
+判定：**alt1 控制路径被接受，但端点 post 失败，数据路径没有建立；本轮不通过，不重试。**
+`triggers=1` 说明 trigger 进入了 handler 且端点会话非空；失败点在 `PostBufferAsync`，
+不是控制请求本身。`post=0x0002628c` 是 usb:ds/IPC 返回码，具体名称待 log/错误表核对。
+
+证据：`private/runs/A-alt1-probe-20261027/`（`host.txt`、`manifest.json`）。
+
+下一步：关机取卡读 `/logfile.txt`，确认 `_setupAlt1Probe` 是否成功及 post 的实际返回；
+再决定 alt0 端点变通或 patch。不要重复同一次 alt1 探针。
+
 ## 判读
 
 | 观察 | 含义 | 下一步 |
