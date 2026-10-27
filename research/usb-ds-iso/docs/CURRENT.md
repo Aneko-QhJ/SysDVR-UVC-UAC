@@ -76,14 +76,15 @@
   A23 burst producer + NOP；host 收到 16/16 个 192B 包，payload/completion 均 verified；
   设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
   status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
-- **3 URB in flight 已验证（23:4x）**：host 先提交 ISO read，再发 START；b0/b1/b2
-  各自 4K 对齐、各用一次。设备 `posts=3 completes=3 errors=0`（urb 387/403/419），
-  host `--transfers 1 --packets 256` 收到 **48/48 包、bad=0、zero=208**。
-  22:45 的崩溃是首 URB 0 长 + b0 复用 + b1/b2 未对齐的测试设置问题，不是 3 URB
-  不可用。证据 [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)、
-  [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)、
-  `private/runs/A-alt1-stream-hs2-20261027/`。
-- 下一步：验证完成后**复用 DMA 缓冲**（第 4 次提交）和连续多轮；再谈 AC/AS + 标准宿主。
+- **3 URB in flight 已验证（10-27 23:4x）**：START 握手 + b0/b1/b2 各自 4K 对齐、
+  各用一次；设备 `posts=3 completes=3 errors=0`，host **48/48 包、bad=0**。
+- **完成缓冲复用失败（10-28 00:23）**：复用 b0 的第二次提交返回 `0xf601`，usb 再次
+  在 DMA map `base+0x2c584` 崩；host 只有 16 valid。结论：3 个不同缓冲可行，但完成
+  后的 DMA 缓冲不能直接复用。证据
+  `private/runs/A-alt1-stream-hs2-20261027/`、
+  `private/runs/A-alt1-stream-reuse-crash-20261028/`。
+- 下一步：查 `complete_original` 的 DMA unmap/recycle；找不到就只能每 URB 新缓冲
+  （有限时长），连续 PCM 仍被这个边界挡住。
 
 ## 工程状态（2026-10-27）
 

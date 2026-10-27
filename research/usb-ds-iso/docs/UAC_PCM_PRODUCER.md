@@ -77,10 +77,10 @@ grc:d (4096B ≈ 21.3ms)
 A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结构性欠供。
 **3 URB + 现有 `MFI+32` 公式在名义速率下已经连续**，不需要改 FrameID。
 
-> **2026-10-27 3-URB 已验证：** 在 host 先提交 ISO read、再 START，且 b0/b1/b2
-> 各自 4K 对齐、各用一次的条件下，设备 posts=3/completes=3/errors=0，host 收到
-> 48/48 包、bad=0。之前的崩溃是首 URB 0 长 + b0 复用 + b1/b2 未对齐的测试设置问题，
-> 不是 3 URB 不可用。下一步是 DMA 缓冲复用/连续多轮。详见
+> **2026-10-27/28：** 3 URB in flight 已验证（START + 3 个各自 4K 对齐的不同缓冲：
+> posts=3/completes=3/errors=0，host 48/48 包）。但**完成后复用同一个 DMA 缓冲会再次
+> 崩 usb**（b0 复用 → `0xf601` + DMA map `svcBreak`）。所以连续 PCM 不能靠 3 缓冲
+> 循环，需要每 URB 新缓冲或安全 DMA unmap/recycle。详见
 > [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) 与
 > [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
 
@@ -130,7 +130,8 @@ A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结
 
 1. **本轮**：Python 调度/ring 模型与测试（[model_uac_pcm_ring.py](../tools/model_uac_pcm_ring.py)）。
 2. **3 URB 第一次实验（无效）**：首 URB 0 长 + b0 复用，DMA map 崩；3 URB 仍未验证。
-3. **握手 + 不同缓冲**：先 1 URB 有数据，再 2/3；查 DMA unmap。
+3. **握手 + 不同缓冲**：已通过 3 URB；**复用失败**（DMA map 崩）。下一步查 DMA
+   unmap/recycle，或每 URB 新缓冲。
 4. **单 URB 长传输/低 lead**：离线设计 + disassembly/Unicorn，先做 64 TD 的构造与
    完成账本；再决定是否上硬件。
 4. 用 vendor ISO alt1 发送真实 PCM burst。

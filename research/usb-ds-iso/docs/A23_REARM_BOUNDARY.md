@@ -85,11 +85,28 @@ zero=208**。所以 **3 URB in flight 本身是可行的**；之前的崩溃是�
 - b0 复用；
 - b1/b2 没有 4K 对齐（`0xce8c`）。
 
-## 现在仍未验证
+## 复用测试：失败（2026-10-28 00:23）
 
-- 完成后**复用同一个 DMA 缓冲**（第 4 次提交）是否安全；
-- 连续多轮（>3 URB）的 ring/DMA 回收；
-- 48ms 之后的持续供给。
+复用版 NSP `6cbf29ef…`：3 个对齐缓冲完成后允许复用。日志：
+
+```
+try b=0 / post rc=0x0 urb=387 / complete
+try b=0 / post rc=0xf601 urb=0
+try b=0 / post rc=0xf601 urb=0
+```
+
+host 只收到 16 valid / 1 bad / 496 zero；usb 模块再次 fatal，签名与 22:45 相同：
+`base+0x1927c svcBreak`，栈里 `+0x2c584`（DMA map）。所以：
+
+- **3 个不同缓冲各一次：可行**（48/48 包）。
+- **完成后复用同一个 DMA 缓冲：不可行**；A23 的完成路径没有让该缓冲变成可重新映射。
+- 连续 PCM 不能靠 3 缓冲循环；需要每 URB 新缓冲，或找到安全的 DMA unmap/recycle。
+
+## 仍未解决
+
+- 安全 DMA unmap/recycle（`complete_original` 是否 unmap、如何验证）；
+- 大缓冲池（N×4KB，总时长有限）是否可作为过渡；
+- 48ms 之后的持续供给与 UAC 标准宿主。
 
 
 ## 下一步（先离线/构建，再实机）

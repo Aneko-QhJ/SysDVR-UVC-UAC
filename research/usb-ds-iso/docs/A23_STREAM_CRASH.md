@@ -67,6 +67,15 @@ SysDVR NSP；Atmosphere 随即 fatal。
 - 查 `complete_original` 是否真正 unmap DMA；若没有，需要每 URB 新缓冲或安全 unmap。
 - 3 URB / 长 URB / 连续 ring 仍未验证；这次崩溃不是 3-URB 的否决证据。
 
+## 第二次崩溃：复用完成缓冲（2026-10-28 00:23）
+
+- NSP `6cbf29ef…`：3 个对齐缓冲，完成后允许复用。
+- 第一次 b0 post/complete 成功；b0 复用 post 返回 `0xf601`，usb 再次 `svcBreak`。
+- 崩溃签名与 22:45 相同：`base+0x1927c`，栈 `+0x2c584`（DMA map）。
+- host：16 valid / 1 bad / 496 zero。
+- 结论：**完成后的 DMA 缓冲不能直接复用**；连续流需要新缓冲或安全 unmap。
+- 证据：`private/runs/A-alt1-stream-reuse-crash-20261028/`。
+
 ## 证据
 
 `research/usb-ds-iso/private/runs/A-alt1-stream-crash-20261027/`：
