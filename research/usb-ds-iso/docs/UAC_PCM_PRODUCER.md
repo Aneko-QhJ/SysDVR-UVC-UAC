@@ -77,21 +77,30 @@ grc:d (4096B ≈ 21.3ms)
 A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结构性欠供。
 **3 URB + 现有 `MFI+32` 公式在名义速率下已经连续**，不需要改 FrameID。
 
-> **2026-10-27 硬件否决：** 3 URB 方案在第二次/第三次 `PostBufferAsync` 返回
-> `0xf601`，随后 usb 模块 `svcBreak`、Atmosphere fatal。该 endpoint 一次只接受一个
-> pending URB；上表的 3-URB 行只是理想模型，不可部署。详见
-> [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)。
+> **2026-10-27 第一次 3-URB 实验无效：** 首 URB 在 host 开始读之前就 0 长完成，
+> 线程随后复用了同一个 b0；第二次提交在 Normal producer 的 DMA map
+> `FUN_00003c50` 崩，usb fatal。A23 gate 失败其实会安全返回 `0x1908c`，不是原因；
+> `0xf601` 是 usb 死亡后的 session closed。**这次实验没有真正测到 3 URB in flight**，
+> 因此 3 URB 仍未验证。详见 [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) 与
+> [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
 
-## 3 URB 已否决，下一步是单 URB 长传输
+## 3 URB 第一次实验无效；下一步先握手 + 不同缓冲
 
-硬件结果：第二个 pending `PostBufferAsync` 返回 `0xf601`，随后 usb assert。不要再
-尝试 3 URB。可行方向：
+这次崩溃的前置条件不是“3 个 URB”，而是：
 
-1. **单个长 URB**：把 TD 数从 16 增到 64–128（64–128ms），把 32ms lead 空档摊薄；
-2. **降低 lead**：4ms/1ms 变体，接受完成-重提之间的短空档；
-3. **改 usb:ds/producer**：允许排队 URB 或真正 ring（大改，需重新验证）。
+- host 还没开始 ISO 读，stream 就在 `SET_INTERFACE(1)` 启动，首 URB 0 长完成；
+- 线程把 b0 标回 free 后**复用同一个 DMA 缓冲**，第二次提交在 DMA map 崩；
+- A23 两轮离线验证用的是**新的 DMA 地址**，没有验证同缓冲复用。
 
-游标只有在“允许提前提交下一个 URB”时才有意义；单 URB API 下它不能消除空档：
+所以先不要改长 URB/lead，先把“1 个 URB 确实有数据”和“不同缓冲不崩”做出来：
+
+1. **Host 握手**：host 提交首个 ISO transfer 后再发 vendor START；
+2. **不同缓冲**：b0/b1/b2 各用一次，不重复选；
+3. **DMA 释放**：查 `complete_original` 是否 unmap；没有就每 URB 新缓冲/找安全 unmap；
+4. 1 URB 有数据后再测 2/3；3 URB 目前仍未验证；
+5. 之后才考虑长 URB/低 lead/连续 ring。
+
+游标只有在“允许提前提交下一个 URB”时才有意义；现在连第一个 URB 的数据时序都没建立。
 
 1. 在端点上下文保存 `next_frame`（当前 A23 没有）。
 2. `iso_enter` 的首 TD FrameID 取 `next_frame`，不再取 `MFI+32`。
@@ -120,8 +129,9 @@ A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结
 ## 分阶段
 
 1. **本轮**：Python 调度/ring 模型与测试（[model_uac_pcm_ring.py](../tools/model_uac_pcm_ring.py)）。
-2. **3 URB 验证（已失败）**：第二次 post `0xf601`，usb `svcBreak`；不再重试。
-3. **单 URB 长传输/低 lead**：离线设计 + disassembly/Unicorn，先做 64 TD 的构造与
+2. **3 URB 第一次实验（无效）**：首 URB 0 长 + b0 复用，DMA map 崩；3 URB 仍未验证。
+3. **握手 + 不同缓冲**：先 1 URB 有数据，再 2/3；查 DMA unmap。
+4. **单 URB 长传输/低 lead**：离线设计 + disassembly/Unicorn，先做 64 TD 的构造与
    完成账本；再决定是否上硬件。
 4. 用 vendor ISO alt1 发送真实 PCM burst。
 5. 接 AC/AS alt1 + macOS 枚举。

@@ -15,9 +15,10 @@
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
-  bulk alt1 收到 64B，ISO alt1 收到 16/16 包。3-URB 连续方案已被硬件否决（第二次
-  post `0xf601`，usb assert）：[A23_STREAM_CRASH.md](docs/A23_STREAM_CRASH.md)；下一步
-  是单 URB 长传输/低 lead，再做 UAC 标准宿主。
+  bulk alt1 收到 64B，ISO alt1 收到 16/16 包。第一次 3-URB 实验无效（首 URB 0 长 +
+  同缓冲复用，DMA map 崩；3 URB 未验证）：[A23_STREAM_CRASH.md](docs/A23_STREAM_CRASH.md)、
+  [A23_REARM_BOUNDARY.md](docs/A23_REARM_BOUNDARY.md)；下一步先做 host 握手 + 不同缓冲，
+  再做 UAC 标准宿主。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

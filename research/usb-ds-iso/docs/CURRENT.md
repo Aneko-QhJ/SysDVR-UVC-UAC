@@ -76,12 +76,15 @@
   A23 burst producer + NOP；host 收到 16/16 个 192B 包，payload/completion 均 verified；
   设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
   status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
-- **连续 PCM：3-URB 方案已被硬件否决（22:45）**：第 1 次 post `rc=0`/urb 387 并完成；
-  第 2/3 次 `rc=0xf601`；随后 usb 模块 User Break（`base+0x1927c`，`svc #0x26`），
-  Atmosphere fatal `0x4A2`。该 endpoint 一次只接受一个 pending URB；cursor 不能消除
-  单 URB 空档。证据 [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)。
-- 下一步：**单 URB 长传输（64–128 TD）或低 lead**，先离线 disassembly/Unicorn 验证；
-  不再试 3 URB。之后才是 AC/AS alt1 + Linux `snd-usb-audio` 10s。
+- **连续 PCM：第一次 3-URB 实验无效（22:45）**：首 URB 在 host 开始 ISO 读之前就
+  0 长完成；线程随后复用 b0，第二次提交在 Normal producer 的 DMA map
+  `FUN_00003c50` 崩，usb fatal `0x4A2`；客户端 `0xf601` 是 session closed。
+  A23 gate 失败其实会安全返回 `0x1908c`，不是原因。这次**没有测到 3 URB in flight**；
+  3 URB 仍未验证，已确认同缓冲复用不安全。证据
+  [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)、
+  [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
+- 下一步：host 握手（提交首个 ISO read 后再 START）+ b0/b1/b2 各一次；先 1 URB 有数据，
+  再 2/3；查 `complete_original` 的 DMA unmap。之后才长 URB/连续。
 
 ## 工程状态（2026-10-27）
 

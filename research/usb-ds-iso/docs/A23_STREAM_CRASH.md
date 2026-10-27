@@ -36,27 +36,32 @@ ISO stream post rc=0xf601 urb=0
 没有 `ISO stream stop`，因为崩溃的是 usb 模块（`0100000000000006`），不是
 SysDVR NSP；Atmosphere 随即 fatal。
 
+> 更正：`0xf601` 是 **`KernelError_SessionClosed`**，即第二次/第三次 IPC 调用时
+> usb 服务已经 fatal，不是 endpoint 返回 busy。第二次提交本身触发了 usb 的 assert；
+> 崩溃栈走 `FUN_0002d450 -> FUN_0002a2e0 -> FUN_0002a330 -> FUN_0002c520`
+> （Normal producer），没有走 A23 ISO hook。详见
+> [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
+
 ## 结论
 
-- **该 `usb:ds` endpoint 一次只接受一个 pending URB。** 第二次
-  `PostBufferAsync` 被拒绝，返回 `0xf601`。
-- 第二次/第三次失败后的路径（或我们的重试）触发了 usb 模块的 `svcBreak`，这是
-  usb:ds 的主动 assert，不是随机访存异常。
-- **3 URB in flight 不可用。** [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) 里
-  3-URB timed 的 625/0 只是理想模型，硬件不接受。
-- `0xf601` 的具体 Result 名称未确认；只能确定它是第二次 pending post 的拒绝，
-  不应据此推断更多。
+- 第二次提交进入 usb 后，在 Normal producer `FUN_0002c520` 里调用 DMA map
+  `FUN_00003c50`（返回地址 `0x2c584`）时触发 `svcBreak`；客户端看到 `0xf601`
+  只是 usb 服务已经死掉后的 session closed。
+- A23 `iso_enter` 的 `x8 != x9` gate 目标是 **0x30394**，那里直接返回 `0x1908c`
+  （busy），是安全路径；它**不是**这次崩溃的原因。
+- 日志三次都是 `b=0`：首 URB 很快 0 长完成，b0 被释放后又复用。A23 的两轮离线验证
+  用的是**第二轮新的 DMA 地址**；同缓冲复用没验证过。第二次提交在 DMA map 崩。
+- 这次实验**没有真正测到 3 URB in flight**，因此不能据此宣称 3 URB 不可用；3 URB
+  仍未验证。已确认的是：**同缓冲在 A23 完成后不能直接复用**。
 - 这个 NSP 是危险构建，已归档，不再部署。
 
 ## 对连续 PCM 的影响
 
-- cursor/游标解决不了“单 URB”限制：下一个 URB 只能在完成后再提交；A23 的
-  `MFI+32ms` 会留下 32ms 空档。
-- 可选方向：
-  1. **单个长 URB**（例如 64–128 个 TD）把 32ms 空档摊薄；
-  2. 降低 lead（4ms/1ms）并接受更小的完成-重提空档；
-  3. 改 usb:ds/producer 支持排队 URB 或真正的 ring（大改，需重新验证）。
-- 在离线验证/新 producer 之前，不再上硬件试 3 URB。
+- 先做 **host 握手**：host 提交首个 ISO read 后再发 START，避免首 URB 在 host 读之前
+  0 长完成。
+- 再用 **b0/b1/b2 各一次**（不重复选），先验证 1 个 URB 有数据，再验证 2/3 个。
+- 查 `complete_original` 是否真正 unmap DMA；若没有，需要每 URB 新缓冲或安全 unmap。
+- 3 URB / 长 URB / 连续 ring 仍未验证；这次崩溃不是 3-URB 的否决证据。
 
 ## 证据
 
