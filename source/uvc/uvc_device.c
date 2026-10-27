@@ -1,5 +1,6 @@
 #include <string.h>
 #include "uvc_device.h"
+#include "uac_standard.h"
 #include "../core.h"
 #ifdef ISO_PROBE
 #include "iso_probe_protocol.h"
@@ -33,6 +34,7 @@ typedef struct __attribute__((packed)) {
 static u8 alignas(0x1000) g_videoBuffer[0x60000];       // ~384KB for video frames
 static u8 alignas(0x1000) g_controlBuffer[0x1000];     // 4KB for VS control transfers
 static u8 alignas(0x1000) g_vcControlBuffer[0x1000];   // 4KB for VC control transfers (separate from VS)
+static u8 alignas(0x1000) g_uacControlBuffer[0x1000];  // 4KB for UAC control transfers
 static u8 alignas(0x1000) g_endpointInBuffer[0x4000];  // Video transfer staging buffer (must fit maxPayload + header)
 static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer staging buffer
 
@@ -486,166 +488,17 @@ static struct usb_ss_endpoint_companion_descriptor g_ssCompanionDesc = {
 };
 
 // ============================================================================
-// UAC (Audio) Descriptor Data - DEAD CODE, kept for reference only.
+// UAC (Audio) Standard Layer
 //
-// Stock usb:ds has no device-side Isoch producer and only installs alt0
-// endpoints. The independent configuration-length bug has been identified
-// and patched. Keep UAC disabled while ISO_PROBE verifies the device engine.
-// ============================================================================
+// Descriptor bytes and the control state machine live in uac_standard.c and
+// are covered by research/usb-ds-iso/tests/test_uac_standard.py.  The
+// configuration path stays uncalled until the device-side ISO producer and
+// the alt1 lifecycle are verified on hardware.
 
-// Interface Association Descriptor for Audio
-static const struct __attribute__((packed)) {
-    u8  bLength;
-    u8  bDescriptorType;
-    u8  bFirstInterface;
-    u8  bInterfaceCount;
-    u8  bFunctionClass;
-    u8  bFunctionSubClass;
-    u8  bFunctionProtocol;
-    u8  iFunction;
-} g_audioIadDescriptor = {
-    .bLength = 8,
-    .bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
-    .bFirstInterface = 2,   // Will be updated at runtime
-    .bInterfaceCount = 2,   // AC + AS interfaces
-    .bFunctionClass = USB_CLASS_AUDIO,
-    .bFunctionSubClass = UAC_SC_AUDIOCONTROL,
-    .bFunctionProtocol = UAC_PC_PROTOCOL_UNDEFINED,
-    .iFunction = 0,
-};
-
-// Audio Control Interface
-static struct usb_interface_descriptor g_acInterfaceDesc = {
-    .bLength = USB_DT_INTERFACE_SIZE,
-    .bDescriptorType = USB_DT_INTERFACE,
-    .bInterfaceNumber = 2,  // Will be updated at runtime
-    .bAlternateSetting = 0,
-    .bNumEndpoints = 0,
-    .bInterfaceClass = USB_CLASS_AUDIO,
-    .bInterfaceSubClass = UAC_SC_AUDIOCONTROL,
-    .bInterfaceProtocol = UAC_PC_PROTOCOL_UNDEFINED,
-    .iInterface = 0,
-};
-
-// Audio Control Class-Specific Descriptors
-static const struct __attribute__((packed)) {
-    // AC Header
-    UacAcHeaderDescriptor header;
-    // Input Terminal (from Switch)
-    UacInputTerminalDescriptor inputTerminal;
-    // Output Terminal (to USB/Host)
-    UacOutputTerminalDescriptor outputTerminal;
-} g_acDescriptors = {
-    .header = {
-        .bLength = sizeof(UacAcHeaderDescriptor),
-        .bDescriptorType = UAC_CS_INTERFACE,
-        .bDescriptorSubtype = UAC_AC_HEADER,
-        .bcdADC = 0x0100,  // UAC 1.0
-        .wTotalLength = sizeof(g_acDescriptors),
-        .bInCollection = 1,
-        .baInterfaceNr1 = 3,  // AS interface number (will be updated)
-    },
-    .inputTerminal = {
-        .bLength = sizeof(UacInputTerminalDescriptor),
-        .bDescriptorType = UAC_CS_INTERFACE,
-        .bDescriptorSubtype = UAC_AC_INPUT_TERMINAL,
-        .bTerminalID = UAC_ENTITY_INPUT_TERMINAL,
-        .wTerminalType = UAC_ITT_MICROPHONE,  // Appears as microphone
-        .bAssocTerminal = 0,
-        .bNrChannels = UAC_CHANNELS,
-        .wChannelConfig = UAC_CHANNEL_CONFIG_STEREO,
-        .iChannelNames = 0,
-        .iTerminal = 0,
-    },
-    .outputTerminal = {
-        .bLength = sizeof(UacOutputTerminalDescriptor),
-        .bDescriptorType = UAC_CS_INTERFACE,
-        .bDescriptorSubtype = UAC_AC_OUTPUT_TERMINAL,
-        .bTerminalID = UAC_ENTITY_OUTPUT_TERMINAL,
-        .wTerminalType = UAC_TT_USB_STREAMING,
-        .bAssocTerminal = 0,
-        .bSourceID = UAC_ENTITY_INPUT_TERMINAL,
-        .iTerminal = 0,
-    },
-};
-
-// Audio Streaming Interface (Alt Setting 0 - zero bandwidth)
-static struct usb_interface_descriptor g_asInterfaceDesc0 = {
-    .bLength = USB_DT_INTERFACE_SIZE,
-    .bDescriptorType = USB_DT_INTERFACE,
-    .bInterfaceNumber = 3,  // Will be updated
-    .bAlternateSetting = 0,
-    .bNumEndpoints = 0,     // Zero bandwidth
-    .bInterfaceClass = USB_CLASS_AUDIO,
-    .bInterfaceSubClass = UAC_SC_AUDIOSTREAMING,
-    .bInterfaceProtocol = UAC_PC_PROTOCOL_UNDEFINED,
-    .iInterface = 0,
-};
-
-// Audio Streaming Interface (Alt Setting 1 - streaming)
-static struct usb_interface_descriptor g_asInterfaceDesc1 = {
-    .bLength = USB_DT_INTERFACE_SIZE,
-    .bDescriptorType = USB_DT_INTERFACE,
-    .bInterfaceNumber = 3,  // Will be updated
-    .bAlternateSetting = 1,
-    .bNumEndpoints = 1,
-    .bInterfaceClass = USB_CLASS_AUDIO,
-    .bInterfaceSubClass = UAC_SC_AUDIOSTREAMING,
-    .bInterfaceProtocol = UAC_PC_PROTOCOL_UNDEFINED,
-    .iInterface = 0,
-};
-
-// Audio Streaming Class-Specific Descriptors
-static const struct __attribute__((packed)) {
-    // AS General
-    UacAsGeneralDescriptor general;
-    // Format Type I
-    UacFormatTypeIDescriptor formatType;
-} g_asDescriptors = {
-    .general = {
-        .bLength = sizeof(UacAsGeneralDescriptor),
-        .bDescriptorType = UAC_CS_INTERFACE,
-        .bDescriptorSubtype = UAC_AS_GENERAL,
-        .bTerminalLink = UAC_ENTITY_OUTPUT_TERMINAL,
-        .bDelay = 1,
-        .wFormatTag = UAC_FORMAT_TYPE_I_PCM,
-    },
-    .formatType = {
-        .bLength = sizeof(UacFormatTypeIDescriptor),
-        .bDescriptorType = UAC_CS_INTERFACE,
-        .bDescriptorSubtype = UAC_AS_FORMAT_TYPE,
-        .bFormatType = 1,  // FORMAT_TYPE_I
-        .bNrChannels = UAC_CHANNELS,
-        .bSubframeSize = UAC_SUBFRAME_SIZE,
-        .bBitResolution = UAC_BIT_DEPTH,
-        .bSamFreqType = 1,  // One discrete frequency
-        .tSamFreq = {
-            (UAC_SAMPLE_RATE >>  0) & 0xFF,
-            (UAC_SAMPLE_RATE >>  8) & 0xFF,
-            (UAC_SAMPLE_RATE >> 16) & 0xFF
-        },
-    },
-};
-
-// Reference audio endpoint; ISO_PROBE uses a separate vendor alt0 endpoint.
-static struct usb_endpoint_descriptor g_audioEndpointDesc = {
-    .bLength = USB_DT_ENDPOINT_SIZE,
-    .bDescriptorType = USB_DT_ENDPOINT,
-    .bEndpointAddress = USB_ENDPOINT_IN | 3,  // Will be updated
-    .bmAttributes = USB_TRANSFER_TYPE_ISOCHRONOUS | UAC_ISO_SYNC_TYPE_ASYNC | UAC_ISO_USAGE_DATA,
-    .wMaxPacketSize = UAC_ISO_PACKET_SIZE,    // 192 bytes = 1ms of 48kHz stereo 16-bit
-    .bInterval = 4,                            // 2^(4-1) = 8 microframes = 1ms (high-speed)
-};
-
-// Audio endpoint class-specific descriptor
-static const UacAsEndpointDescriptor g_audioEpDescriptor = {
-    .bLength = sizeof(UacAsEndpointDescriptor),
-    .bDescriptorType = UAC_CS_ENDPOINT,
-    .bDescriptorSubtype = UAC_EP_GENERAL,
-    .bmAttributes = 0,
-    .bLockDelayUnits = 0,
-    .wLockDelay = 0,
-};
+static UacStandardState g_uacStd;
+static u8 g_uacAcDescriptors[64];
+static u8 g_uacAsHsDescriptors[64];
+static u8 g_uacAsSsDescriptors[64];
 
 // ============================================================================
 // Helper Functions
@@ -872,150 +725,64 @@ static Result _setupAudioInterfaces5x(void)
 {
     Result rc = 0;
 
-    // Register Audio Control interface
     rc = usbDsRegisterInterface(&g_uacCtx.acInterface);
     if (R_FAILED(rc)) {
         LOG("Failed to register AC interface: 0x%x\n", rc);
         return rc;
     }
 
-    u8 acIfaceNum = g_uacCtx.acInterface->interface_index;
-    g_acInterfaceDesc.bInterfaceNumber = acIfaceNum;
-
-    // Update IAD with actual interface number
-    struct __attribute__((packed)) {
-        u8  bLength;
-        u8  bDescriptorType;
-        u8  bFirstInterface;
-        u8  bInterfaceCount;
-        u8  bFunctionClass;
-        u8  bFunctionSubClass;
-        u8  bFunctionProtocol;
-        u8  iFunction;
-    } audioIad;
-    memcpy(&audioIad, &g_audioIadDescriptor, sizeof(audioIad));
-    audioIad.bFirstInterface = acIfaceNum;
-
-    // High Speed AC descriptors
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_High, &audioIad, sizeof(audioIad));
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_High, &g_acInterfaceDesc, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_High, &g_acDescriptors, sizeof(g_acDescriptors));
-    if (R_FAILED(rc)) return rc;
-
-    // Super Speed AC descriptors
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_Super, &audioIad, sizeof(audioIad));
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_Super, &g_acInterfaceDesc, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
-        UsbDeviceSpeed_Super, &g_acDescriptors, sizeof(g_acDescriptors));
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_EnableInterface(g_uacCtx.acInterface);
-    if (R_FAILED(rc)) return rc;
-
-    // Register Audio Streaming interface
     rc = usbDsRegisterInterface(&g_uacCtx.asInterface);
     if (R_FAILED(rc)) {
         LOG("Failed to register AS interface: 0x%x\n", rc);
+        usbDsInterface_Close(g_uacCtx.acInterface);
+        g_uacCtx.acInterface = NULL;
         return rc;
     }
 
-    u8 asIfaceNum = g_uacCtx.asInterface->interface_index;
-    g_asInterfaceDesc0.bInterfaceNumber = asIfaceNum;
-    g_asInterfaceDesc1.bInterfaceNumber = asIfaceNum;
-    g_audioEndpointDesc.bEndpointAddress = USB_ENDPOINT_IN | (asIfaceNum + 1);
+    const u8 acIfaceNum = g_uacCtx.acInterface->interface_index;
+    const u8 asIfaceNum = g_uacCtx.asInterface->interface_index;
+    const u8 epAddress = USB_ENDPOINT_IN | 4;  // 0x84, independent of interface numbers
 
-    // High Speed AS descriptors
+    const size_t acLen = UacBuildAcConfiguration(acIfaceNum, asIfaceNum,
+                                                 g_uacAcDescriptors,
+                                                 sizeof(g_uacAcDescriptors));
+    const size_t hsLen = UacBuildAsConfiguration(asIfaceNum, epAddress, false,
+                                                 g_uacAsHsDescriptors,
+                                                 sizeof(g_uacAsHsDescriptors));
+    const size_t ssLen = UacBuildAsConfiguration(asIfaceNum, epAddress, true,
+                                                 g_uacAsSsDescriptors,
+                                                 sizeof(g_uacAsSsDescriptors));
+    if (!acLen || !hsLen || !ssLen) {
+        LOG("Failed to build UAC descriptors\n");
+        return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    }
 
-    // Alt setting 0 (zero bandwidth - no endpoint)
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_High, &g_asInterfaceDesc0, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
+    // Appended configuration data cannot be removed.  Validate both speed
+    // variants before the first append; a failed lint must leave the existing
+    // video configuration untouched.
+    if (!UacLintConfiguration(g_uacAcDescriptors, acLen, g_uacAsHsDescriptors, hsLen, NULL, 0) ||
+        !UacLintConfiguration(g_uacAcDescriptors, acLen, g_uacAsSsDescriptors, ssLen, NULL, 0)) {
+        LOG("UAC descriptor lint failed; refusing to append\n");
+        return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    }
 
-    // Alt setting 1 (streaming with isochronous endpoint)
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_High, &g_asInterfaceDesc1, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
+        UsbDeviceSpeed_High, g_uacAcDescriptors, acLen));
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
+        UsbDeviceSpeed_Super, g_uacAcDescriptors, acLen));
+    R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_uacCtx.acInterface));
 
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_High, &g_asDescriptors, sizeof(g_asDescriptors));
-    if (R_FAILED(rc)) return rc;
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
+        UsbDeviceSpeed_High, g_uacAsHsDescriptors, hsLen));
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
+        UsbDeviceSpeed_Super, g_uacAsSsDescriptors, ssLen));
+    R_RET_ON_FAIL(usbDsInterface_RegisterEndpoint(g_uacCtx.asInterface,
+        &g_uacCtx.audioEndpointIn, epAddress));
+    R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_uacCtx.asInterface));
 
-    // Isochronous endpoint for high-speed: 192 bytes per 1ms frame
-    g_audioEndpointDesc.wMaxPacketSize = UAC_ISO_PACKET_SIZE;
-    g_audioEndpointDesc.bInterval = 4;  // 2^(4-1) = 8 microframes = 1ms
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_High, &g_audioEndpointDesc, USB_DT_ENDPOINT_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    // Audio endpoint class-specific descriptor
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_High, &g_audioEpDescriptor, sizeof(g_audioEpDescriptor));
-    if (R_FAILED(rc)) return rc;
-
-    // Super Speed AS descriptors
-
-    // Alt setting 0 (zero bandwidth)
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &g_asInterfaceDesc0, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    // Alt setting 1 (streaming)
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &g_asInterfaceDesc1, USB_DT_INTERFACE_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &g_asDescriptors, sizeof(g_asDescriptors));
-    if (R_FAILED(rc)) return rc;
-
-    // Isochronous endpoint for super-speed
-    g_audioEndpointDesc.wMaxPacketSize = UAC_ISO_PACKET_SIZE;
-    g_audioEndpointDesc.bInterval = 4;  // 2^(4-1) = 8 microframes = 1ms
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &g_audioEndpointDesc, USB_DT_ENDPOINT_SIZE);
-    if (R_FAILED(rc)) return rc;
-
-    // SS companion for isochronous endpoint
-    struct usb_ss_endpoint_companion_descriptor audioSsCompanion = {
-        .bLength = sizeof(struct usb_ss_endpoint_companion_descriptor),
-        .bDescriptorType = USB_DT_SS_ENDPOINT_COMPANION,
-        .bMaxBurst = 0,
-        .bmAttributes = 0,
-        .wBytesPerInterval = UAC_ISO_PACKET_SIZE,
-    };
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &audioSsCompanion, sizeof(audioSsCompanion));
-    if (R_FAILED(rc)) return rc;
-
-    // Audio endpoint class-specific descriptor
-    rc = usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
-        UsbDeviceSpeed_Super, &g_audioEpDescriptor, sizeof(g_audioEpDescriptor));
-    if (R_FAILED(rc)) return rc;
-
-    // Register audio endpoint
-    rc = usbDsInterface_RegisterEndpoint(g_uacCtx.asInterface,
-        &g_uacCtx.audioEndpointIn, g_audioEndpointDesc.bEndpointAddress);
-    if (R_FAILED(rc)) return rc;
-
-    rc = usbDsInterface_EnableInterface(g_uacCtx.asInterface);
-    if (R_FAILED(rc)) return rc;
-
+    UacStandardInit(&g_uacStd, acIfaceNum, asIfaceNum, epAddress);
     g_uacCtx.initialized = true;
-    LOG("UAC audio interface initialized\n");
-
+    LOG("UAC initialized: AC=%u AS=%u EP=0x%02x\n", acIfaceNum, asIfaceNum, epAddress);
     return 0;
 }
 
@@ -1321,6 +1088,9 @@ static u8 g_lastErrorCode = UVC_ERROR_NONE;
 
 static u8* _ctrlBufferFor(UsbDsInterface* iface)
 {
+    if (g_uacCtx.initialized &&
+        (iface == g_uacCtx.acInterface || iface == g_uacCtx.asInterface))
+        return g_uacControlBuffer;
     return (iface == g_uvcCtx.controlInterface) ? g_vcControlBuffer : g_controlBuffer;
 }
 
@@ -1713,6 +1483,64 @@ static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 }
 #endif
 
+// UAC1 standard/class control requests.  SET_CUR sampling frequency carries a
+// 3-byte OUT data stage; read it before deciding ACK vs STALL.
+static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
+{
+    UacSetupPacket packet = {
+        .bmRequestType = setup->bmRequestType,
+        .bRequest = setup->bRequest,
+        .wValue = setup->wValue,
+        .wIndex = setup->wIndex,
+        .wLength = setup->wLength,
+    };
+    UacActionResult result;
+
+    const uint8_t recipient = setup->bmRequestType & 0x1F;
+    const bool set_cur = (setup->bmRequestType & 0x60) == 0x20 &&
+        setup->bRequest == 0x01 && setup->wLength == 3 &&
+        ((recipient == 0x02 && (setup->wIndex & 0xFF) == g_uacStd.ep_address) ||
+         (recipient == 0x01 && setup->wIndex == g_uacStd.as_interface));
+    if (set_cur) {
+        u8 payload[3];
+        u32 transferred = 0;
+        Result rc = _ctrlOutXfer(iface, payload, sizeof(payload), &transferred);
+        if (R_FAILED(rc) || transferred != sizeof(payload)) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        result = UacStandardHandle(&g_uacStd, &packet, payload, transferred);
+        if (result.action == UAC_ACT_STALL) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        _ctrlAck(iface);
+        return;
+    }
+
+    result = UacStandardHandle(&g_uacStd, &packet, NULL, 0);
+    switch (result.action) {
+    case UAC_ACT_WRITE:
+        _ctrlWrite(iface, result.data, result.data_len);
+        break;
+    case UAC_ACT_START:
+        g_uacCtx.streaming = true;
+        _ctrlAck(iface);
+        break;
+    case UAC_ACT_STOP:
+        g_uacCtx.streaming = false;
+        _ctrlAck(iface);
+        break;
+    case UAC_ACT_ACK:
+        _ctrlAck(iface);
+        break;
+    case UAC_ACT_STALL:
+    default:
+        usbDsInterface_StallCtrl(iface);
+        break;
+    }
+}
+
 static void _handleSetupPacket(UsbDsInterface* iface)
 {
     UsbSetupPacket setup;
@@ -1728,6 +1556,12 @@ static void _handleSetupPacket(UsbDsInterface* iface)
         return;
     }
 #endif
+
+    if (g_uacCtx.initialized &&
+        (iface == g_uacCtx.acInterface || iface == g_uacCtx.asInterface)) {
+        _handleUacSetup(iface, &setup);
+        return;
+    }
 
     LOG("EP0[%u]: reqType=0x%02x req=0x%02x wVal=0x%04x wIdx=0x%04x wLen=%u\n",
         iface->interface_index, setup.bmRequestType, setup.bRequest,
@@ -1832,6 +1666,12 @@ void UvcDeviceProcessRequests(void)
 #ifdef ISO_PROBE
     serviced |= _serviceSetup(g_isoInterface);
 #endif
+    // UAC is polled here.  When UAC is enabled, add its SetupEvents to the
+    // waitMulti set below so a multi-request burst is not caller-paced.
+    if (g_uacCtx.initialized) {
+        serviced |= _serviceSetup(g_uacCtx.acInterface);
+        serviced |= _serviceSetup(g_uacCtx.asInterface);
+    }
 
     while (serviced &&
            g_uvcCtx.controlInterface && g_uvcCtx.streamingInterface) {

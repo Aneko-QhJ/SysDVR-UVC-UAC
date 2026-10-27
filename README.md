@@ -162,9 +162,11 @@ See [the research notes](docs/RESEARCH.md) for the full investigation.
 > **Current status (2026-10-27):** audio is still disabled. The latest short-packet
 > run received 384 bytes correctly on the host, but the device-side `capture`/`EXE3`
 > save failed with `0xD401`; the corrected offline candidate is not packaged or
-> deployed. The standard UAC layer (alt setting 1, class requests, clocking) is not
-> started. See [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md). The text below is
-> the 2026-10-09 → 10-27 history.
+> deployed. The UAC1 descriptor/control layer now has an offline,
+> test-covered module (`uac_standard.c`), but `usb:ds` alt1 endpoint installation
+> is still unverified. See [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md) and
+> [UAC_STANDARD_LAYER.md](research/usb-ds-iso/docs/UAC_STANDARD_LAYER.md). The text
+> below is the 2026-10-09 → 10-27 history.
 
 Audio is currently disabled. The configuration corruption was traced to an
 independent 8-bit length bug. Stock `usb:ds` still lacks a device-side Isoch

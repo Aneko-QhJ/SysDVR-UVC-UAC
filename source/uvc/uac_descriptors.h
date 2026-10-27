@@ -1,5 +1,13 @@
 #pragma once
+
+#ifdef UAC_STANDALONE
+// Host-side tests compile the descriptor/control logic without libnx.
+#include <stdint.h>
+typedef uint8_t u8;
+typedef uint16_t u16;
+#else
 #include <switch.h>
+#endif
 
 // USB Audio Class (UAC) Descriptor Definitions
 // Based on USB Audio Class 1.0 Specification (for broad compatibility)

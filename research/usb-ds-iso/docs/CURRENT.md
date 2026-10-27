@@ -1,4 +1,4 @@
-# 当前状态（2026-10-27 18:10，Asia/Shanghai）
+# 当前状态（2026-10-27 19:20，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -29,6 +29,10 @@
   - 7 个 CPU/ASan 专项场景通过；未复现 Switch 内核错误。
 - 审计：`private/analysis/A23-short24-path-span-audit-20261027-r2`。
 - 未打包、未绑定接收器、未部署、未实测。
+- UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md)。
+  - 描述符构建器 + lint + alt0/alt1/类请求状态机；`make check` 覆盖。
+  - 设备构建通过；UAC 仍禁用，`_setupAudioInterfaces5x` 仍未调用。
+  - 未验证 `usb:ds` 的 alt1 端点安装；这是下一个问题。
 
 ## 授权与边界
 
@@ -41,15 +45,15 @@
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
-- `make check` 绿：5 个文件，约 2 秒。
+- `make check` 绿：6 个文件，约 3 秒。
 - `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
   [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
 
 ## 开放问题（按优先级）
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-2. **标准 UAC 层**：alt1 端点安装、`SET_INTERFACE(1)`、`SAMPLING_FREQ` 类请求、
-   时钟/反馈与跨块样本连续性。可完全离线推进。
+2. **标准 UAC 层**：描述符/控制状态机离线已完成；剩下 alt1 端点安装、
+   标准宿主枚举、时钟/反馈与跨块样本连续性。alt1 可先离线/最小探针回答。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
 4. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
@@ -57,7 +61,8 @@
 
 ## 下一步（未授权）
 
-- 离线：修正版打包 + 新 recipe 入口 + 包/入口审计；UAC 描述符 lint 与 alt1 状态机。
+- 离线：修正版打包 + 新 recipe 入口 + 包/入口审计；alt1 安装探针或读 `usb:ds`
+  descriptor walk。UAC 标准层 P0 已完成，不再重复描述符 lint。
 - 实机：另定范围与授权；先做路径修正版短包，或直接做标准宿主 10s 流。
   两者不要混在同一轮变量里。
 

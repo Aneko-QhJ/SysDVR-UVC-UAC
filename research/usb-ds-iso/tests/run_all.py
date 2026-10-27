@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QUICK = [
     "test_current_tools.py",
+    "test_uac_standard.py",
     "test_a23_audio_cadence.py",
     "test_research_storage.py",
     "test_a23_q2_epoch_lease_model.py",
