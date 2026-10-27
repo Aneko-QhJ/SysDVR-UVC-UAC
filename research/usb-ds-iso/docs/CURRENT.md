@@ -43,7 +43,7 @@
 - SD 最后已安全弹出；当前设备现场状态不推定仍就绪。
 - 旧票据、actual465、消费 namespace 保持；不恢复旧次数。
 
-## ALT1 探针（已准备，未部署）
+## ALT1 探针（bulk alt1 已通过）
 
 - 目的：只回答“alt1 上的 bulk 端点能否安装/被宿主选中”，不引入 UAC、ISO 或 IPS。
 - NSP：`/tmp/alt1-probe-log/exefs.nsp`，SHA256 `7fa38c98…`；NPDM 与卡上一致。
@@ -65,8 +65,15 @@
   - alt0：post 0、urb 388、64B、bulk 收到 `ALT1`，**通过**。
   - alt1：`set_alt(1)` 成功、设备 post 0/urb 404/64B/urb_status 3，但 host bulk 读超时、0B。
   - 结论：alt0 端点可用；alt1 切换后端点仍停在 alt0 上下文，host alt1 pipe 收不到数据。
-- 下一步二选一：alt0-only UAC 描述符 + Linux 标准宿主测试；或 patch `usb:ds` 的
-  `SET_INTERFACE(1)` 端点重配（需要 usb NSO/Ghidra）。custom host alt0 只作诊断。
+- **runtime NOP patch（21:42）成功**：把 `FUN_000295d0` 的 8 个 alt0 endpoint
+  filter 改成 NOP 后，alt1-only 端点 `post=0`、urb 388、64B、urb_status 3；
+  host bulk 收到 `ALT1`。设备日志 `ISO runtime patch result=0 record=7`。
+  根因/地址/边界见 [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md)。
+  证据 `private/runs/A-alt1-runtime-nop-20261027/`。
+- 这证明 **bulk alt1 的安装/选择/传输** 已打通；UAC 的 ISO alt1、ISO producer、
+  标准宿主仍未验证。IPS 版本未生效，runtime patch 是当前可用机制。
+- 下一步：把 NOP 与 A23 ISO producer 合并，先测 vendor ISO `0x84`/alt1，再接
+  Linux `snd-usb-audio` 的 UAC alt1；同时收窄全局 NOP 到目标接口/`SET_INTERFACE`。
 
 ## 工程状态（2026-10-27）
 
@@ -79,8 +86,8 @@
 ## 开放问题（按优先级）
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-2. **标准 UAC 层**：描述符/控制状态机离线已完成；剩下 alt1 端点安装、
-   标准宿主枚举、时钟/反馈与跨块样本连续性。alt1 可先离线/最小探针回答。
+2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 端点安装已由 NOP patch
+   打通。剩下 ISO alt1 producer、标准宿主枚举、时钟/反馈与跨块样本连续性。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。

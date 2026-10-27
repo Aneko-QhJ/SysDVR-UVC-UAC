@@ -16,3 +16,4 @@ builddir
 !.github/
 .idea/*
 external/*
+source/uvc/iso_runtime_payload.h

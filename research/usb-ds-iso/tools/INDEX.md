@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 424 个 Python 工具。
+共 425 个 Python 工具。
 
 ## 当前使用
 
@@ -38,6 +38,7 @@
 | `summarize` | 2 |
 | `experiment.py` | 1 |
 | `extract` | 1 |
+| `gen` | 1 |
 | `inspect` | 1 |
 | `nso2elf.py` | 1 |
 | `path` | 1 |
@@ -475,6 +476,12 @@
 | 工具 | 说明 |
 | --- | --- |
 | [extract_usb.py](extract_usb.py) | Extract a user's installed firmware usb ExeFS; never print key-tool output. |
+
+## gen（1）
+
+| 工具 | 说明 |
+| --- | --- |
+| [gen_alt1_nop_payload.py](gen_alt1_nop_payload.py) | Generate the runtime NOP payload header for the ALT1 endpoint-install test. |
 
 ## inspect（1）
 

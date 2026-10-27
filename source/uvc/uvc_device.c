@@ -13,10 +13,6 @@
 #endif
 #endif
 
-#if defined(ISO_PROBE) && defined(ALT1_PROBE)
-#error "enable only one USB probe mode"
-#endif
-
 // USB class codes not defined in libnx
 #ifndef USB_CLASS_MISC
 #define USB_CLASS_MISC 0xEF
@@ -930,8 +926,20 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
         (void)_setupAudioInterfaces5x;  // suppress unused warning
 
 #ifdef ISO_PROBE
+#ifdef ALT1_PROBE
+        // Apply the runtime NOP patch through the existing dmnt installer,
+        // but do not register the ISO probe interface (the ALT1 probe uses
+        // interface 2 and the four-interface budget is tight).
+        if (!_logIsoTarget()) {
+            LOG("ALT1 runtime patch failed\n");
+            rc = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+            goto cleanup;
+        }
+        (void)_setupIsoProbe;
+#else
         rc = _setupIsoProbe();
         if (R_FAILED(rc)) goto cleanup;
+#endif
 #endif
 #ifdef ALT1_PROBE
         rc = _setupAlt1Probe();
@@ -1881,7 +1889,7 @@ void UvcDeviceProcessRequests(void)
     while (serviced &&
            g_uvcCtx.controlInterface && g_uvcCtx.streamingInterface) {
         s32 idx;
-#if defined(ISO_PROBE)
+#if defined(ISO_PROBE) && !defined(ALT1_PROBE)
         if (R_FAILED(waitMulti(&idx, 20E+6,
                 waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
                 waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),

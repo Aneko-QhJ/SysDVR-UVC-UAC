@@ -14,9 +14,9 @@
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
-- ALT1 vendor 探针已实测：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
-  alt1-only 描述符的 post 为 `0x2628c`；把端点同时放进 alt0 后 alt0 收到 64B，
-  但 `SET_INTERFACE(1)` 后 host 读超时。下一步是 alt0-only UAC 或 patch `usb:ds`。
+- ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
+  alt1-only bulk 端点 `post=0`、收到 64B。根因是 `usb:ds` 的 8 个 alt0 endpoint
+  filter；下一步是 ISO alt1 producer + UAC 标准宿主。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

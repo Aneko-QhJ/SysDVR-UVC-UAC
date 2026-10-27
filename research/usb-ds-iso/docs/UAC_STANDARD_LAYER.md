@@ -44,8 +44,9 @@
 
 ## 仍然未知
 
-- **alt1 安装**：`usb:ds` 是否把新端点关联到 alt1、宿主 `SET_INTERFACE(1)` 后
-  端点是否可用，仍未验证；这是下一个要回答的问题。
+- **alt1 安装**：已用 runtime NOP patch 打通 bulk alt1（见
+  [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md)）；UAC 的 ISO alt1
+  仍缺 ISO producer 与标准宿主验证。
 - 配置数据 append 后不可回退，所以启用前必须做能力判断，不能“失败再退回”。
 - PCM 发送器、时钟/反馈、跨块余量仍未设计；UAC 仍禁用。
 - 没有标准宿主枚举、没有硬件结论。
@@ -86,10 +87,9 @@
 
 ## 下一步
 
-1. 离线回答 alt1：读 `usb:ds` 的 descriptor walk / `RegisterEndpoint`。仓库里没有
-   usb NSO；需要 Build-ID `AD8D36F2…` 的 dump 或对应 Ghidra 工程。
-2. 若走硬件：用无 `ISO_PROBE` 的 build，以 AC+AS 为探针；先记录
-   `usbDsInterface_RegisterEndpoint` 的返回值，再让宿主 `SET_INTERFACE(1)` 并
-   post 一个 buffer，观察完成/错误。
-3. 若 alt1 不可用，再评估 patch 安装路径或 alt0 endpoint 变通；不要先启用 UAC。
-4. `_setupAudioInterfaces5x` 继续保持不调用，直到 alt1 与 ISO 都通过。
+1. **ISO alt1**：把 ALT1 NOP patch 与 A23 的 ISO producer 合并，先验证 vendor
+   ISO `0x84`/alt1，再验证 UAC AS 的 ISO alt1。
+2. **标准宿主**：用 AC/AS + NOP + ISO producer 接 Linux `snd-usb-audio`，看枚举、
+   alt1 选择和 PCM。
+3. **收窄 patch**：全局 NOP 只用于实验；产品化应收窄到目标接口或 `SET_INTERFACE`。
+4. `_setupAudioInterfaces5x` 继续保持不调用，直到 ISO/UAC 都通过。

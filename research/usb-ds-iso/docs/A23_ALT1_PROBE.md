@@ -1,5 +1,10 @@
 # ALT1 vendor 探针（2026-10-27）
 
+> **2026-10-27 21:42：runtime NOP patch 成功。** alt1-only 端点 `post=0`、
+> 收到 64B `ALT1`；根因与 8 个 alt0 filter 的补丁见
+> [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md)。这是 bulk 端点结论，
+> UAC 的 ISO alt1 仍差 ISO producer 与标准宿主验证。
+
 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题——
 `usb:ds` 是否会把一个只出现在 alt1 的端点装好，宿主 `SET_INTERFACE(1)` 后能否完成一次传输。
 
