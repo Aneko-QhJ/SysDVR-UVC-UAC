@@ -17,6 +17,10 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
+| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 4K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
+| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
+| [CURRENT.md](CURRENT.md) | 2026-10-28 | 7K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |
@@ -24,14 +28,10 @@
 | [A23_Q2B_GENERATION_MODEL.md](A23_Q2B_GENERATION_MODEL.md) | 2026-10-27 | 7K | 后续[Q2c整轮证据预算与交接合同](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md)已完成部署来源、边界和容量核对；下一项仅电脑设计整轮额度租约/停止门。下文为本模型阶段及当时下一步，原封存保… |
 | [A23_Q2C_EPOCH_LEASE_MODEL.md](A23_Q2C_EPOCH_LEASE_MODEL.md) | 2026-10-27 | 6K | 当前研究组织方式见 [研究规则](RESEARCH_RULES.md)。本文保留该模型的实际能力及未证明项； |
 | [A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md) | 2026-10-27 | 8K | 后续[单段整轮额度租约模型](A23_Q2C_EPOCH_LEASE_MODEL.md)已完成38项检查；仍无真实设备grant或全局互斥。下一项仅电脑定义设备额度回执协议与握手预算。下文为本来源合同阶段及当时下一步，… |
-| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-27 | 3K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_SHORT24_FIRST_LIVE.md](A23_SHORT24_FIRST_LIVE.md) | 2026-10-27 | 5K | 本轮已完成配套部署、唯一一次采集、关机后只读回收与分析。主机收到了连续的 |
 | [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-27 | 7K | 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
 | [A23_SHORT24_ONCE_PLAN.md](A23_SHORT24_ONCE_PLAN.md) | 2026-10-27 | 4K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-27 | 6K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
-| [A23_SHORT24_SDK_AND_RELATION.md](A23_SHORT24_SDK_AND_RELATION.md) | 2026-10-27 | 6K | 后续[NSP/IPS配套包、驻留入口与写盘](A23_SHORT24_PACKAGE_AND_ENTRY.md)已完成离线准备和 |
-| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-27 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
-| [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 
 ## 全部文档（250）
 
@@ -181,7 +181,7 @@
 | [A23_QUIET_RECEIVER.md](A23_QUIET_RECEIVER.md) | 2026-10-15 | 6K | A23 quiet 候选接收器与六项材料收集（2026-10-15） — 已把[隔离捕获与文本日志的设备候选](A23_QUIET_WINDOW_CANDIDATE.md)接入新独立接收器、 |
 | [A23_QUIET_WINDOW_CANDIDATE.md](A23_QUIET_WINDOW_CANDIDATE.md) | 2026-10-15 | 7K | A23 隔离捕获与文本日志的诊断候选（2026-10-15） — 已实现上一轮约定的最小设备候选：30 秒诊断窗口只推进 USB 请求，视频和音频工作 |
 | [A23_READONLY_SCOPE_VERIFIER.md](A23_READONLY_SCOPE_VERIFIER.md) | 2026-10-19 | 5K | A23 只读来源复核器、独立构建与联合回执 — 后续：[异常模型最终收集与独立归档复核](A23_FINAL_MODEL_COLLECTION.md)完成退出后文件收集与只读CLI；现场故障收集/采集仍未接通。以下保留来源复核阶段结果。 |
-| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-27 | 3K | A23 re-arm / 缓冲复用边界（2026-10-27） — `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
+| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 4K | A23 re-arm / 缓冲复用边界（2026-10-27） — `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_REARM_GENERATIONS.md](A23_REARM_GENERATIONS.md) | 2026-10-18 | 6K | 第二次发布、事件代际与主机存储（2026-10-18） — 后续：[独立两轮离线协调器与归档核验](A23_TWO_EPOCH_RECEIVER.md)已实现并验证；本页保留原ARM重放及第16轮代际反例。 |
 | [A23_SDK_INIT_ENVIRONMENT.md](A23_SDK_INIT_ENVIRONMENT.md) | 2026-10-18 | 8K | SDK初始化错误与启动标记审查（2026-10-17，Asia/Shanghai） — 后续：[序号65首次实测及只读回收](A23_CONTEXT65_FIRST_LIVE.md)已完成，SDK初始化及65..80载荷成功。65权限已消费，69原件已保存并弹出；下文保留原离线研究状态，不能据前后变化单独… |
 | [A23_SDK_MEMORY_LOG_GUARD.md](A23_SDK_MEMORY_LOG_GUARD.md) | 2026-10-15 | 6K | SDK内存函数边界与日志大小读取失败保护（2026-10-15） — 续接[完整格式化循环回放](A23_FORMAT_LOOP.md)，本轮完成两配置1282组SDK内存函数 |
@@ -207,7 +207,7 @@
 | [A23_STARTUP_JOURNAL.md](A23_STARTUP_JOURNAL.md) | 2026-10-14 | 8K | A23 独立启动阶段记录原型（2026-10-14） — 新增固定64条、只追加的**EP0INI1启动日志**，区分API调用、原始Result、void返回和fatal |
 | [A23_STATUS_CAPTURE_REVISION.md](A23_STATUS_CAPTURE_REVISION.md) | 2026-10-22 | 7K | A23 STATUS计数语义修正与判断前留证（2026-10-22） — 最新实测结果（2026-10-22）：[同接口两轮成功及时间线](A23_LIVE75_FIRST_RESULT.md)已核对。一次采集完成113..128和129..144，两个新URB387/403共6144正确字… |
 | [A23_STATUS_TRANSPORT.md](A23_STATUS_TRANSPORT.md) | 2026-10-21 | 7K | A23 状态管道显式失败候选（2026-10-21） — 后续：[局部终态发布中断对照](A23_TERMINAL_PUBLICATION.md)完成546来源、50安排和74测试。两次完整回放48个发布中断，4次在完整exit文件fsync后仍中断；局部退出码声明不等于实际… |
-| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-27 | 3K | 3-URB stream crash（2026-10-27） — `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
+| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | 3-URB stream crash（2026-10-27） — `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [A23_SUPERVISOR_CANDIDATE.md](A23_SUPERVISOR_CANDIDATE.md) | 2026-10-20 | 5K | A23 独立 supervisor 收集候选（2026-10-20） — 后续：[supervisor管道、退出与清理边界](A23_SUPERVISOR_CLEANUP.md)补15种安排；60测试与498来源搬移通过，区分EOF/退出、组终止sent/not_found/error和ha… |
 | [A23_SUPERVISOR_CLEANUP.md](A23_SUPERVISOR_CLEANUP.md) | 2026-10-20 | 6K | A23 supervisor 管道、退出与清理边界（2026-10-20） — 后续：[统一supervisor候选](A23_SUPERVISOR_UNIFIED.md)合并两阶段32种指定安排并补5种关闭错误；503来源、37场景与60测试通过，同一观察/限额/终止/准入，保留来源未认证负对照… |
 | [A23_SUPERVISOR_JOB_LINK.md](A23_SUPERVISOR_JOB_LINK.md) | 2026-10-21 | 6K | A23 supervisor 与 job/receipt 的只读关联候选（2026-10-20） — 后续：[fixture自身job启动与结果绑定](A23_FIXTURE_JOB_BINDING.md)完成512来源、34安排和60测试；新Python fixture生成独立job/nonce与receipt，历史… |
@@ -239,7 +239,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-27 | 7K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-28 | 7K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-09 | 4K | 实验分支目录与本地产物 — `research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |
@@ -285,5 +285,5 @@
 | [SERIAL_CLOCK_AUDIT.md](SERIAL_CLOCK_AUDIT.md) | 2026-10-12 | 9K | A23有界串行Mach时间戳诊断 — 此前防休眠串行失败中，raw16包及设备URB正常终结，但native/public报错，开头293个NotSent空槽。 |
 | [STATUS.md](STATUS.md) | 2026-10-27 | 255K | 当前状态（2026-10-27，Asia/Shanghai） — 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [TEST_PLAN.md](TEST_PLAN.md) | 2026-10-27 | 212K | 后续测试条件（2026-10-22） — 当前计划约束已于 2026-10-27 更新，见 [研究规则](RESEARCH_RULES.md)。先不用虚拟机， |
-| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-27 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
+| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-27 | 4K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
