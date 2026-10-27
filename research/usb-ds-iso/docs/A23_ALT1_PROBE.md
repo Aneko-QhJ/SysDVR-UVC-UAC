@@ -49,10 +49,30 @@
 `triggers=1` 说明 trigger 进入了 handler 且端点会话非空；失败点在 `PostBufferAsync`，
 不是控制请求本身。`post=0x0002628c` 是 usb:ds/IPC 返回码，具体名称待 log/错误表核对。
 
-证据：`private/runs/A-alt1-probe-20261027/`（`host.txt`、`manifest.json`）。
+设备日志补充（`/logfile.txt`，1388B，SHA256 `e09ad931…`）：
 
-下一步：关机取卡读 `/logfile.txt`，确认 `_setupAlt1Probe` 是否成功及 post 的实际返回；
-再决定 alt0 端点变通或 patch。不要重复同一次 alt1 探针。
+```
+ALT1 probe iface=2 ep=0x84 hs=25 ss=31
+ALT1 SET_INTERFACE 1
+ALT1 trigger rc=0x2628c urb=0
+```
+
+- `ALT1 probe iface=2` 说明 `_setupAlt1Probe` 成功：alt1 描述符追加、
+  `usbDsInterface_RegisterEndpoint(0x84)`、`EnableInterface` 都返回成功；端点会话存在。
+- `ALT1 SET_INTERFACE 1` 说明客户端 alt1 状态机确实执行并 ACK。
+- 失败点只在 `usbDsEndpoint_PostBufferAsync`：`0x2628c`、`urb=0`。
+  `0x628C` 在公开错误表中是 Usb(140)/49 `ResultUsbEndpointAlreadyOpen`；
+  `0x2628c` 额外带 bit17，具体描述码 305 未在表中，暂不命名。
+
+结论：**alt1 的注册和控制路径可用，数据路径在 post 处失败。** 不是“端点没注册”，
+而是“alt1 选中后端点不可 post/未被激活”。下一步是区分“端点在 alt0 就不可用”与
+“alt 切换导致不可用”。
+
+证据：`private/runs/A-alt1-probe-20261027/`（`host.txt`、`logfile.txt`、`manifest.json`）。
+
+下一步：先用同一 NSP 做 host-only alt0 测试（不 `set_alt`，trigger+status），
+判断端点是否在 alt0 可用；若仍失败，再做 alt0 端点变体或 patch。
+不要重复同一次 alt1 探针。
 
 ## 判读
 

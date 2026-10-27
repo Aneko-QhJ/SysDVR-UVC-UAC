@@ -17,8 +17,17 @@ static const char *err_name(int rc)
     return name ? name : "unknown";
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    int select_alt1 = 1;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--no-set-alt") == 0) {
+            select_alt1 = 0;
+        } else {
+            fprintf(stderr, "usage: %s [--no-set-alt]\n", argv[0]);
+            return 2;
+        }
+    }
     libusb_context *ctx = NULL;
     libusb_device **list = NULL;
     libusb_device_handle *handle = NULL;
@@ -65,9 +74,14 @@ int main(void)
         return 2;
     }
 
-    rc = libusb_set_interface_alt_setting(handle, PROBE_IFACE, 1);
-    printf("set_alt(1): %d (%s)\n", rc, err_name(rc));
-    const int set_alt_ok = (rc == 0);
+    int set_alt_ok = 1;
+    if (select_alt1) {
+        rc = libusb_set_interface_alt_setting(handle, PROBE_IFACE, 1);
+        printf("set_alt(1): %d (%s)\n", rc, err_name(rc));
+        set_alt_ok = (rc == 0);
+    } else {
+        printf("set_alt(1): skipped (alt0 mode)\n");
+    }
 
     uint8_t buffer[ALT1_PROBE_BUFFER_SIZE];
     memset(buffer, 0, sizeof(buffer));
@@ -102,7 +116,8 @@ int main(void)
                status.reports);
     }
 
-    (void)libusb_set_interface_alt_setting(handle, PROBE_IFACE, 0);
+    if (select_alt1)
+        (void)libusb_set_interface_alt_setting(handle, PROBE_IFACE, 0);
     libusb_release_interface(handle, PROBE_IFACE);
     libusb_close(handle);
     libusb_free_device_list(list, 1);

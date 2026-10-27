@@ -55,7 +55,12 @@
 - **首次结果（20:45）**：`set_alt(1)`/trigger 成功；bulk `LIBUSB_ERROR_IO`；
   status `alt=1 state=3 post=0x0002628c triggers=1`。控制路径接受，端点 post 失败，
   数据路径未建立；不通过、不重试。证据 `private/runs/A-alt1-probe-20261027/`。
-- 下一步：关机取卡读 `/logfile.txt`，确认 setup/post；再决定 alt0 变通或 patch。
+- 设备日志（`/logfile.txt`，`e09ad931…`）确认：`ALT1 probe iface=2`、
+  `ALT1 SET_INTERFACE 1` 均成功；`ALT1 trigger rc=0x2628c urb=0`。即 alt1 注册/控制可用，
+  数据路径在 `PostBufferAsync` 失败。`0x2628c` 的 base `0x628C` 是
+  Usb(140)/49 `ResultUsbEndpointAlreadyOpen`，额外 bit17 的具体名称未知。
+- 下一步：同一 NSP 做 host-only alt0 测试（不 `set_alt`，trigger+status），
+  区分“端点从未激活”与“alt 切换后失效”；再决定 alt0 变体或 patch。
 
 ## 工程状态（2026-10-27）
 

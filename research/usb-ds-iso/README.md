@@ -15,8 +15,9 @@
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
 - ALT1 vendor 探针已实测一次：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
-  `set_alt(1)`/trigger 成功，但 bulk 失败、`post=0x0002628c`，数据路径未建立；不重试。
-  下一步是读 `/logfile.txt`，再决定 alt0 变通或 patch。
+  `set_alt(1)`/trigger 成功，设备日志确认 alt1 注册/控制可用，但 `PostBufferAsync`
+  返回 `0x2628c`、bulk 失败；不重试。下一步是 host-only alt0 测试，区分端点未激活
+  与 alt 切换失效。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录
