@@ -77,10 +77,10 @@
   设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
   status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
 - **连续 PCM producer 设计/模型已完成**：[UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md)。
-  - 模型：cursor + 2 URB 在 10s 内 625×16ms、0 gap/0 欠载；A23 单 URB 只有 500 个
-    （80%），ring 溢出 320768B；4ms 空档是结构性的。
-  - 下一步：把 `iso_burst_patch.S` 的 FrameID 从 `MFI+32` 改成持久 cursor，离线验证
-    ring/wrap/完成 tag，再做 vendor PCM burst。
+  - 模型：**3 URB in flight + 现有 `MFI+32` 公式**在 10s 内 625×16ms、0 gap/0 欠载；
+    不需要先改 FrameID。A23 单 URB/等完成只有 209 个（33%）、32ms 空档、ring 溢出。
+  - 下一步：先验证“每 16ms 提交一个、3 个 URB 在飞”的多 URB/完成/ring 行为；只有
+    多 URB 或 post 抖动失败时，才做 cursor/保留字段。
 - 之后：AC/AS alt1 + Linux `snd-usb-audio` 10s；同时收窄全局 NOP。
 
 ## 工程状态（2026-10-27）

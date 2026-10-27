@@ -283,5 +283,5 @@
 | [SERIAL_CLOCK_AUDIT.md](SERIAL_CLOCK_AUDIT.md) | 2026-10-12 | 9K | A23有界串行Mach时间戳诊断 — 此前防休眠串行失败中，raw16包及设备URB正常终结，但native/public报错，开头293个NotSent空槽。 |
 | [STATUS.md](STATUS.md) | 2026-10-27 | 255K | 当前状态（2026-10-27，Asia/Shanghai） — 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [TEST_PLAN.md](TEST_PLAN.md) | 2026-10-27 | 212K | 后续测试条件（2026-10-22） — 当前计划约束已于 2026-10-27 更新，见 [研究规则](RESEARCH_RULES.md)。先不用虚拟机， |
-| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-27 | 4K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
+| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-27 | 5K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-27 | 4K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |

@@ -15,8 +15,9 @@
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
-  bulk alt1 收到 64B，ISO alt1 收到 16/16 包。连续 PCM 的 cursor/ring 模型已完成：
-  [UAC_PCM_PRODUCER.md](docs/UAC_PCM_PRODUCER.md)；下一步是 cursor 汇编 + UAC 标准宿主。
+  bulk alt1 收到 64B，ISO alt1 收到 16/16 包。连续 PCM 模型显示 3 URB + 现有
+  `MFI+32` 公式已连续：[UAC_PCM_PRODUCER.md](docs/UAC_PCM_PRODUCER.md)；下一步先验证
+  3-URB timed 提交，再做 UAC 标准宿主。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

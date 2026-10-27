@@ -11,17 +11,19 @@ BYTES_PER_MS = 192
 URB_BYTES = 3072
 URB_MS = 16
 RING_BYTES = 64 * 1024
-LEAD_MS = 4
+LEAD_MS = 32
 
 
 def simulate(seconds=10, ring_bytes=RING_BYTES, urb_bytes=URB_BYTES,
-             urbs_in_flight=2, lead_ms=LEAD_MS, a23_mode=False,
-             source_pause=None, poster_stall=None):
+             urbs_in_flight=3, lead_ms=LEAD_MS, a23_mode=False,
+             timed_mode=False, source_pause=None, poster_stall=None):
     """Return counters for one schedule.
 
     a23_mode=True reproduces the current producer: each URB starts at
-    `now + lead` and only one URB is in flight.  a23_mode=False uses the
-    proposed persistent frame cursor with two URBs in flight.
+    `now + lead` and only one URB is in flight.  timed_mode=True keeps the
+    same `now + lead` start formula but posts two URBs every 16 ms, so the
+    32 ms lead makes consecutive starts contiguous.  timed_mode=False uses
+    the proposed persistent frame cursor with two URBs in flight.
     """
     ring = 0
     cursor = None
@@ -55,7 +57,7 @@ def simulate(seconds=10, ring_bytes=RING_BYTES, urb_bytes=URB_BYTES,
 
         limit = 1 if a23_mode else urbs_in_flight
         while len(inflight) < limit and cursor <= t + lead_ms:
-            start = (t + lead_ms) if a23_mode else cursor
+            start = (t + lead_ms) if (a23_mode or timed_mode) else cursor
             if start < t + lead_ms:
                 late += (t + lead_ms) - start
             if ring < urb_bytes:
@@ -92,6 +94,7 @@ def main():
     args = parser.parse_args()
     scenarios = [
         ("cursor nominal", dict()),
+        ("timed a23 double-buffer", dict(timed_mode=True)),
         ("a23 one-at-a-time", dict(a23_mode=True)),
         ("cursor, 200ms source pause", dict(source_pause=(3000, 3200))),
         ("cursor, 20ms poster stall", dict(poster_stall=(5000, 5020))),

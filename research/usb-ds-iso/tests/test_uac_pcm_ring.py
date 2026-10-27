@@ -19,13 +19,20 @@ class UacPcmRingTests(unittest.TestCase):
         self.assertEqual(r["max_gap_ms"], 0)
         self.assertEqual(r["posts"], 625)  # 10 s / 16 ms
 
-    def test_a23_one_at_a_time_runs_at_eighty_percent(self):
+    def test_timed_three_urbs_is_contiguous(self):
+        r = model.simulate(seconds=10, timed_mode=True)
+        self.assertEqual(r["underrun_bytes"], 0)
+        self.assertEqual(r["overrun_bytes"], 0)
+        self.assertEqual(r["max_gap_ms"], 0)
+        self.assertEqual(r["posts"], 625)
+
+    def test_a23_one_at_a_time_is_structural_underrun(self):
         r = model.simulate(seconds=10, a23_mode=True)
-        self.assertEqual(r["max_gap_ms"], 4)
+        self.assertEqual(r["max_gap_ms"], 32)
         self.assertGreater(r["overrun_bytes"], 0)
         self.assertLess(r["posts"], 625)
-        # 16 ms of data per 20 ms wall => 80% of the source.
-        self.assertEqual(r["posts"], 500)
+        # 16 ms of data per 48 ms wall => 33% of the source.
+        self.assertEqual(r["posts"], 209)
 
     def test_source_pause_is_reported_as_underrun(self):
         r = model.simulate(seconds=10, source_pause=(3000, 3200))

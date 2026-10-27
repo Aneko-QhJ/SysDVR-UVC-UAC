@@ -10,19 +10,22 @@
 ## 为什么不能直接拿 A23 burst 当 PCM
 
 [iso_burst_patch.S:44-47](../patches/iso_burst_patch.S#L44-L47) 每次提交都用
-`FrameID = (MFI >> 3) + 32`，然后 15 个 TD 逐个 +1；没有跨 URB 的帧游标。
+`FrameID = (MFI >> 3) + 32`，然后 15 个 TD 逐个 +1。**问题不在公式，而在同时提交的
+URB 数量。**
 
-- 如果等上一个 URB 完成再提交下一个：新 URB 的首 TD 在 `now+32` 帧（4ms）之后，
-  16ms 数据之间会出现约 4ms 空档。
-- 如果提前提交下一个：两次都从当前 MFI+32 起算，FrameID 会重叠，主机收到重复帧。
+- A23 一次只挂 1 个 URB、等完成再提交：首 TD 在 `now+32ms`；下一个 URB 在
+  `完成时刻+32ms` 才开始，16ms 数据/48ms 周期 = **33%**，不是 80%。
+- 同时挂 **3 个 URB**、每 16ms 提交一个：第 k 个 URB 的起点是 `post_k+32ms`，
+  而 `post_k = post_0 + 16k`，所以起点正好是 `start_{k-1}+16ms`，连续且不重叠。
+  此时不需要持久游标。
 
-所以连续 PCM 需要**持久帧游标**：第 k 个 URB 从 `cursor` 开始，覆盖 16 帧，
-`cursor += 16`；提交时只要求 `cursor >= 当前 MFI + lead`，不重置到 MFI。
+所以第一优先是验证 **3 URB in flight + 现有 `MFI+32` 公式**；游标是 post 抖动/多 URB
+完成不可靠时的稳健性后备，而不是连续性的必要条件。
 
 ## 目标形状
 
 - UAC AS alt1：`EP0x83`、HS ISO、192B/1ms、MPS256、48kHz/2ch/16bit。
-- 16 个 TD/URB = 3072B = 16ms；最多 2 个 URB 在飞。
+- 16 个 TD/URB = 3072B = 16ms；最多 3 个 URB 在飞。
 - 不改变已验证的 alt1/NOP/A23 producer hook；只把“帧起点”从 MFI 改成游标。
 
 ## 数据路径
@@ -51,7 +54,7 @@ grc:d (4096B ≈ 21.3ms)
 | TD/URB | 16 |
 | 每 TD | 192B / 1ms |
 | URB 时长 | 16ms |
-| 在飞 URB | 2 |
+| 在飞 URB | 3 |
 | 提交提前量 | 4ms（lead32 帧） |
 | 完成 | 每 TD Event Data TRB；URB 完成后才复用缓冲 |
 
@@ -65,15 +68,25 @@ grc:d (4096B ≈ 21.3ms)
 
 | 方案 | posts | underrun | overrun | late | max gap |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| cursor + 2 URB | 625 | 0 | 0 | 0 | 0 |
-| A23 单 URB / 等完成 | 500 | 0 | 320768 | 0 | 4ms |
+| cursor + 3 URB | 625 | 0 | 0 | 0 | 0 |
+| A23 公式 + 3 URB、每 16ms 提交 | 625 | 0 | 0 | 0 | 0 |
+| A23 单 URB / 等完成 | 209 | 0 | 1215488 | 0 | 32ms |
 | cursor，源暂停 200ms | 625 | 38400 | 0 | 0 | 0 |
 | cursor，poster 停 20ms | 625 | 0 | 0 | 13ms | 0 |
 
-A23 单 URB 每 20ms 只送 16ms 数据（80%），10s 少 2s，ring 最终溢出；这不是
-“偶发 4ms 空档”，而是结构性欠供。cursor + 2 URB 在名义速率下正好 625×16ms=10s。
+A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结构性欠供。
+**3 URB + 现有 `MFI+32` 公式在名义速率下已经连续**，不需要改 FrameID。
 
-## 需要改的 producer
+## 先验证 3 URB，再决定是否改 producer
+
+**第一步（不改 usb:ds 代码）**：
+
+1. sysmodule 每 16ms 调一次 `PostBufferAsync(3072)`，保持 3 个 URB 在飞；
+2. 确认 endpoint/ring 能容纳 3×32 = 96 个 TRB；
+3. 确认 3 个 URB 的 Event Data 完成都能被 `GetReportData` 区分；
+4. 用现有 `MFI+32` 公式，host 收到连续 16ms 段。
+
+**只有**第 2/3 步失败，或 post 抖动导致 gap/overlap 时，才考虑游标：
 
 1. 在端点上下文保存 `next_frame`（当前 A23 没有）。
 2. `iso_enter` 的首 TD FrameID 取 `next_frame`，不再取 `MFI+32`。
@@ -102,10 +115,11 @@ A23 单 URB 每 20ms 只送 16ms 数据（80%），10s 少 2s，ring 最终溢�
 ## 分阶段
 
 1. **本轮**：Python 调度/ring 模型与测试（[model_uac_pcm_ring.py](../tools/model_uac_pcm_ring.py)）。
-2. 改 `iso_burst_patch.S`/`iso_burst_context.S` 的 FrameID 游标，离线验证。
-3. 用 vendor ISO alt1 发送真实 PCM burst。
-4. 接 AC/AS alt1 + macOS 枚举。
-5. Linux 10s 连续验收；再收窄全局 NOP、评估 feedback。
+2. **3 URB timed 验证**：不改 producer，只改 sysmodule 提交节奏；确认多 URB/完成/ring。
+3. 若 2 失败：游标/保留字段方案，离线 disassembly/Unicorn 验证。
+4. 用 vendor ISO alt1 发送真实 PCM burst。
+5. 接 AC/AS alt1 + macOS 枚举。
+6. Linux 10s 连续验收；再收窄全局 NOP、评估 feedback。
 
 ## 不证明
 
