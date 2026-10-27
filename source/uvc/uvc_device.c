@@ -1,6 +1,9 @@
 #include <string.h>
 #include "uvc_device.h"
 #include "uac_standard.h"
+#ifdef ALT1_PROBE
+#include "alt1_probe_protocol.h"
+#endif
 #include "../core.h"
 #ifdef ISO_PROBE
 #include "iso_probe_protocol.h"
@@ -8,6 +11,10 @@
 #include "iso_runtime_patch.h"
 #include "iso_runtime_payload.h"
 #endif
+#endif
+
+#if defined(ISO_PROBE) && defined(ALT1_PROBE)
+#error "enable only one USB probe mode"
 #endif
 
 // USB class codes not defined in libnx
@@ -249,6 +256,85 @@ static void _pollIsoProbe(void)
 #endif
                 g_isoStatus.sequence, r->id, r->requestedSize, r->transferredSize,
                 r->urb_status, g_isoStatus.diagnostics.event_count);
+        }
+    }
+}
+#endif
+
+#ifdef ALT1_PROBE
+// Vendor alt1 probe: one interface with alt0 (no endpoint) and alt1 (bulk IN
+// 0x84).  It answers whether usb:ds installs an explicitly registered endpoint
+// that only appears in alt1, without UAC descriptors or the ISO patch.
+static UsbDsInterface* g_alt1Interface;
+static UsbDsEndpoint* g_alt1Endpoint;
+static u8 alignas(0x1000) g_alt1Buffer[ALT1_PROBE_BUFFER_SIZE];
+static u8 g_alt1DescriptorsHs[64];
+static u8 g_alt1DescriptorsSs[64];
+static Alt1ProbeStatus g_alt1Status;
+
+static size_t _buildAlt1Descriptors(u8 iface, bool superspeed, u8* out, size_t cap)
+{
+    size_t n = 0;
+#define ALT1_PUT(value) do { if (n >= cap) return 0; out[n++] = (u8)(value); } while (0)
+    ALT1_PUT(9); ALT1_PUT(USB_DT_INTERFACE); ALT1_PUT(iface); ALT1_PUT(0); ALT1_PUT(0);
+    ALT1_PUT(0xFF); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+    ALT1_PUT(9); ALT1_PUT(USB_DT_INTERFACE); ALT1_PUT(iface); ALT1_PUT(1); ALT1_PUT(1);
+    ALT1_PUT(0xFF); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+    ALT1_PUT(USB_DT_ENDPOINT_SIZE); ALT1_PUT(USB_DT_ENDPOINT); ALT1_PUT(0x84);
+    ALT1_PUT(0x02); ALT1_PUT(0x00); ALT1_PUT(superspeed ? 0x04 : 0x02); ALT1_PUT(0);
+    if (superspeed) {
+        ALT1_PUT(6); ALT1_PUT(USB_DT_SS_ENDPOINT_COMPANION);
+        ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+    }
+#undef ALT1_PUT
+    return n;
+}
+
+static Result _setupAlt1Probe(void)
+{
+    Result rc = usbDsRegisterInterface(&g_alt1Interface);
+    if (R_FAILED(rc)) {
+        LOG("ALT1 register interface failed: 0x%x\n", rc);
+        return rc;
+    }
+    const u8 iface = g_alt1Interface->interface_index;
+    const size_t hsLen = _buildAlt1Descriptors(iface, false, g_alt1DescriptorsHs,
+                                               sizeof(g_alt1DescriptorsHs));
+    const size_t ssLen = _buildAlt1Descriptors(iface, true, g_alt1DescriptorsSs,
+                                               sizeof(g_alt1DescriptorsSs));
+    if (!hsLen || !ssLen) return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_alt1Interface,
+        UsbDeviceSpeed_High, g_alt1DescriptorsHs, hsLen));
+    R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_alt1Interface,
+        UsbDeviceSpeed_Super, g_alt1DescriptorsSs, ssLen));
+    R_RET_ON_FAIL(usbDsInterface_RegisterEndpoint(g_alt1Interface,
+        &g_alt1Endpoint, 0x84));
+    R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_alt1Interface));
+
+    memset(&g_alt1Status, 0, sizeof(g_alt1Status));
+    g_alt1Status.magic = ALT1_PROBE_STATUS_MAGIC;
+    g_alt1Status.version = 1;
+    LOG("ALT1 probe iface=%u ep=0x84 hs=%u ss=%u\n",
+        iface, (unsigned)hsLen, (unsigned)ssLen);
+    return 0;
+}
+
+static void _pollAlt1Probe(void)
+{
+    if (!g_alt1Endpoint || g_alt1Status.state != ALT1_PROBE_PENDING) return;
+    UsbDsReportData report = {0};
+    if (R_FAILED(usbDsEndpoint_GetReportData(g_alt1Endpoint, &report))) return;
+    for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+        const UsbDsReportEntry* r = &report.report[i];
+        if (r->id != g_alt1Status.urb_id) continue;
+        g_alt1Status.reports++;
+        g_alt1Status.transferred = r->transferredSize;
+        g_alt1Status.urb_status = r->urb_status;
+        if (r->urb_status >= 3 && r->urb_status <= 5) {
+            g_alt1Status.completed = 1;
+            g_alt1Status.state = r->urb_status == 3 ? ALT1_PROBE_COMPLETE : ALT1_PROBE_FAILED;
+            eventClear(&g_alt1Endpoint->CompletionEvent);
         }
     }
 }
@@ -839,6 +925,11 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
         rc = _setupIsoProbe();
         if (R_FAILED(rc)) goto cleanup;
 #endif
+#ifdef ALT1_PROBE
+        rc = _setupAlt1Probe();
+        if (R_FAILED(rc))
+            LOG("ALT1 probe setup failed: 0x%x (video continues)\n", rc);
+#endif
 
         rc = usbDsEnable();
         if (R_FAILED(rc)) {
@@ -879,6 +970,16 @@ void UvcDeviceExit(void)
         usbDsInterface_Close(g_isoInterface);
         g_isoInterface = NULL;
         g_isoEndpoint = NULL;
+    }
+#endif
+#ifdef ALT1_PROBE
+    if (g_alt1Endpoint) {
+        usbDsEndpoint_Close(g_alt1Endpoint);
+        g_alt1Endpoint = NULL;
+    }
+    if (g_alt1Interface) {
+        usbDsInterface_Close(g_alt1Interface);
+        g_alt1Interface = NULL;
     }
 #endif
     if (!g_uvcCtx.initialized) {
@@ -1490,6 +1591,78 @@ static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 }
 #endif
 
+#ifdef ALT1_PROBE
+static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
+{
+    const u8 ifaceNum = iface->interface_index;
+
+    if (setup->bmRequestType == 0x01 && setup->bRequest == 0x0B &&
+        setup->wIndex == ifaceNum && setup->wLength == 0) {
+        if (setup->wValue > 1) { usbDsInterface_StallCtrl(iface); return; }
+        g_alt1Status.alt = setup->wValue;
+        LOG("ALT1 SET_INTERFACE %u\n", setup->wValue);
+        _ctrlAck(iface);
+        return;
+    }
+    if (setup->bmRequestType == 0x81 && setup->bRequest == 0x0A &&
+        setup->wIndex == ifaceNum && setup->wLength == 1) {
+        u8 alt = (u8)g_alt1Status.alt;
+        _ctrlWrite(iface, &alt, 1);
+        return;
+    }
+    if (setup->bmRequestType == 0x41 && setup->bRequest == ALT1_PROBE_TRIGGER &&
+        setup->wLength == 0) {
+        if (!g_alt1Endpoint) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        _pollAlt1Probe();
+        if (g_alt1Status.state == ALT1_PROBE_PENDING) {
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        for (u32 i = 0; i < ALT1_PROBE_BUFFER_SIZE; ++i)
+            g_alt1Buffer[i] = (u8)(0xA0 + i);
+        g_alt1Buffer[0] = 'A'; g_alt1Buffer[1] = 'L';
+        g_alt1Buffer[2] = 'T'; g_alt1Buffer[3] = '1';
+        eventClear(&g_alt1Endpoint->CompletionEvent);
+        armDCacheFlush(g_alt1Buffer, sizeof(g_alt1Buffer));
+        u32 urbId = 0;
+        Result rc = usbDsEndpoint_PostBufferAsync(g_alt1Endpoint,
+            g_alt1Buffer, sizeof(g_alt1Buffer), &urbId);
+        g_alt1Status.triggers++;
+        g_alt1Status.post_result = rc;
+        g_alt1Status.urb_id = urbId;
+        g_alt1Status.completed = 0;
+        g_alt1Status.transferred = 0;
+        g_alt1Status.urb_status = 0;
+        g_alt1Status.state = R_SUCCEEDED(rc) ? ALT1_PROBE_PENDING : ALT1_PROBE_FAILED;
+        LOG("ALT1 trigger rc=0x%x urb=%u\n", rc, urbId);
+        _ctrlAck(iface);
+        return;
+    }
+    if (setup->bmRequestType == 0xC1 && setup->bRequest == ALT1_PROBE_STATUS &&
+        setup->wLength == sizeof(g_alt1Status)) {
+        _pollAlt1Probe();
+        _ctrlWrite(iface, &g_alt1Status, sizeof(g_alt1Status));
+        return;
+    }
+    if (setup->bmRequestType == 0x41 && setup->bRequest == ALT1_PROBE_CANCEL &&
+        setup->wLength == 0) {
+        if (g_alt1Status.state == ALT1_PROBE_PENDING) {
+            usbDsEndpoint_Cancel(g_alt1Endpoint);
+            eventWait(&g_alt1Endpoint->CompletionEvent, 500E+6);
+            _pollAlt1Probe();
+            if (g_alt1Status.state == ALT1_PROBE_PENDING)
+                g_alt1Status.state = ALT1_PROBE_FAILED;
+        }
+        _ctrlAck(iface);
+        return;
+    }
+    usbDsInterface_StallCtrl(iface);
+}
+#endif
+
 // UAC1 standard/class control requests.  SET_CUR sampling frequency carries a
 // 3-byte OUT data stage; read it before deciding ACK vs STALL.
 static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
@@ -1560,6 +1733,13 @@ static void _handleSetupPacket(UsbDsInterface* iface)
 #ifdef ISO_PROBE
     if (iface == g_isoInterface) {
         _handleIsoSetup(iface, &setup);
+        return;
+    }
+#endif
+
+#ifdef ALT1_PROBE
+    if (iface == g_alt1Interface) {
+        _handleAlt1Setup(iface, &setup);
         return;
     }
 #endif
@@ -1638,6 +1818,9 @@ void UvcDeviceProcessRequests(void)
 #ifdef ISO_PROBE
     _pollIsoProbe();
 #endif
+#ifdef ALT1_PROBE
+    _pollAlt1Probe();
+#endif
     u32 state = 0;
     if (R_FAILED(usbDsGetState(&state))) {
         return;
@@ -1652,6 +1835,10 @@ void UvcDeviceProcessRequests(void)
 #ifdef ISO_PROBE
             if (g_isoStatus.state == ISO_PROBE_PENDING)
                 g_isoStatus.state = ISO_PROBE_RETAINED;
+#endif
+#ifdef ALT1_PROBE
+            if (g_alt1Status.state == ALT1_PROBE_PENDING)
+                g_alt1Status.state = ALT1_PROBE_FAILED;
 #endif
         }
         return;
@@ -1673,6 +1860,9 @@ void UvcDeviceProcessRequests(void)
 #ifdef ISO_PROBE
     serviced |= _serviceSetup(g_isoInterface);
 #endif
+#ifdef ALT1_PROBE
+    serviced |= _serviceSetup(g_alt1Interface);
+#endif
     // UAC is polled here.  When UAC is enabled, add its SetupEvents to the
     // waitMulti set below so a multi-request burst is not caller-paced.
     if (g_uacCtx.initialized) {
@@ -1683,11 +1873,17 @@ void UvcDeviceProcessRequests(void)
     while (serviced &&
            g_uvcCtx.controlInterface && g_uvcCtx.streamingInterface) {
         s32 idx;
-#ifdef ISO_PROBE
+#if defined(ISO_PROBE)
         if (R_FAILED(waitMulti(&idx, 20E+6,
                 waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
                 waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),
                 waiterForEvent(&g_isoInterface->SetupEvent))))
+            break;
+#elif defined(ALT1_PROBE)
+        if (R_FAILED(waitMulti(&idx, 20E+6,
+                waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
+                waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),
+                waiterForEvent(&g_alt1Interface->SetupEvent))))
             break;
 #else
         if (R_FAILED(waitMulti(&idx, 20E+6,  // 20ms
@@ -1700,6 +1896,9 @@ void UvcDeviceProcessRequests(void)
         serviced |= _serviceSetup(g_uvcCtx.streamingInterface);
 #ifdef ISO_PROBE
         serviced |= _serviceSetup(g_isoInterface);
+#endif
+#ifdef ALT1_PROBE
+        serviced |= _serviceSetup(g_alt1Interface);
 #endif
     }
 }

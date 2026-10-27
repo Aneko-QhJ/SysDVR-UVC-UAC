@@ -14,6 +14,8 @@
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 端点安装仍未验证，UAC 仍禁用。
+- ALT1 vendor 探针已准备：[A23_ALT1_PROBE.md](docs/A23_ALT1_PROBE.md)；
+  一个 NSP（无 IPS）+ libusb host，等待完全关机插卡。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

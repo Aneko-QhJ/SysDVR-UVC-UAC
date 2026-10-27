@@ -13,7 +13,10 @@ CFLAGS += -std=c11 -O2 -Wall -Wextra -Werror
 iso-probe: iso-probe.c ../../../source/uvc/iso_probe_protocol.h
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+alt1-probe: alt1-probe.c ../../../source/uvc/alt1_probe_protocol.h
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
+
 clean:
-	rm -f iso-probe
+	rm -f iso-probe alt1-probe
 
 .PHONY: clean

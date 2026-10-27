@@ -43,6 +43,16 @@
 - SD 最后已安全弹出；当前设备现场状态不推定仍就绪。
 - 旧票据、actual465、消费 namespace 保持；不恢复旧次数。
 
+## ALT1 探针（已准备，未部署）
+
+- 目的：只回答“alt1 上的 bulk 端点能否安装/被宿主选中”，不引入 UAC、ISO 或 IPS。
+- NSP：`/tmp/alt1-probe-log/exefs.nsp`，SHA256 `7fa38c98…`；NPDM 与卡上一致。
+- Host：[alt1-probe](../host/alt1-probe)，libusb，SHA256 `a7e4ca89…`。
+- 卡操作：完全关机后插入 SD；备份 `exefs.nsp`/`logfile.txt`/旧 `.ips`，只替换 `exefs.nsp`，
+  移除旧 IPS，回读并安全弹出。
+- 本轮独立计一次：一次 boot、一次 `set_alt(1)`、一次 trigger、一次 64B 读；不重试，
+  不恢复 short24 的旧次数。当前尚未部署/开机，没有新证据。
+
 ## 工程状态（2026-10-27）
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
