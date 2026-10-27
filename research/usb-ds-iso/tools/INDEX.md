@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 425 个 Python 工具。
+共 426 个 Python 工具。
 
 ## 当前使用
 
@@ -31,7 +31,7 @@
 | `prepare` | 10 |
 | `context65` | 7 |
 | `io` | 6 |
-| `model` | 3 |
+| `model` | 4 |
 | `lifecycle` | 2 |
 | `package` | 2 |
 | `sequence` | 2 |
@@ -507,13 +507,14 @@
 | [lifecycle_card_companion_deploy.py](lifecycle_card_companion_deploy.py) | Separate deployment variant for one observed Mac companion template. |
 | [lifecycle_card_workflow.py](lifecycle_card_workflow.py) | Bounded card files and receipts. Import/--help never probes a card. |
 
-## model（3）
+## model（4）
 
 | 工具 | 说明 |
 | --- | --- |
 | [model_a23_quiet_paths.py](model_a23_quiet_paths.py) | Current quiet ELF instruction models. No native ARM or actual SDK calls. |
 | [model_a23_v3_logger_stack.py](model_a23_v3_logger_stack.py) | Continuous final-ELF logger/vsnprintf model; FS results alone are injected. |
 | [model_a23_wait_machine.py](model_a23_wait_machine.py) | Replay sealed AArch64 handle-wait paths with injected SVC/ticks, never USB. |
+| [model_uac_pcm_ring.py](model_uac_pcm_ring.py) | Model the UAC PCM ring / URB schedule and the A23 frame-cursor gap. |
 
 ## nso2elf.py（1）
 

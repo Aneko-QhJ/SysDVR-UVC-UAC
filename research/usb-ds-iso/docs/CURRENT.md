@@ -76,14 +76,18 @@
   A23 burst producer + NOP；host 收到 16/16 个 192B 包，payload/completion 均 verified；
   设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
   status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
-- 下一步：做连续 PCM producer（ring/URB 时长/usb:ds 提交），再接 AC/AS alt1 与
-  Linux `snd-usb-audio`；同时收窄全局 NOP 到目标接口/`SET_INTERFACE`。
+- **连续 PCM producer 设计/模型已完成**：[UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md)。
+  - 模型：cursor + 2 URB 在 10s 内 625×16ms、0 gap/0 欠载；A23 单 URB 只有 500 个
+    （80%），ring 溢出 320768B；4ms 空档是结构性的。
+  - 下一步：把 `iso_burst_patch.S` 的 FrameID 从 `MFI+32` 改成持久 cursor，离线验证
+    ring/wrap/完成 tag，再做 vendor PCM burst。
+- 之后：AC/AS alt1 + Linux `snd-usb-audio` 10s；同时收窄全局 NOP。
 
 ## 工程状态（2026-10-27）
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
-- `make check` 绿：6 个文件，约 3 秒。
+- `make check` 绿：7 个文件，约 3 秒。
 - `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
   [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
 
@@ -91,7 +95,8 @@
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
-   打通。剩下连续 PCM producer、标准宿主枚举、时钟/反馈与跨块样本连续性。
+   打通；连续 PCM 的 cursor/ring 模型已完成。剩下 cursor 汇编、标准宿主枚举、时钟/反馈
+   与跨块样本连续性。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
