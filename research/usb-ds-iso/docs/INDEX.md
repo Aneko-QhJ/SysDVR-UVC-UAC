@@ -17,7 +17,7 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
-| [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 4K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
+| [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 5K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |
 | [A23_EVIDENCE_CONCLUSIONS.md](A23_EVIDENCE_CONCLUSIONS.md) | 2026-10-27 | 9K | 2026-10-27 推进策略更新：事实和证据边界继续保留，后续流程按 |
 | [A23_Q2B_GENERATION_MODEL.md](A23_Q2B_GENERATION_MODEL.md) | 2026-10-27 | 7K | 后续[Q2c整轮证据预算与交接合同](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md)已完成部署来源、边界和容量核对；下一项仅电脑设计整轮额度租约/停止门。下文为本模型阶段及当时下一步，原封存保… |
@@ -37,7 +37,7 @@
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
-| [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 4K | ALT1 vendor 探针（2026-10-27） — 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
+| [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 5K | ALT1 vendor 探针（2026-10-27） — 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_ARCHIVE_READ_VIEW.md](A23_ARCHIVE_READ_VIEW.md) | 2026-10-23 | 6K | 单次归档检查的读取复用候选（2026-10-23） — 隔离候选通过26个原生场景，但本地对照没有可确认的速度收益，暂不接入实机。正常检查的实际文件打开/内容读取从3305次降到1757次，三次候选计时却与原版相近、略高。保留这一负结果，停止继续为该版本扩大模拟或准备实机。 |
 | [A23_ARGUMENT_CACHE.md](A23_ARGUMENT_CACHE.md) | 2026-10-15 | 5K | 格式解析器局部入口与参数缓存审查（2026-10-14） — 2026-10-15更正：本页旧工具标为x32/x64的局部取参区域实际由%o分支进入，不能当作 |
 | [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 从有界 ISO burst 到 PCM：速率与调度缺口（2026-10-27） — 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |

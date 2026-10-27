@@ -74,6 +74,25 @@ ALT1 trigger rc=0x2628c urb=0
 判断端点是否在 alt0 可用；若仍失败，再做 alt0 端点变体或 patch。
 不要重复同一次 alt1 探针。
 
+## alt0 对照（2026-10-27 20:50）
+
+同一 NSP，不 `set_alt`，直接在 alt0 trigger：
+
+| 项 | 观察 |
+| --- | --- |
+| claim | 0 |
+| `set_alt(1)` | skipped |
+| trigger | 0 |
+| bulk `0x84` | `-5` / `LIBUSB_ERROR_NOT_FOUND`（alt0 描述符没有该端点，预期） |
+| status | alt `0`、state `3`、post `0x0002628c`、urb `0`、triggers `1` |
+
+结论：**alt0 与 alt1 的 post 都以 `0x2628c` 失败。** 所以不是“`SET_INTERFACE(1)` 把端点
+关掉”，而是“alt1-only 描述符注册出的端点从未成为可用的控制器上下文”。bulk 的
+`NOT_FOUND` 只说明 alt0 没有该端点，post 结果才是关键。
+
+下一步：把同一个 bulk 端点同时放进 alt0（`ALT1_PROBE_ENDPOINT_ALT0`），先测 alt0，
+再测 alt1；这样才能区分“descriptor walk 需要 alt0”与“alt 切换仍会失效”。
+
 ## 判读
 
 | 观察 | 含义 | 下一步 |

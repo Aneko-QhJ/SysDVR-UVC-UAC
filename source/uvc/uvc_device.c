@@ -275,16 +275,24 @@ static Alt1ProbeStatus g_alt1Status;
 static size_t _buildAlt1Descriptors(u8 iface, bool superspeed, u8* out, size_t cap)
 {
     size_t n = 0;
+#ifdef ALT1_PROBE_ENDPOINT_ALT0
+    const bool endpoint_in_alt0 = true;
+#else
+    const bool endpoint_in_alt0 = false;
+#endif
 #define ALT1_PUT(value) do { if (n >= cap) return 0; out[n++] = (u8)(value); } while (0)
-    ALT1_PUT(9); ALT1_PUT(USB_DT_INTERFACE); ALT1_PUT(iface); ALT1_PUT(0); ALT1_PUT(0);
-    ALT1_PUT(0xFF); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
-    ALT1_PUT(9); ALT1_PUT(USB_DT_INTERFACE); ALT1_PUT(iface); ALT1_PUT(1); ALT1_PUT(1);
-    ALT1_PUT(0xFF); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
-    ALT1_PUT(USB_DT_ENDPOINT_SIZE); ALT1_PUT(USB_DT_ENDPOINT); ALT1_PUT(0x84);
-    ALT1_PUT(0x02); ALT1_PUT(0x00); ALT1_PUT(superspeed ? 0x04 : 0x02); ALT1_PUT(0);
-    if (superspeed) {
-        ALT1_PUT(6); ALT1_PUT(USB_DT_SS_ENDPOINT_COMPANION);
-        ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+    for (int alt = 0; alt < 2; ++alt) {
+        const bool has_endpoint = alt == 1 || endpoint_in_alt0;
+        ALT1_PUT(9); ALT1_PUT(USB_DT_INTERFACE); ALT1_PUT(iface);
+        ALT1_PUT((u8)alt); ALT1_PUT(has_endpoint ? 1 : 0);
+        ALT1_PUT(0xFF); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+        if (!has_endpoint) continue;
+        ALT1_PUT(USB_DT_ENDPOINT_SIZE); ALT1_PUT(USB_DT_ENDPOINT); ALT1_PUT(0x84);
+        ALT1_PUT(0x02); ALT1_PUT(0x00); ALT1_PUT(superspeed ? 0x04 : 0x02); ALT1_PUT(0);
+        if (superspeed) {
+            ALT1_PUT(6); ALT1_PUT(USB_DT_SS_ENDPOINT_COMPANION);
+            ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0); ALT1_PUT(0);
+        }
     }
 #undef ALT1_PUT
     return n;
