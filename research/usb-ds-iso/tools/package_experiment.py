@@ -107,7 +107,10 @@ def main():
     for variant in (['A', 'rollback'] if args.burst else ['A', 'B', 'C', 'rollback']):
         if variant != 'rollback': runtime_payload(variant)
         target = 'exefs-rollback' if variant == 'rollback' else 'exefs-iso-'+variant
-        build = 'build-rollback' if variant == 'rollback' else 'build-iso-'+variant
+        build_root=private/'builds/sysmodules'
+        build=str((build_root/('objects-'+variant)).relative_to(REPO))
+        output_dir=build_root/'outputs'
+        output_dir.mkdir(parents=True,exist_ok=True)
         defines = '' if variant == 'rollback' else '-DISO_PROBE -DISO_RUNTIME_PATCH -DFILE_LOGGING'
         if variant != 'rollback':
             mps = json.loads((PACKAGES/variant/'manifest.json').read_text()).get('mps',192)
@@ -130,15 +133,15 @@ def main():
             defines += ' -DISO_PROBE_INTERVAL='+str(interval)
             defines += ' -DISO_PROBE_MPS='+str(mps)
         with (logs / (target + '-build.log')).open('w') as log:
-            subprocess.run(['make', '-B', '-j4', 'TARGET='+target, 'BUILD='+build,
+            subprocess.run(['make', '-B', '-j4', 'TARGET='+target, 'BUILD='+build, 'OUTPUT_DIR='+str(output_dir.relative_to(REPO)),
                             'CONFIG_JSON='+str(config_path.relative_to(REPO)), 'DEFINES='+defines,
                             'INCLUDES=include research/usb-ds-iso/private'],
                            cwd=REPO, stdout=log, stderr=subprocess.STDOUT, check=True)
-        verify_npdm(REPO / (target + '.npdm'))
+        verify_npdm(output_dir / (target + '.npdm'))
         package = PACKAGES / variant
         content = package / 'atmosphere/contents/00FF0000A53BB666'
         content.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(REPO / (target + '.nsp'), content / 'exefs.nsp')
+        shutil.copyfile(output_dir / (target + '.nsp'), content / 'exefs.nsp')
         shutil.copyfile(REPO / 'toolbox.json', content / 'toolbox.json')
         shutil.copytree(REPO / 'flags', content / 'flags', dirs_exist_ok=True)
         if variant != 'rollback' and audit:
@@ -239,7 +242,7 @@ def main():
                                 'Host lead64 frames/wait40ms/request192 and TD0 explicit lead32/TD1..15 SIA remain frozen; window size is a documented measurement change.\n'
                                 'Use eight nominal packet slots per frame in FrameID comparisons; require ISO7 and A23 startup log.\n')
                 (package/'experiment.json').write_text(json.dumps(experiment,indent=2)+'\n')
-                shutil.copy2(ROOT/audit_doc, package/audit_doc)
+                shutil.copy2(ROOT/'docs'/audit_doc, package/audit_doc)
                 shutil.copy2(ROOT/'tools/summarize_run.py', package/'summarize_run.py')
             elif args.burst:
                 install += ('A13 HS ONLY: use ./iso-probe --burst --packets 128 --log A13-burst-001.jsonl\n'

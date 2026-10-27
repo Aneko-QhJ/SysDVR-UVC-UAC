@@ -1,5 +1,9 @@
 # SysDVR-UVC - Research & Debugging Notes
 
+> 2026-10-27: 音频/UAC 的当前状态见
+> [research/usb-ds-iso/docs/CURRENT.md](../research/usb-ds-iso/docs/CURRENT.md)。
+> 本文第 6 节保留 2026-10 上旬的设备侧 ISO 观察，不再代表当前状态。
+
 Reference document for everything established during the stabilization and
 latency work. Each section states the problem, the root cause, the fix (or
 the verdict when no fix is possible on our side), and the evidence.
@@ -99,25 +103,52 @@ corrupted). A ZLP is now sent to terminate those.
 - Appended configuration data **cannot be removed** - closing the interface
   does not clean the config, so "graceful fallback after appending" is
   impossible. Anything risky must happen before the first append.
-- A12 passed single-packet HS capture, normal completion, 100 serial attempts,
-  ring wrap and reconnect tests over the vendor alt0 interface. Stable
-  16-packet bursts remain unverified: A22's raw payload was continuous, but
-  native packet statuses failed. Its full installation/completion log is verified.
-- A23 changes the HS service interval to125µs and extends the host window to960
-  slots/120ms. It passed47 local tests and its first HS burst: all16 payloads were
-  exact, consecutive, native/public status0 with overall0 and full URB completion.
-  Its full installation/submission log is verified. The next reboot reproduction
-  failed with native E00002ED/overall E000400E despite correct continuous raw data;
-  that boot's full4551byte device log is verified. An isolated host microframe
-  observation build passed local validation and one strict HS capture; its full
- 2631byte device log is verified. The same host build passed two independent single captures; both full logs are
-  verified. A native-gated16-burst serial test is locally validated and prepared. All four host microframe counts were multiples of8,
-  so true microframe phase remains unresolved;
-  stability remains unverified. This also changes the
-  measurement window, so it is not a strict single-variable causal comparison.
-  Details and evidence are in `research/usb-ds-iso/INTERVAL_EXPERIMENT.md`.
-- SS acceptance, the hardware cause of burst gaps/errors, and robust continuous
-  streaming remain unverified. UAC audio is not enabled by this experiment.
+- A12 passed HS single-packet capture, normal completion, 100 serial attempts,
+  real ring wrap, physical reconnect and user-observed video coexistence.
+  These results apply to the single-TD path and do not certify later bursts.
+- A23 uses HS interval1 (125µs), 16 independent 192-byte TDs, MPS256, a first
+  explicit FrameID and SIA for the following 15 TDs. Its host window also
+  changed to 960 slots/120ms, so the interval change is not a strict
+  single-variable causal comparison. It passed 47 local validation tests.
+- The original A23 receiver passed one strict single capture and failed the
+  next independent boot with native E00002ED/overall E000400E despite correct
+  consecutive raw payloads. Both full device logs are verified.
+- An isolated host microframe observation build passed two independent single
+  captures; both full logs are verified. All four query counts were multiples
+  of 8, so true microframe phase remains unresolved. Read-only queries and
+  printing can affect timing; these captures do not prove a causal fix.
+- On 2026-10-09, `native-guard-serial-1` stopped the bounded 16-burst test after
+  the first native packet error, before a second submission. The raw payloads
+  and device completion were correct, but strict acceptance failed and ring
+  progression/wrap was not reached. The full 3365-byte device log confirms
+  A23, runtime installation, the unique submission and completion. The four
+  SD files were unchanged, no new error reports appeared, and the card was
+  safely ejected. That original serial attempt remains failed; its evidence is preserved.
+- A read-only comparison of all five A23 runs verified 105 frozen files.
+  Both failures have initial empty NotSent prefixes (271 and 314 slots);
+  the three successes have none. Correct raw/device completion does not
+  clear native errors. A fresh no-TD receive-window diagnostic is proposed,
+  with a validated tool and bounded entry. At 18:50 one fresh empty window
+  passed its host baseline: 960 native Underrun slots, overall0, zero raw,
+  unchanged IDLE state, no NotSent prefix. The full 7005-byte A23 startup
+  and no-submission log is verified. At 20:34 one matched-backend burst
+  passed host acceptance with 16 consecutive exact packets, native/public/
+  overall0 and correct device completion. The full 2630-byte A23 log matches
+  the unique submission/completion; complete single-burst acceptance passed.
+  The SD was safely ejected at 20:51 with no SD writes or USB tests during
+  this card cycle. At 22:34 the matched-backend serial attempt passed its first three host
+  bursts, then stopped at burst 4: only 14 packets arrived, and the device
+  reported retained terminal CC23 with bitmap000F. No fifth submission or
+  cancel occurred. Full device logs are pending; serial/wrap acceptance
+  failed. See
+  [matched serial validation](../research/usb-ds-iso/docs/MATCHED_SERIAL_VALIDATION.md).
+  No causal fix or burst stability is certified. See the
+  [native error analysis](../research/usb-ds-iso/docs/NATIVE_ERROR_ANALYSIS.md).
+- Burst repeatability, sustained streaming, true bus timing/DATA PID, the
+  error cause, SS and endpoint reset recovery remain unverified. UAC/PCM is
+  disabled. Latest evidence is in [current status](../research/usb-ds-iso/docs/STATUS.md);
+  follow-up conditions are in [the test plan](../research/usb-ds-iso/docs/TEST_PLAN.md).
+  The [research index](../research/usb-ds-iso/README.md) links version-specific details.
 
 ## 7. Latency - the H.264 SPS was the stream-side root cause
 

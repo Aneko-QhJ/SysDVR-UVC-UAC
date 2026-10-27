@@ -27,10 +27,10 @@ Verified working end to end on Linux (ffplay, v4l2-ctl, OBS) and Windows
 
 ## Building
 
-Requires devkitPro with libnx (https://devkitpro.org/wiki/Getting_Started):
+Requires devkitPro with libnx (https://devkitpro.org/wiki/Getting_Started).
+Run from the repository root:
 
 ```bash
-cd sysmodule-uvc
 make -j
 
 # Debug logging over UDP (port 9999). The destination IP is hardcoded in
@@ -155,26 +155,52 @@ depends on the player:
   and adding it to OBS via Window Capture. Always set the source's
   "Buffering" to "Disable" - "Auto" silently force-buffers H.264 devices.
 
-See `docs/RESEARCH.md` for the full investigation.
+See [the research notes](docs/RESEARCH.md) for the full investigation.
 
 ## Audio
+
+> **Current status (2026-10-27):** audio is still disabled. The latest short-packet
+> run received 384 bytes correctly on the host, but the device-side `capture`/`EXE3`
+> save failed with `0xD401`; the corrected offline candidate is not packaged or
+> deployed. The standard UAC layer (alt setting 1, class requests, clocking) is not
+> started. See [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md). The text below is
+> the 2026-10-09 → 10-27 history.
 
 Audio is currently disabled. The configuration corruption was traced to an
 independent 8-bit length bug. Stock `usb:ds` still lacks a device-side Isoch
 TRB producer and installs endpoints only in alternate setting 0.
 
-The device-side ISO experiment uses a vendor alt0 endpoint, a
-Build-ID-specific HOS patch and a macOS libusb receiver. See
-[the experiment instructions](research/usb-ds-iso/README.md). Single-packet HS
-capture has passed hardware testing; stable 16-packet bursts remain unverified.
-A23's first 125 µs HS burst passed strict packet and completion checks, confirmed
-by its full device log. A subsequent reboot reproduction failed native packet
-status checks despite correct continuous raw payloads; its full device log now matches.
-One capture with the isolated host microframe observation build passed strict checks;
-its full device log is verified. The same observation build passed two independent single captures, both confirmed
-by full device logs. A bounded16-burst serial test with per-attempt native checks
-is prepared to examine ring wrap. Stability and cause remain unverified.
-UAC and PCM remain disabled.
+The research experiment uses a vendor alt0 endpoint, a Build-ID-specific HOS
+patch and a macOS receiver. A12 passed HS single-packet serial, ring-wrap,
+reconnect and video coexistence checks. By 2026-10-12, A23 with the
+`serial-clock-1` receiver passed two independent boots of 16 bursts each,
+including two actual ring wraps and matching full device logs. This establishes
+bounded repeatability for that configuration; earlier backend failures remain
+unresolved, and sustained streaming has not been validated.
+
+The first burst through the new IOUSBHost receiver on 2026-10-13 failed: its
+control request timed out, ISO was aborted, and no payload was received.
+Device logs confirm broadcast handling of that request, but its exact early
+exit remains unknown. Later instrumented IOUSBHost runs succeeded: the latest
+Q1 run on 2026-10-26 received three bursts totaling 9216 correct diagnostic
+bytes, with matching device traces and normal return. These bounded results
+do not establish continuous PCM. A separate fixed 16-TD, 24-byte candidate
+now builds as a full device ELF and passes targeted offline instruction and
+payload checks. Its SDK capability and host/device evidence comparison also
+pass injected offline checks. A matching NSP/IPS package and a single-use host
+entry are prepared; deployment and the first hardware short-packet test require
+new authorization. See the [package and entry](research/usb-ds-iso/docs/A23_SHORT24_PACKAGE_AND_ENTRY.md),
+[SDK component](research/usb-ds-iso/docs/A23_SHORT24_SDK_AND_RELATION.md),
+[short-packet candidate](research/usb-ds-iso/docs/A23_SHORT24_OFFLINE_CANDIDATE.md)
+and [cadence analysis](research/usb-ds-iso/docs/A23_AUDIO_CADENCE_GAP.md).
+UAC/PCM remains disabled; A23 video coexistence, sustained audio, SS and reset
+recovery still need separate validation.
+
+See the [research index](research/usb-ds-iso/README.md),
+[current status](research/usb-ds-iso/docs/STATUS.md) and
+[test prerequisites](research/usb-ds-iso/docs/TEST_PLAN.md). The current
+[research direction](research/usb-ds-iso/docs/RESEARCH_DIRECTION.md) connects
+these experiments to the standard USB audio/video goal.
 
 ### Workaround: Bluetooth audio (A2DP sink)
 
@@ -330,27 +356,31 @@ Note this knob affects *audio* latency, not video: for video lag, lower `RTBUFSI
 
 ## Files
 
-```
-sysmodule-uvc/
+```text
+SysDVR-UVC-Capture/
 ├── Makefile
-├── sysmodule.json             # NPDM configuration (permissions)
+├── sysmodule.json             # NPDM configuration
 ├── toolbox.json               # Atmosphère toolbox integration
-├── docs/
-│   └── RESEARCH.md            # Full debugging/protocol research notes
+├── docs/RESEARCH.md            # UVC protocol and latency research
 ├── tools/
-│   ├── patch_sps_vui.py       # SPS VUI patcher/verifier (latency fix)
-│   ├── switch-cam.sh          # Low-latency ffplay launcher (Linux)
-│   └── switch-cam.bat         # Low-latency ffplay launcher (Windows)
-└── source/
-    ├── sysmodule/main.c       # Entry point + capture threads
-    ├── uvc/
-    │   ├── uvc_descriptors.h  # USB/UVC descriptor definitions
-    │   ├── uac_descriptors.h  # UAC definitions (dead code, kept for reference)
-    │   ├── uac_device.h       # UAC API stubs (dead code, kept for reference)
-    │   ├── uvc_device.h/c     # UVC device: descriptors, EP0, streaming
-    ├── core.h/c               # Init, logging, threads
-    ├── capture.h/c            # grc:d capture + SPS/PPS injection
-    └── grcd.h/c               # grc:d IPC client
+│   ├── patch_sps_vui.py         # SPS VUI patcher/verifier
+│   ├── switch-cam.sh           # Linux low-latency launcher
+│   └── switch-cam.bat          # Windows low-latency launcher
+├── source/
+│   ├── sysmodule/main.c        # Entry point and capture threads
+│   ├── uvc/                   # UVC, ISO experiment and inactive UAC definitions
+│   ├── core.h/c               # Init, logging, threads
+│   ├── capture.h/c            # grc:d capture and SPS/PPS injection
+│   └── grcd.h/c               # grc:d IPC client
+└── research/usb-ds-iso/
+    ├── README.md              # ISO research index
+    ├── docs/                  # Current status, test conditions and historical evidence
+    ├── patches/               # Controller patch assembly
+    ├── host/                  # Host receiver
+    ├── tools/                 # Build, analysis and bounded workflow entry points
+    ├── tests/                 # Local verification
+    ├── ghidra/                # Decompiler export
+    └── private/               # Ignored frozen packages and hardware evidence
 ```
 
 ## Credits

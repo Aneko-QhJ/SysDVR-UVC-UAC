@@ -66,7 +66,7 @@ def analyze(run):
     pages=[a['first_virtual_trb']&~4095 for a in attempts]
     slots=[(a['first_virtual_trb']&4095)//16 for a in attempts]
     cycles=[a['first_cycle'] for a in attempts]
-    ring_progress=bool(attempts and len(set(pages))==1 and all(s<247 for s in slots) and all(slots[i]==(slots[i-1]+32)%247 and cycles[i]==(cycles[i-1]^int(slots[i-1]+32>=247)) for i in range(1,len(slots))))
+    ring_progress=bool(len(attempts)>1 and len(set(pages))==1 and all(s<247 for s in slots) and all(slots[i]==(slots[i-1]+32)%247 and cycles[i]==(cycles[i-1]^int(slots[i-1]+32>=247)) for i in range(1,len(slots))))
     success=bool(target==16 and len(triggers)==len(attempts)==16 and ordered and all(a['passed'] for a in attempts) and ring_progress and any(slots[i]<slots[i-1] for i in range(1,len(slots))) and all(a['own_first_two_ED_tags_match_ring'] for a in attempts))
     return dict(device_revision='A23',host_revision='native-guard-serial-1',target=target,triggers=len(triggers),callbacks=len(attempts),strict_acceptance_passed=success,first_failure_sequence=first_failure,no_submission_after_failure=failure_stop,sequence_ordered=ordered,ring_progression_verified=ring_progress,observed_ring_wraps=sum(slots[i]<slots[i-1] for i in range(1,len(slots))),all_own_event_tags_match=bool(attempts and all(a['own_first_two_ED_tags_match_ring'] for a in attempts)),attempts=attempts,switch_log_pending=True,runtime_revision_identity_verified=False,stability_verified=False,root_cause_confirmed=False,wire_trace_verified=False)
 

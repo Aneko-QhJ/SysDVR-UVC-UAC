@@ -89,7 +89,7 @@ def build(nso, variant, toolchain, out, frame_lead=0, retain_success=False, expl
         subprocess.run([str(toolchain / ('aarch64-none-elf-' + tool)), *map(str, args)], check=True)
     run('gcc', '-c', '-DVARIANT=' + str(variant), '-DFRAME_LEAD='+str(frame_lead),
         '-DRETAIN_SUCCESS='+str(int(retain_success)), '-DEXPLICIT_ALL='+str(int(explicit_all)),
-        '-DISO_MPS='+str(mps), '-DFOLLOWUP_SIA='+str(int(followup_sia)), '-DISO_INTERVAL='+str(interval), ROOT / ('iso_burst_context.S' if context_audit else 'iso_burst_doorbell.S' if doorbell_audit else 'iso_burst_phase.S' if publication_audit else 'iso_burst_audit.S' if event_audit else 'iso_burst_patch.S' if burst else 'iso_patch.S'), '-o', obj)
+        '-DISO_MPS='+str(mps), '-DFOLLOWUP_SIA='+str(int(followup_sia)), '-DISO_INTERVAL='+str(interval), ROOT / 'patches' / ('iso_burst_context.S' if context_audit else 'iso_burst_doorbell.S' if doorbell_audit else 'iso_burst_phase.S' if publication_audit else 'iso_burst_audit.S' if event_audit else 'iso_burst_patch.S' if burst else 'iso_patch.S'), '-o', obj)
     run('ld', '-T', linker, obj, '-o', elf)
     run('objcopy', '-O', 'binary', '--only-section=.text', elf, binary)
     syms = subprocess.check_output([str(toolchain / 'aarch64-none-elf-nm'), str(elf)], text=True)
