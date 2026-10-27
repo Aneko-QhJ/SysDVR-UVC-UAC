@@ -37,6 +37,14 @@
 - SD 最后已安全弹出；当前设备现场状态不推定仍就绪。
 - 旧票据、actual465、消费 namespace 保持；不恢复旧次数。
 
+## 工程状态（2026-10-27）
+
+- 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
+  [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
+- `make check` 绿：5 个文件，约 2 秒。
+- `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
+  [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
+
 ## 开放问题（按优先级）
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
