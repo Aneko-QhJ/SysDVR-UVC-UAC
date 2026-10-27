@@ -77,16 +77,21 @@ grc:d (4096B ≈ 21.3ms)
 A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结构性欠供。
 **3 URB + 现有 `MFI+32` 公式在名义速率下已经连续**，不需要改 FrameID。
 
-## 先验证 3 URB，再决定是否改 producer
+> **2026-10-27 硬件否决：** 3 URB 方案在第二次/第三次 `PostBufferAsync` 返回
+> `0xf601`，随后 usb 模块 `svcBreak`、Atmosphere fatal。该 endpoint 一次只接受一个
+> pending URB；上表的 3-URB 行只是理想模型，不可部署。详见
+> [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)。
 
-**第一步（不改 usb:ds 代码）**：
+## 3 URB 已否决，下一步是单 URB 长传输
 
-1. sysmodule 每 16ms 调一次 `PostBufferAsync(3072)`，保持 3 个 URB 在飞；
-2. 确认 endpoint/ring 能容纳 3×32 = 96 个 TRB；
-3. 确认 3 个 URB 的 Event Data 完成都能被 `GetReportData` 区分；
-4. 用现有 `MFI+32` 公式，host 收到连续 16ms 段。
+硬件结果：第二个 pending `PostBufferAsync` 返回 `0xf601`，随后 usb assert。不要再
+尝试 3 URB。可行方向：
 
-**只有**第 2/3 步失败，或 post 抖动导致 gap/overlap 时，才考虑游标：
+1. **单个长 URB**：把 TD 数从 16 增到 64–128（64–128ms），把 32ms lead 空档摊薄；
+2. **降低 lead**：4ms/1ms 变体，接受完成-重提之间的短空档；
+3. **改 usb:ds/producer**：允许排队 URB 或真正 ring（大改，需重新验证）。
+
+游标只有在“允许提前提交下一个 URB”时才有意义；单 URB API 下它不能消除空档：
 
 1. 在端点上下文保存 `next_frame`（当前 A23 没有）。
 2. `iso_enter` 的首 TD FrameID 取 `next_frame`，不再取 `MFI+32`。
@@ -115,8 +120,9 @@ A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结
 ## 分阶段
 
 1. **本轮**：Python 调度/ring 模型与测试（[model_uac_pcm_ring.py](../tools/model_uac_pcm_ring.py)）。
-2. **3 URB timed 验证**：不改 producer，只改 sysmodule 提交节奏；确认多 URB/完成/ring。
-3. 若 2 失败：游标/保留字段方案，离线 disassembly/Unicorn 验证。
+2. **3 URB 验证（已失败）**：第二次 post `0xf601`，usb `svcBreak`；不再重试。
+3. **单 URB 长传输/低 lead**：离线设计 + disassembly/Unicorn，先做 64 TD 的构造与
+   完成账本；再决定是否上硬件。
 4. 用 vendor ISO alt1 发送真实 PCM burst。
 5. 接 AC/AS alt1 + macOS 枚举。
 6. Linux 10s 连续验收；再收窄全局 NOP、评估 feedback。

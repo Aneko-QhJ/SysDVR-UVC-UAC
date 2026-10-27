@@ -29,11 +29,11 @@
 | [A23_SHORT24_ONCE_PLAN.md](A23_SHORT24_ONCE_PLAN.md) | 2026-10-27 | 4K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-27 | 6K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 | [A23_SHORT24_SDK_AND_RELATION.md](A23_SHORT24_SDK_AND_RELATION.md) | 2026-10-27 | 6K | 后续[NSP/IPS配套包、驻留入口与写盘](A23_SHORT24_PACKAGE_AND_ENTRY.md)已完成离线准备和 |
+| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-27 | 2K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CURRENT.md](CURRENT.md) | 2026-10-27 | 7K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
-| [PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md) | 2026-10-27 | 250K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 
-## 全部文档（248）
+## 全部文档（249）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -206,6 +206,7 @@
 | [A23_STARTUP_JOURNAL.md](A23_STARTUP_JOURNAL.md) | 2026-10-14 | 8K | A23 独立启动阶段记录原型（2026-10-14） — 新增固定64条、只追加的**EP0INI1启动日志**，区分API调用、原始Result、void返回和fatal |
 | [A23_STATUS_CAPTURE_REVISION.md](A23_STATUS_CAPTURE_REVISION.md) | 2026-10-22 | 7K | A23 STATUS计数语义修正与判断前留证（2026-10-22） — 最新实测结果（2026-10-22）：[同接口两轮成功及时间线](A23_LIVE75_FIRST_RESULT.md)已核对。一次采集完成113..128和129..144，两个新URB387/403共6144正确字… |
 | [A23_STATUS_TRANSPORT.md](A23_STATUS_TRANSPORT.md) | 2026-10-21 | 7K | A23 状态管道显式失败候选（2026-10-21） — 后续：[局部终态发布中断对照](A23_TERMINAL_PUBLICATION.md)完成546来源、50安排和74测试。两次完整回放48个发布中断，4次在完整exit文件fsync后仍中断；局部退出码声明不等于实际… |
+| [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-27 | 2K | 3-URB stream crash（2026-10-27） — `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [A23_SUPERVISOR_CANDIDATE.md](A23_SUPERVISOR_CANDIDATE.md) | 2026-10-20 | 5K | A23 独立 supervisor 收集候选（2026-10-20） — 后续：[supervisor管道、退出与清理边界](A23_SUPERVISOR_CLEANUP.md)补15种安排；60测试与498来源搬移通过，区分EOF/退出、组终止sent/not_found/error和ha… |
 | [A23_SUPERVISOR_CLEANUP.md](A23_SUPERVISOR_CLEANUP.md) | 2026-10-20 | 6K | A23 supervisor 管道、退出与清理边界（2026-10-20） — 后续：[统一supervisor候选](A23_SUPERVISOR_UNIFIED.md)合并两阶段32种指定安排并补5种关闭错误；503来源、37场景与60测试通过，同一观察/限额/终止/准入，保留来源未认证负对照… |
 | [A23_SUPERVISOR_JOB_LINK.md](A23_SUPERVISOR_JOB_LINK.md) | 2026-10-21 | 6K | A23 supervisor 与 job/receipt 的只读关联候选（2026-10-20） — 后续：[fixture自身job启动与结果绑定](A23_FIXTURE_JOB_BINDING.md)完成512来源、34安排和60测试；新Python fixture生成独立job/nonce与receipt，历史… |
@@ -283,5 +284,5 @@
 | [SERIAL_CLOCK_AUDIT.md](SERIAL_CLOCK_AUDIT.md) | 2026-10-12 | 9K | A23有界串行Mach时间戳诊断 — 此前防休眠串行失败中，raw16包及设备URB正常终结，但native/public报错，开头293个NotSent空槽。 |
 | [STATUS.md](STATUS.md) | 2026-10-27 | 255K | 当前状态（2026-10-27，Asia/Shanghai） — 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [TEST_PLAN.md](TEST_PLAN.md) | 2026-10-27 | 212K | 后续测试条件（2026-10-22） — 当前计划约束已于 2026-10-27 更新，见 [研究规则](RESEARCH_RULES.md)。先不用虚拟机， |
-| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-27 | 5K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
+| [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-27 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-27 | 4K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |

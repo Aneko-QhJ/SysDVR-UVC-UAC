@@ -76,12 +76,12 @@
   A23 burst producer + NOP；host 收到 16/16 个 192B 包，payload/completion 均 verified；
   设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
   status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
-- **连续 PCM producer 设计/模型已完成**：[UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md)。
-  - 模型：**3 URB in flight + 现有 `MFI+32` 公式**在 10s 内 625×16ms、0 gap/0 欠载；
-    不需要先改 FrameID。A23 单 URB/等完成只有 209 个（33%）、32ms 空档、ring 溢出。
-  - 下一步：先验证“每 16ms 提交一个、3 个 URB 在飞”的多 URB/完成/ring 行为；只有
-    多 URB 或 post 抖动失败时，才做 cursor/保留字段。
-- 之后：AC/AS alt1 + Linux `snd-usb-audio` 10s；同时收窄全局 NOP。
+- **连续 PCM：3-URB 方案已被硬件否决（22:45）**：第 1 次 post `rc=0`/urb 387 并完成；
+  第 2/3 次 `rc=0xf601`；随后 usb 模块 User Break（`base+0x1927c`，`svc #0x26`），
+  Atmosphere fatal `0x4A2`。该 endpoint 一次只接受一个 pending URB；cursor 不能消除
+  单 URB 空档。证据 [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md)。
+- 下一步：**单 URB 长传输（64–128 TD）或低 lead**，先离线 disassembly/Unicorn 验证；
+  不再试 3 URB。之后才是 AC/AS alt1 + Linux `snd-usb-audio` 10s。
 
 ## 工程状态（2026-10-27）
 
@@ -95,8 +95,8 @@
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
-   打通；连续 PCM 的 cursor/ring 模型已完成。剩下 cursor 汇编、标准宿主枚举、时钟/反馈
-   与跨块样本连续性。
+   打通；连续 PCM 的 3-URB 方案已被硬件否决（usb assert）。剩下单 URB 长传输/低 lead、
+   标准宿主枚举、时钟/反馈与跨块样本连续性。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。

@@ -16,7 +16,10 @@ iso-probe: iso-probe.c ../../../source/uvc/iso_probe_protocol.h
 alt1-probe: alt1-probe.c ../../../source/uvc/alt1_probe_protocol.h
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+iso-stream: iso-stream.c
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
+
 clean:
-	rm -f iso-probe alt1-probe
+	rm -f iso-probe alt1-probe iso-stream
 
 .PHONY: clean
