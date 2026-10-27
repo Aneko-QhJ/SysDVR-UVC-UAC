@@ -65,14 +65,32 @@ ISO stream post rc=0xf601 urb=0
 - A23 的两轮离线验证明确使用**第二轮新的 DMA 地址**（见
   [A23_REARM_GENERATIONS.md](A23_REARM_GENERATIONS.md)）；同缓冲复用没有被验证过。
 
-## 结论
+## 后续：3 URB 已验证（23:4x）
 
-- 这次实验**没有真正测到 3 URB in flight**：首 URB 0 长完成，随后只是 b0 的单缓冲
-  重提，第二次提交在 DMA map 崩。
-- 因此**不能**据此宣称“3 URB 不可用”；3 URB 仍然是未验证问题。
-- 已确认的是：**同一个 DMA 缓冲在 A23 完成后不能直接复用**（或至少当前 stream 的
-  完成/释放路径没有让它可复用）。
-- `0x1908c`（gate busy）是安全错误；真正的崩溃是 DMA map，不是 gate。
+按“host 先提交 ISO read，再 START；b0/b1/b2 各自 4K 对齐、各用一次”的条件重跑：
+
+```
+ISO stream create rc=0x0
+ISO stream start rc=0x0
+ISO stream try b=0 / post rc=0x0 urb=387 / complete
+ISO stream try b=1 / post rc=0x0 urb=403 / complete
+ISO stream try b=2 / post rc=0x0 urb=419 / complete
+ISO stream stop posts=3 completes=3 errors=0 attempts=3
+```
+
+Host：`iso-stream --transfers 1 --packets 256` → **48 valid packets, bad=0,
+zero=208**。所以 **3 URB in flight 本身是可行的**；之前的崩溃是测试设置问题：
+
+- 首 URB 在 host 读之前 0 长完成；
+- b0 复用；
+- b1/b2 没有 4K 对齐（`0xce8c`）。
+
+## 现在仍未验证
+
+- 完成后**复用同一个 DMA 缓冲**（第 4 次提交）是否安全；
+- 连续多轮（>3 URB）的 ring/DMA 回收；
+- 48ms 之后的持续供给。
+
 
 ## 下一步（先离线/构建，再实机）
 

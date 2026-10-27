@@ -50,6 +50,25 @@ static u8 alignas(0x1000) g_isoBuffer[0x1000];
 static IsoProbeStatus g_isoStatus;
 static u8 g_isoAlt;
 
+#ifdef ISO_PROBE_STREAM
+#define ISO_STREAM_BUFFERS 3
+#define ISO_STREAM_BYTES (ISO_PROBE_BURST_PACKETS * ISO_PROBE_PACKET_SIZE)
+/* Each URB buffer must start on a 4 KiB boundary; usb:ds rejects a misaligned
+   address with 0xce8c before the producer hook runs. */
+static u8 alignas(0x1000) g_isoStreamBuf[ISO_STREAM_BUFFERS][0x1000];
+static u32 g_isoStreamUrb[ISO_STREAM_BUFFERS];
+static bool g_isoStreamBusy[ISO_STREAM_BUFFERS];
+static bool g_isoStreamUsed[ISO_STREAM_BUFFERS];
+static Thread g_isoStreamThread;
+static u8 alignas(0x1000) g_isoStreamStack[0x4000];
+static volatile bool g_isoStreamRun;
+static volatile bool g_isoStreamStop;
+static volatile bool g_isoStreamExited;
+static u32 g_isoStreamSeq;
+static u32 g_isoStreamPosts, g_isoStreamCompletes, g_isoStreamErrors, g_isoStreamLate;
+static u32 g_isoStreamAttempts;
+#endif
+
 #ifdef ISO_RUNTIME_PATCH
 typedef struct { Handle debug; u64 base; Result last_result; } IsoPatchContext;
 static int _isoPatchRead(void *context, uint32_t offset, void *bytes, size_t size)
@@ -277,6 +296,134 @@ static void _pollIsoProbe(void)
                 r->urb_status, g_isoStatus.diagnostics.event_count);
         }
     }
+}
+#endif
+
+#ifdef ISO_PROBE_STREAM
+/* Three 16 ms URBs in flight, posted every 16 ms.  The A23 producer derives
+   each first FrameID from MFI+32 ms, so post_k+32ms = start_{k-1}+16ms. */
+static void _isoStreamFill(u8 *buffer, u16 sequence)
+{
+    for (u32 packet = 0; packet < ISO_PROBE_BURST_PACKETS; ++packet) {
+        u8 *p = buffer + packet * ISO_PROBE_PACKET_SIZE;
+        p[0] = 'I'; p[1] = 'S'; p[2] = 'O'; p[3] = '1';
+        p[4] = (u8)sequence;
+        p[5] = (u8)(sequence >> 8);
+        for (u32 i = 6; i < ISO_PROBE_PACKET_SIZE; ++i)
+            p[i] = (u8)(i ^ sequence ^ (sequence >> 8));
+        ++sequence;
+    }
+}
+
+static void _isoStreamThreadFunc(void *arg)
+{
+    (void)arg;
+    LOG("ISO stream thread start\n");
+    /* The host has already queued its first ISO read when it sends START; give
+       the START ACK a moment to land before the first submission. */
+    svcSleepThread(10E+6);
+    const u64 step = armGetSystemTickFreq() * 16 / 1000;
+    u64 next = svcGetSystemTick();
+    while (!g_isoStreamStop) {
+        UsbDsReportData report = {0};
+        Result rc = usbDsEndpoint_GetReportData(g_isoEndpoint, &report);
+        if (R_SUCCEEDED(rc)) {
+            for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+                for (u32 b = 0; b < ISO_STREAM_BUFFERS; ++b) {
+                    if (g_isoStreamBusy[b] && g_isoStreamUrb[b] == report.report[i].id) {
+                        g_isoStreamBusy[b] = false;
+                        if (g_isoStreamCompletes < 3)
+                            LOG("ISO stream complete urb=%u\n", g_isoStreamUrb[b]);
+                        ++g_isoStreamCompletes;
+                    }
+                }
+            }
+        }
+        const u64 now = svcGetSystemTick();
+        if (now >= next) {
+            for (u32 b = 0; b < ISO_STREAM_BUFFERS; ++b) {
+                if (g_isoStreamBusy[b] || g_isoStreamUsed[b]) continue;
+                _isoStreamFill(g_isoStreamBuf[b], (u16)g_isoStreamSeq);
+                g_isoStreamSeq += ISO_PROBE_BURST_PACKETS;
+                armDCacheFlush(g_isoStreamBuf[b], ISO_STREAM_BYTES);
+                eventClear(&g_isoEndpoint->CompletionEvent);
+                u32 urb = 0;
+                ++g_isoStreamAttempts;
+                if (g_isoStreamAttempts <= 3)
+                    LOG("ISO stream try b=%u len=%u\n", b, (unsigned)ISO_STREAM_BYTES);
+                rc = usbDsEndpoint_PostBufferAsync(g_isoEndpoint, g_isoStreamBuf[b],
+                    ISO_STREAM_BYTES, &urb);
+                if (g_isoStreamAttempts <= 3)
+                    LOG("ISO stream post rc=0x%x urb=%u\n", rc, urb);
+                if (R_SUCCEEDED(rc)) {
+                    g_isoStreamBusy[b] = true;
+                    g_isoStreamUsed[b] = true;
+                    g_isoStreamUrb[b] = urb;
+                    ++g_isoStreamPosts;
+                    if (g_isoStreamPosts % 100 == 0)
+                        LOG("ISO stream posts=%u completes=%u errors=%u late=%u\n",
+                            g_isoStreamPosts, g_isoStreamCompletes,
+                            g_isoStreamErrors, g_isoStreamLate);
+                } else {
+                    ++g_isoStreamErrors;
+                }
+                break;
+            }
+            next += step;
+            if (next < now) {
+                ++g_isoStreamLate;
+                next = now + step;
+            }
+        }
+        svcSleepThread(1000000);
+    }
+    if (g_isoEndpoint) {
+        usbDsEndpoint_Cancel(g_isoEndpoint);
+        eventWait(&g_isoEndpoint->CompletionEvent, 100E+6);
+        UsbDsReportData report = {0};
+        usbDsEndpoint_GetReportData(g_isoEndpoint, &report);
+    }
+    for (u32 b = 0; b < ISO_STREAM_BUFFERS; ++b) g_isoStreamBusy[b] = false;
+    g_isoStreamExited = true;
+}
+
+static Result _isoStartStream(void)
+{
+    if (g_isoStreamRun) return 0;
+    g_isoStreamStop = false;
+    g_isoStreamExited = false;
+    g_isoStreamSeq = 0;
+    g_isoStreamPosts = g_isoStreamCompletes = g_isoStreamErrors = g_isoStreamLate = 0;
+    g_isoStreamAttempts = 0;
+    for (u32 b = 0; b < ISO_STREAM_BUFFERS; ++b) {
+        g_isoStreamBusy[b] = false;
+        g_isoStreamUsed[b] = false;
+    }
+    Result rc = threadCreate(&g_isoStreamThread, _isoStreamThreadFunc, NULL,
+        g_isoStreamStack, sizeof(g_isoStreamStack), 0x2C, -2);
+    LOG("ISO stream create rc=0x%x\n", rc);
+    if (R_SUCCEEDED(rc)) {
+        rc = threadStart(&g_isoStreamThread);
+        LOG("ISO stream start rc=0x%x\n", rc);
+        if (R_FAILED(rc)) threadClose(&g_isoStreamThread);
+    }
+    if (R_SUCCEEDED(rc)) g_isoStreamRun = true;
+    return rc;
+}
+
+static void _isoStopStream(void)
+{
+    if (!g_isoStreamRun) return;
+    g_isoStreamStop = true;
+    for (u32 i = 0; i < 1000 && !g_isoStreamExited; ++i) svcSleepThread(1000000);
+    LOG("ISO stream stop exited=%u posts=%u completes=%u errors=%u late=%u attempts=%u\n",
+        g_isoStreamExited, g_isoStreamPosts, g_isoStreamCompletes,
+        g_isoStreamErrors, g_isoStreamLate, g_isoStreamAttempts);
+    if (g_isoStreamExited) {
+        threadWaitForExit(&g_isoStreamThread);
+        threadClose(&g_isoStreamThread);
+    }
+    g_isoStreamRun = false;
 }
 #endif
 
@@ -1005,6 +1152,9 @@ cleanup:
 void UvcDeviceExit(void)
 {
 #ifdef ISO_PROBE
+#ifdef ISO_PROBE_STREAM
+    _isoStopStream();
+#endif
     if (g_isoInterface) {
         usbDsInterface_Close(g_isoInterface);
         g_isoInterface = NULL;
@@ -1623,9 +1773,25 @@ static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         if (setup->wValue != 0) { usbDsInterface_StallCtrl(iface); return; }
 #endif
         g_isoAlt = (u8)setup->wValue;
+#ifdef ISO_PROBE_STREAM
+        if (g_isoAlt == 0) _isoStopStream();
+#endif
         _ctrlAck(iface);
         return;
     }
+#ifdef ISO_PROBE_STREAM
+    if (setup->bmRequestType == 0x41 && setup->bRequest == ISO_PROBE_STREAM_START &&
+        setup->wValue == 0 && setup->wLength == 0) {
+        Result src = _isoStartStream();
+        if (R_FAILED(src)) {
+            LOG("ISO stream start rc=0x%x\n", src);
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+        _ctrlAck(iface);
+        return;
+    }
+#endif
     if (setup->bmRequestType == 0x81 && setup->bRequest == USB_REQUEST_GET_INTERFACE &&
         setup->wValue == 0 && setup->wLength == 1) {
         u8 alt = g_isoAlt;
@@ -1861,7 +2027,9 @@ static bool _serviceSetup(UsbDsInterface* iface)
 void UvcDeviceProcessRequests(void)
 {
 #ifdef ISO_PROBE
+#ifndef ISO_PROBE_STREAM
     _pollIsoProbe();
+#endif
 #endif
 #ifdef ALT1_PROBE
     _pollAlt1Probe();

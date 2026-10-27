@@ -77,11 +77,11 @@ grc:d (4096B ≈ 21.3ms)
 A23 单 URB 每 48ms 只送 16ms 数据（33%），ring 溢出 1.2MB；这是结构性欠供。
 **3 URB + 现有 `MFI+32` 公式在名义速率下已经连续**，不需要改 FrameID。
 
-> **2026-10-27 第一次 3-URB 实验无效：** 首 URB 在 host 开始读之前就 0 长完成，
-> 线程随后复用了同一个 b0；第二次提交在 Normal producer 的 DMA map
-> `FUN_00003c50` 崩，usb fatal。A23 gate 失败其实会安全返回 `0x1908c`，不是原因；
-> `0xf601` 是 usb 死亡后的 session closed。**这次实验没有真正测到 3 URB in flight**，
-> 因此 3 URB 仍未验证。详见 [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) 与
+> **2026-10-27 3-URB 已验证：** 在 host 先提交 ISO read、再 START，且 b0/b1/b2
+> 各自 4K 对齐、各用一次的条件下，设备 posts=3/completes=3/errors=0，host 收到
+> 48/48 包、bad=0。之前的崩溃是首 URB 0 长 + b0 复用 + b1/b2 未对齐的测试设置问题，
+> 不是 3 URB 不可用。下一步是 DMA 缓冲复用/连续多轮。详见
+> [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) 与
 > [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
 
 ## 3 URB 第一次实验无效；下一步先握手 + 不同缓冲

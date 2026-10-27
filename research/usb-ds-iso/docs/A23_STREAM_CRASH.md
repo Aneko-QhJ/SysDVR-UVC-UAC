@@ -53,6 +53,10 @@ SysDVR NSP；Atmosphere 随即 fatal。
   用的是**第二轮新的 DMA 地址**；同缓冲复用没验证过。第二次提交在 DMA map 崩。
 - 这次实验**没有真正测到 3 URB in flight**，因此不能据此宣称 3 URB 不可用；3 URB
   仍未验证。已确认的是：**同缓冲在 A23 完成后不能直接复用**。
+- **后续 3-URB 成功**（START 握手 + b0/b1/b2 各自 4K 对齐、各用一次）：设备
+  posts=3/completes=3/errors=0，host 48/48 包、bad=0。这证明本次崩溃是测试设置
+  （首 URB 0 长、b0 复用、b1/b2 未对齐），不是 3 URB 不可用。见
+  [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md)。
 - 这个 NSP 是危险构建，已归档，不再部署。
 
 ## 对连续 PCM 的影响
