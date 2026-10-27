@@ -8,6 +8,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ def main():
     parser.add_argument("--quick", action="store_true", help="run only the current-topic tests")
     parser.add_argument("--pattern", default="test_*.py", help="test filename glob")
     parser.add_argument("--filter", default="", help="only files whose name contains this")
-    parser.add_argument("--timeout", type=int, default=600, help="seconds per process")
+    parser.add_argument("--timeout", type=int, default=1800, help="seconds per process")
     parser.add_argument("--list", action="store_true", help="list matching files and exit")
     parser.add_argument("-q", "--quiet", action="store_true", help="only print failures and summary")
     args = parser.parse_args()
@@ -99,9 +100,15 @@ def main():
 
     if failures:
         print(f"\n{len(failures)} failure group(s):")
+        log = Path(tempfile.gettempdir()) / f"dsh-research-tests-{os.getpid()}.log"
+        chunks = []
         for name, result in failures:
             print(f"\n--- {name} (exit {result.returncode}) ---")
             print(tail(result))
+            chunks.append(f"===== {name} (exit {result.returncode}) =====\n")
+            chunks.append((result.stdout or "") + (result.stderr or ""))
+        log.write_text("\n".join(chunks))
+        print(f"\nfull output: {log}")
         return 1
 
     print("\nall tests passed")

@@ -8,8 +8,8 @@
 
 1. **问题卡（5 行）**：问题 / 变化 / 判别条件 / 次数或时长上限 / 停止条件。
 2. **离线**：只读分析、构建、测试。产物写 `private/analysis/<id>/`，不覆盖旧目录。
-3. **检查**：`make -C research/usb-ds-iso check`（快速）；需要时跑 `check-all`。
-   失败先修，不申请实机。
+3. **检查**：`make -C research/usb-ds-iso check`（快速，必须绿）；需要时跑 `check-all`。
+   测试分层与当前全量基线见 [tests/README.md](tests/README.md)。失败先修，不申请实机。
 4. **实机**：需要新的明确授权；一次只改一个变量；实际打印 `WAITING` 后再提示开机；
    失败不重试、不补轮。
 5. **收尾**：更新 [docs/CURRENT.md](docs/CURRENT.md)（事实、证据路径、未证明项），

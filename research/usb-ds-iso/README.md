@@ -20,7 +20,7 @@
 | --- | --- |
 | `docs/` | 专题记录；`CURRENT.md` 是当前状态，其余是历史 |
 | `tools/` | Python 工具；[tools/README.md](tools/README.md) 是分类索引 |
-| `tests/` | 离线测试；[tests/run_all.py](tests/run_all.py) 是统一 runner |
+| `tests/` | 离线测试；[tests/run_all.py](tests/run_all.py) 是统一 runner，分层见 [tests/README.md](tests/README.md) |
 | `host/` | macOS IOUSBHost 接收器与主机侧实验 |
 | `device/` | 设备侧候选与 C 头文件 |
 | `patches/` | 汇编 patch 与部署材料 |
