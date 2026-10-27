@@ -108,8 +108,19 @@ NSP `c9d1aaa6…`：同一个 bulk 端点同时放进 alt0 和 alt1。同一 boo
 - **alt1 仍不可用**：`SET_INTERFACE(1)` 后设备侧 post 仍成功（urb 404、transferred 64、
   urb_status 3），但 host 的 alt1 bulk 读超时、0B。即端点仍停在 alt0 上下文，
   host 的 alt1 pipe 收不到这批数据；不是 post 失败，而是 alt 切换后端点与 host pipe 不匹配。
-- 这条路径给出了一个**非标准但可工作的 alt0 数据面**；标准 UAC 宿主是否愿意在 alt0
-  流，仍需单独验证。
+设备日志（1796B，SHA256 `70d15218…`）确认：
+
+```
+ALT1 probe iface=2 ep=0x84 hs=32 ss=44
+ALT1 trigger rc=0x0 urb=388
+ALT1 SET_INTERFACE 1
+ALT1 trigger rc=0x0 urb=404
+ALT1 SET_INTERFACE 0
+```
+
+两次 `PostBufferAsync` 都成功；alt1 的失败只发生在 host 的 bulk 读，设备侧没有报错。
+这条路径给出了一个**非标准但可工作的 alt0 数据面**；标准 UAC 宿主是否愿意在 alt0
+流，仍需单独验证。
 
 下一步：
 
