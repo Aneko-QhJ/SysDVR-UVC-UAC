@@ -1,9 +1,10 @@
 # ALT1 vendor 探针（2026-10-27）
 
-> **2026-10-27 21:42：runtime NOP patch 成功。** alt1-only 端点 `post=0`、
-> 收到 64B `ALT1`；根因与 8 个 alt0 filter 的补丁见
-> [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md)。这是 bulk 端点结论，
-> UAC 的 ISO alt1 仍差 ISO producer 与标准宿主验证。
+> **2026-10-27 22:12：bulk alt1 与 ISO alt1 都通过。** bulk 端点收到 64B；ISO
+> alt1（EP0x83/MPS256/interval4，A23 16×192 burst）收到 16/16 包、payload 与 completion
+> 均 verified。根因与 8 个 alt0 filter 的补丁见
+> [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md)。这仍是诊断 burst，
+> 连续 PCM 与标准 UAC 宿主未验证。
 
 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题——
 `usb:ds` 是否会把一个只出现在 alt1 的端点装好，宿主 `SET_INTERFACE(1)` 后能否完成一次传输。

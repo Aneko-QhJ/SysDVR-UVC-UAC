@@ -72,8 +72,12 @@
   证据 `private/runs/A-alt1-runtime-nop-20261027/`。
 - 这证明 **bulk alt1 的安装/选择/传输** 已打通；UAC 的 ISO alt1、ISO producer、
   标准宿主仍未验证。IPS 版本未生效，runtime patch 是当前可用机制。
-- 下一步：把 NOP 与 A23 ISO producer 合并，先测 vendor ISO `0x84`/alt1，再接
-  Linux `snd-usb-audio` 的 UAC alt1；同时收窄全局 NOP 到目标接口/`SET_INTERFACE`。
+- **ISO alt1（22:12）通过**：vendor alt1 `EP0x83` ISO/MPS256/interval4 +
+  A23 burst producer + NOP；host 收到 16/16 个 192B 包，payload/completion 均 verified；
+  设备日志 `ISO runtime patch result=0 record=29`、`ISO seq=1 URB=387 requested=raw=3072
+  status=3`。仍是 16×192 的一次性 burst，不是连续 PCM；UAC 标准宿主未验证。
+- 下一步：做连续 PCM producer（ring/URB 时长/usb:ds 提交），再接 AC/AS alt1 与
+  Linux `snd-usb-audio`；同时收窄全局 NOP 到目标接口/`SET_INTERFACE`。
 
 ## 工程状态（2026-10-27）
 
@@ -86,8 +90,8 @@
 ## 开放问题（按优先级）
 
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 端点安装已由 NOP patch
-   打通。剩下 ISO alt1 producer、标准宿主枚举、时钟/反馈与跨块样本连续性。
+2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
+   打通。剩下连续 PCM producer、标准宿主枚举、时钟/反馈与跨块样本连续性。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。

@@ -15,8 +15,8 @@
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 数据路径已被首次探针否定，UAC 仍禁用。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
-  alt1-only bulk 端点 `post=0`、收到 64B。根因是 `usb:ds` 的 8 个 alt0 endpoint
-  filter；下一步是 ISO alt1 producer + UAC 标准宿主。
+  bulk alt1 收到 64B，ISO alt1（EP0x83/MPS256/interval4，A23 16×192 burst）收到 16/16 包。
+  下一步是连续 PCM producer + UAC 标准宿主。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

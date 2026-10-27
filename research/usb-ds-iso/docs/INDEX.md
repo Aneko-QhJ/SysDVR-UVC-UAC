@@ -17,7 +17,7 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
-| [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 2K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
+| [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |
 | [A23_EVIDENCE_CONCLUSIONS.md](A23_EVIDENCE_CONCLUSIONS.md) | 2026-10-27 | 9K | 2026-10-27 推进策略更新：事实和证据边界继续保留，后续流程按 |
@@ -30,14 +30,14 @@
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-27 | 6K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 | [A23_SHORT24_SDK_AND_RELATION.md](A23_SHORT24_SDK_AND_RELATION.md) | 2026-10-27 | 6K | 后续[NSP/IPS配套包、驻留入口与写盘](A23_SHORT24_PACKAGE_AND_ENTRY.md)已完成离线准备和 |
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-27 | 6K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-27 | 7K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md) | 2026-10-27 | 250K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 
 ## 全部文档（247）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
-| [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 2K | ALT1 端点安装 patch（2026-10-27） — HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
+| [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | ALT1 端点安装 patch（2026-10-27） — HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 7K | ALT1 vendor 探针（2026-10-27） — 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_ARCHIVE_READ_VIEW.md](A23_ARCHIVE_READ_VIEW.md) | 2026-10-23 | 6K | 单次归档检查的读取复用候选（2026-10-23） — 隔离候选通过26个原生场景，但本地对照没有可确认的速度收益，暂不接入实机。正常检查的实际文件打开/内容读取从3305次降到1757次，三次候选计时却与原版相近、略高。保留这一负结果，停止继续为该版本扩大模拟或准备实机。 |
 | [A23_ARGUMENT_CACHE.md](A23_ARGUMENT_CACHE.md) | 2026-10-15 | 5K | 格式解析器局部入口与参数缓存审查（2026-10-14） — 2026-10-15更正：本页旧工具标为x32/x64的局部取参区域实际由%o分支进入，不能当作 |
@@ -237,7 +237,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-27 | 6K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-27 | 7K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-09 | 4K | 实验分支目录与本地产物 — `research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |

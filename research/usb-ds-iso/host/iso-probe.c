@@ -10,7 +10,7 @@
 #include "../../../source/uvc/iso_probe_protocol.h"
 
 static volatile sig_atomic_t interrupted;
-static bool done, payload_ok, burst_mode;
+static bool done, payload_ok, burst_mode, alt1_mode;
 static unsigned matched, unexpected;
 static uint16_t sequence;
 static FILE *logfile;
@@ -164,12 +164,13 @@ int main(int argc, char **argv) {
             trigger_delay_ms = (unsigned)n;
         } else if (!strcmp(argv[i], "--log") && i + 1 < argc) outpath = argv[++i];
         else if (!strcmp(argv[i], "--burst")) burst_mode = true;
+        else if (!strcmp(argv[i], "--alt1")) alt1_mode = true;
         else if (!strcmp(argv[i], "--cancel")) cancel_only = true;
         else if (!strcmp(argv[i], "--frames")) frame_only = true;
         else if (!strcmp(argv[i], "--receive-only")) receive_only = true;
         else if (!strcmp(argv[i], "--empty-window")) { receive_only = true; empty_window = true; }
         else {
-            fprintf(stderr, "Usage: %s --log run.jsonl [--repeat 100 | --cancel | --frames | --receive-only | --empty-window] [--packets 64..512] [--burst] [--trigger-delay-ms 1..500]\n", argv[0]);
+            fprintf(stderr, "Usage: %s --log run.jsonl [--repeat 100 | --cancel | --frames | --receive-only | --empty-window] [--packets 64..512] [--burst] [--alt1] [--trigger-delay-ms 1..500]\n", argv[0]);
             return 2;
         }
     }
@@ -209,7 +210,7 @@ int main(int argc, char **argv) {
         for (int j = 0; j < config->interface[i].num_altsetting; ++j) {
             const struct libusb_interface_descriptor *d = &config->interface[i].altsetting[j];
             if (d->bInterfaceClass != 0xff || d->bInterfaceSubClass != 0x49 ||
-                d->bInterfaceProtocol != 1 || d->bAlternateSetting != 0) continue;
+                d->bInterfaceProtocol != 1 || d->bAlternateSetting != (alt1_mode ? 1 : 0)) continue;
             if (iface != -1 || d->bInterfaceNumber != 2 || d->bNumEndpoints != 1) {
                 fprintf(stderr, "Ambiguous/unexpected experiment interface\n"); goto cleanup;
             }
@@ -242,6 +243,10 @@ int main(int argc, char **argv) {
     rc = libusb_claim_interface(device, iface);
     if (rc) goto fail;
     claimed = true;
+    if (alt1_mode) {
+        rc = libusb_set_interface_alt_setting(device, iface, 1);
+        if (rc) goto fail;
+    }
     fprintf(logfile, "{\"kind\":\"experiment\",\"burst_packets\":%u,\"trigger_delay_ms\":%u}\n",
             burst_mode ? ISO_PROBE_BURST_PACKETS : 1, trigger_delay_ms);
     IsoProbeStatus state;

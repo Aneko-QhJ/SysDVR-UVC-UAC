@@ -48,6 +48,7 @@ static UsbDsInterface* g_isoInterface;
 static UsbDsEndpoint* g_isoEndpoint;
 static u8 alignas(0x1000) g_isoBuffer[0x1000];
 static IsoProbeStatus g_isoStatus;
+static u8 g_isoAlt;
 
 #ifdef ISO_RUNTIME_PATCH
 typedef struct { Handle debug; u64 base; Result last_result; } IsoPatchContext;
@@ -180,11 +181,24 @@ static Result _setupIsoProbe(void)
     /* The matching controller patch is deliberately restricted to EP 83. */
     if (g_isoInterface->interface_index != 2)
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
-    const struct usb_interface_descriptor iface = {
+#ifndef ISO_PROBE_ALT1
+    const struct usb_interface_descriptor iface_only = {
         .bLength = USB_DT_INTERFACE_SIZE, .bDescriptorType = USB_DT_INTERFACE,
         .bInterfaceNumber = 2, .bAlternateSetting = 0, .bNumEndpoints = 1,
         .bInterfaceClass = 0xff, .bInterfaceSubClass = 0x49, .bInterfaceProtocol = 1,
     };
+#else
+    const struct usb_interface_descriptor iface_alt0 = {
+        .bLength = USB_DT_INTERFACE_SIZE, .bDescriptorType = USB_DT_INTERFACE,
+        .bInterfaceNumber = 2, .bAlternateSetting = 0, .bNumEndpoints = 0,
+        .bInterfaceClass = 0xff, .bInterfaceSubClass = 0x49, .bInterfaceProtocol = 1,
+    };
+    const struct usb_interface_descriptor iface_alt1 = {
+        .bLength = USB_DT_INTERFACE_SIZE, .bDescriptorType = USB_DT_INTERFACE,
+        .bInterfaceNumber = 2, .bAlternateSetting = 1, .bNumEndpoints = 1,
+        .bInterfaceClass = 0xff, .bInterfaceSubClass = 0x49, .bInterfaceProtocol = 1,
+    };
+#endif
     const struct usb_endpoint_descriptor ep = {
         .bLength = USB_DT_ENDPOINT_SIZE, .bDescriptorType = USB_DT_ENDPOINT,
         .bEndpointAddress = 0x83, .bmAttributes = USB_TRANSFER_TYPE_ISOCHRONOUS,
@@ -198,7 +212,16 @@ static Result _setupIsoProbe(void)
     for (unsigned i = 0; i < 2; ++i) {
         struct usb_endpoint_descriptor speed_ep = ep;
         if (speeds[i] == UsbDeviceSpeed_Super) speed_ep.bInterval = 4;
-        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i], &iface, sizeof(iface));
+#ifdef ISO_PROBE_ALT1
+        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i],
+            &iface_alt0, sizeof(iface_alt0));
+        if (R_FAILED(rc)) return rc;
+        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i],
+            &iface_alt1, sizeof(iface_alt1));
+#else
+        rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i],
+            &iface_only, sizeof(iface_only));
+#endif
         if (R_FAILED(rc)) return rc;
         rc = usbDsInterface_AppendConfigurationData(g_isoInterface, speeds[i], &speed_ep, USB_DT_ENDPOINT_SIZE);
         if (R_FAILED(rc)) return rc;
@@ -1593,13 +1616,19 @@ static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         return;
     }
     if (setup->bmRequestType == 0x01 && setup->bRequest == USB_REQUEST_SET_INTERFACE &&
-        setup->wValue == 0 && setup->wLength == 0) {
+        setup->wLength == 0) {
+#ifdef ISO_PROBE_ALT1
+        if (setup->wValue > 1) { usbDsInterface_StallCtrl(iface); return; }
+#else
+        if (setup->wValue != 0) { usbDsInterface_StallCtrl(iface); return; }
+#endif
+        g_isoAlt = (u8)setup->wValue;
         _ctrlAck(iface);
         return;
     }
     if (setup->bmRequestType == 0x81 && setup->bRequest == USB_REQUEST_GET_INTERFACE &&
         setup->wValue == 0 && setup->wLength == 1) {
-        u8 alt = 0;
+        u8 alt = g_isoAlt;
         _ctrlWrite(iface, &alt, 1);
         return;
     }

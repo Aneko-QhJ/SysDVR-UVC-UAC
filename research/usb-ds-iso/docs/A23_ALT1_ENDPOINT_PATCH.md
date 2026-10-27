@@ -53,9 +53,22 @@ status: alt=1 state=2 post=0x00000000 urb=388 completed=1 transferred=64 urb_sta
 结论：**alt1 的 bulk 端点安装/选择/传输已经打通。** 这是 usb:ds 的 alt0-only
 过滤 bug，不是宿主问题，也不是 `RegisterEndpoint` 本身失败。
 
+## ISO alt1 实测（22:12）
+
+- NSP `9120570d…`：vendor interface 2，alt0 无端点，alt1 `EP0x83` ISO、MPS256、
+  bInterval4。
+- runtime payload：A23 base burst producer（684B cave + hooks）+ 8 个 NOP，共 30 条。
+- 设备日志：`ISO runtime patch result=0 record=29`；
+  `ISO submit seq=1 speed=3 length=3072 rc=0x0 urb=387`；
+  `ISO seq=1 URB=387 requested=3072 raw-count=3072 status=3`。
+- Host：`iso-probe --burst --alt1` 收到 16/16 个 192B 包，payload/completion 都 verified，
+  exit 0。
+- 结论：**NOP patch + A23 burst producer 在 alt1 ISO 上工作。** 这是 16×192 的一次性诊断
+  burst，不是连续 PCM；UAC 标准宿主仍未验证。
+
 ## 边界
 
-- 只证明 **bulk alt1**；UAC 的 ISO alt1、ISO producer、标准宿主尚未验证。
+- bulk alt1 与 ISO alt1 的一次性 burst 都已验证；连续 PCM、UAC 标准宿主尚未验证。
 - 补丁是全局的：所有接口的所有 alt 端点都会在 Configured 时安装。需要评估对其他
   `usb:ds` 客户端、端点资源和重复地址的影响；产品化应收窄到目标接口或改到
   `SET_INTERFACE` 时按需安装。
