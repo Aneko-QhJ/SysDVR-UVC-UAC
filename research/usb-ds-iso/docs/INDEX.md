@@ -17,6 +17,7 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
+| [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 4K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [CURRENT.md](CURRENT.md) | 2026-10-28 | 7K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
@@ -31,9 +32,8 @@
 | [A23_SHORT24_FIRST_LIVE.md](A23_SHORT24_FIRST_LIVE.md) | 2026-10-27 | 5K | 本轮已完成配套部署、唯一一次采集、关机后只读回收与分析。主机收到了连续的 |
 | [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-27 | 7K | 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
 | [A23_SHORT24_ONCE_PLAN.md](A23_SHORT24_ONCE_PLAN.md) | 2026-10-27 | 4K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
-| [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-27 | 6K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 
-## 全部文档（250）
+## 全部文档（251）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -46,6 +46,7 @@
 | [A23_BOUND_RECEIVER.md](A23_BOUND_RECEIVER.md) | 2026-10-15 | 7K | A23父输入、运行recipe与ELF的独立绑定候选（2026-10-15） — 已在新的隔离候选中补齐上轮发现的摘要层次缺口。新接收器描述、构建清单、零次数记录、 |
 | [A23_BOUNDED_CANDIDATE.md](A23_BOUNDED_CANDIDATE.md) | 2026-10-14 | 8K | A23 联合预检与 trace 预算候选（2026-10-14） — 独立候选补齐两个边界：**BURST在ISO状态/payload改写之前同时检查ISO和ACK范围；每个 |
 | [A23_BROKER_MODEL.md](A23_BROKER_MODEL.md) | 2026-10-19 | 6K | A23 监督、消费许可与退出收集的闭环模型 — 后续：[启动前复核与异常退出收集模型](A23_FAILURE_COLLECTION_MODEL.md)已补上报告缺失或损坏时的退出证据封存，并增加启动前来源复核。生产broker与OS级能力隔离仍未实现。以下保留原模… |
+| [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 buffer recycle / DMA unmap（2026-10-28） — A23 事件 terminal： |
 | [A23_CACHED_BUILD_RELATIONS.md](A23_CACHED_BUILD_RELATIONS.md) | 2026-10-20 | 6K | 缓存构建结构与日志引用关联 — 后续：[缓存中的entry、receipt与SDK session关联](A23_CACHED_SESSION_LINKS.md)已建立两种binding间的数据联系；原生许可/context和时限仍待核验，注入dri… |
 | [A23_CACHED_CLOCK_DOMAINS.md](A23_CACHED_CLOCK_DOMAINS.md) | 2026-10-20 | 6K | 缓存时钟域与模型时限算术 — 后续：[缓存来源准入、verifier与静态收集关联](A23_CACHED_COLLECTION_LINKS.md)已完成45场景及49测试；静态收集、外层退出及verifier执行声明分别处理，完整运行认证仍未完成… |
 | [A23_CACHED_COLLECTION_LINKS.md](A23_CACHED_COLLECTION_LINKS.md) | 2026-10-20 | 5K | A23 缓存来源准入、verifier与静态收集关联（2026-10-20） — 后续：[缓存外层取证与完整文件清单边界](A23_CACHED_OUTER_FORENSICS.md)已补齐四份外层原字节，覆盖first capture全部96文件；身份/退出仍为保存声明，现场运行未认证。以下保留原… |

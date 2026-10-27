@@ -17,8 +17,8 @@
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
-  连续 PCM 需要安全 DMA unmap/recycle 或每 URB 新缓冲：
-  [A23_REARM_BOUNDARY.md](docs/A23_REARM_BOUNDARY.md)。
+  正常完成会 unmap，但 A23 选中的 URB 可能不对齐；下一步是每 URB 新缓冲的有限池，
+  再评估 producer unmap 修正：[A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

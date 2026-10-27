@@ -104,7 +104,8 @@ host 只收到 16 valid / 1 bad / 496 zero；usb 模块再次 fatal，签名与 
 
 ## 仍未解决
 
-- 安全 DMA unmap/recycle（`complete_original` 是否 unmap、如何验证）；
+- 安全 DMA unmap/recycle：正常完成会 unmap，但 A23 完成选中的 URB 可能不对齐；
+  见 [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md)；
 - 大缓冲池（N×4KB，总时长有限）是否可作为过渡；
 - 48ms 之后的持续供给与 UAC 标准宿主。
 

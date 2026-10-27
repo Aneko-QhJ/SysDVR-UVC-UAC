@@ -83,8 +83,10 @@
   后的 DMA 缓冲不能直接复用。证据
   `private/runs/A-alt1-stream-hs2-20261027/`、
   `private/runs/A-alt1-stream-reuse-crash-20261028/`。
-- 下一步：查 `complete_original` 的 DMA unmap/recycle；找不到就只能每 URB 新缓冲
-  （有限时长），连续 PCM 仍被这个边界挡住。
+- 下一步：正常完成路径确实会 unmap（`FUN_0002c690` -> `FUN_00004c70`），但 A23
+  完成选中的 URB 可能不对齐，导致旧映射未释放；见
+  [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md)。先做 640×4KB 的每 URB 新缓冲
+  有限验证，再评估 producer unmap 修正。
 
 ## 工程状态（2026-10-27）
 
