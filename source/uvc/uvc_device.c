@@ -723,6 +723,13 @@ static Result _setupInterfaces5x(void)
 
 static Result _setupAudioInterfaces5x(void)
 {
+#ifdef ISO_PROBE
+    // libnx/usb:ds expose four interface slots. UVC uses VC+VS; ISO_PROBE
+    // would take the third, leaving only one for AC+AS. UAC needs both.
+    LOG("UAC setup refused: ISO_PROBE occupies an interface slot\n");
+    return MAKERESULT(Module_Libnx, LibnxError_BadInput);
+#endif
+
     Result rc = 0;
 
     rc = usbDsRegisterInterface(&g_uacCtx.acInterface);

@@ -50,9 +50,46 @@
 - PCM 发送器、时钟/反馈、跨块余量仍未设计；UAC 仍禁用。
 - 没有标准宿主枚举、没有硬件结论。
 
+## 接口预算（2026-10-27 补充）
+
+[libnx `usbds.c`](https://github.com/switchbrew/libnx/blob/master/nx/source/services/usbds.c)
+的 `TOTAL_INTERFACES` 是 4；[Switchbrew usb:ds](https://switchbrew.org/wiki/USB_services)
+也写明“Up to 4 interfaces can be used and enabled”。当前设备：
+
+- UVC 占 VC + VS = 2；
+- UAC 需要 AC + AS = 2；
+- 合计正好 4。
+
+因此 **UAC 不能与 `ISO_PROBE` 的 vendor 接口共存**：第 5 个
+`usbDsRegisterInterface` 会失败。`_setupAudioInterfaces5x` 已在 `ISO_PROBE` 下
+直接拒绝，避免注册到一半。alt1 探针也不能另加接口——要么直接用 AC+AS，
+要么在无 UVC 的专用 build 里做。
+
+## alt1 探针问题卡（未授权）
+
+| 字段 | 内容 |
+| --- | --- |
+| 问题 | AS alt1 上注册的 `0x84` 端点，能否在 `SET_INTERFACE(1)` 后完成一次 post？ |
+| 变化 | 无 `ISO_PROBE`；UVC 2 + AC/AS 2 = 4 个接口；AS alt0 无端点、alt1 有 `0x84`；只发一个诊断 buffer |
+| 判别 | `usbDsInterface_RegisterEndpoint` 返回值；`SET_INTERFACE(1)` 是否 ACK；post 的 completion/urb_status；host 是否收到预期字节 |
+| 上限 | 一次 boot、一个 buffer、不重试 |
+| 停止 | 注册失败、enable/stall、post 超时、未知所有权、证据容量不足 |
+
+## 备选路线
+
+| 方案 | 前提 | 风险 |
+| --- | --- | --- |
+| A. 当前 P0：显式 `RegisterEndpoint` + 客户端处理 `SET_INTERFACE` | alt1 端点也能被安装 | 未验证 |
+| B. 端点同时放进 alt0 | 宿主接受 alt0 带端点 | 非标准；宿主可能选错 alt |
+| C. patch `usb:ds` descriptor walk | 接受每个 Build-ID 的补丁 | 风险高、维护重 |
+| D. 放弃标准 UAC，走 vendor/bulk 伴生通道 | 允许专用客户端 | 不再是免客户端产品 |
+
 ## 下一步
 
-1. 离线回答 alt1：做一个最小 vendor alt0/alt1 探针，或直接读 `usb:ds` 的
-   descriptor walk，确认端点安装条件。
-2. 若 alt1 不可用，再评估 patch 安装路径；不要先启用 UAC。
-3. `_setupAudioInterfaces5x` 继续保持不调用，直到 alt1 与 ISO 都通过。
+1. 离线回答 alt1：读 `usb:ds` 的 descriptor walk / `RegisterEndpoint`。仓库里没有
+   usb NSO；需要 Build-ID `AD8D36F2…` 的 dump 或对应 Ghidra 工程。
+2. 若走硬件：用无 `ISO_PROBE` 的 build，以 AC+AS 为探针；先记录
+   `usbDsInterface_RegisterEndpoint` 的返回值，再让宿主 `SET_INTERFACE(1)` 并
+   post 一个 buffer，观察完成/错误。
+3. 若 alt1 不可用，再评估 patch 安装路径或 alt0 endpoint 变通；不要先启用 UAC。
+4. `_setupAudioInterfaces5x` 继续保持不调用，直到 alt1 与 ISO 都通过。

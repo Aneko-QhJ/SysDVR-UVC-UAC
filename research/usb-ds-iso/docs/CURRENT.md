@@ -33,6 +33,8 @@
   - 描述符构建器 + lint + alt0/alt1/类请求状态机；`make check` 覆盖。
   - 设备构建通过；UAC 仍禁用，`_setupAudioInterfaces5x` 仍未调用。
   - 未验证 `usb:ds` 的 alt1 端点安装；这是下一个问题。
+  - 接口预算：usb:ds/libnx 最多 4 个接口；UVC 2 + UAC 2 = 4，因此 UAC 不能与
+    `ISO_PROBE` 的 vendor 接口同 build；`_setupAudioInterfaces5x` 已加拒绝。
 
 ## 授权与边界
 
@@ -54,6 +56,7 @@
 1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 2. **标准 UAC 层**：描述符/控制状态机离线已完成；剩下 alt1 端点安装、
    标准宿主枚举、时钟/反馈与跨块样本连续性。alt1 可先离线/最小探针回答。
+   接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
 4. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
@@ -62,9 +65,10 @@
 ## 下一步（未授权）
 
 - 离线：修正版打包 + 新 recipe 入口 + 包/入口审计；alt1 安装探针或读 `usb:ds`
-  descriptor walk。UAC 标准层 P0 已完成，不再重复描述符 lint。
-- 实机：另定范围与授权；先做路径修正版短包，或直接做标准宿主 10s 流。
-  两者不要混在同一轮变量里。
+  descriptor walk。仓库里没有 usb NSO（Build-ID `AD8D36F2…`）；若要读 descriptor
+  walk，需要该 dump 或对应 Ghidra 工程。UAC 标准层 P0 已完成，不再重复描述符 lint。
+- 实机：另定范围与授权；alt1 探针必须用无 `ISO_PROBE` 的 build（AC+AS 占满 4 个接口）；
+  或先做路径修正版短包。两者不要混在同一轮变量里。
 
 ## 不证明
 
