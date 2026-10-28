@@ -116,10 +116,12 @@
   [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
 - 当前稳定基线回到 base A23 3-URB（`52069a44…`）和已构建的 serial640
   （`c129dce7…`，one-in-flight，33%）；连续 PCM 仍被 per-URB init 问题挡住。
-- **两阶段 patch 设计已出**：boot 只装 base A23，host START 时再用 delta 换成
-  per-URB injection/report，避免 init 路径。见
-  [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md)。下一步是按此实现
-  `_applyStreamPatch` 和 delta payload。
+- **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
+  per-URB delta（injection 684B + report branch）。候选
+  `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
+  `iso-stream-twostage-reuse.nsp`（`631dac7f…`，10000 包）已归档未部署；卡安全
+  `52069a44…`。见 [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md)。
+  **需要实机：先只 boot 确认 init 过，再 START 测 256/10000。**
 - 下一步：离线设计 **per-URB mailbox** 或 one-in-flight 基线；3-mailbox 最小布局
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。

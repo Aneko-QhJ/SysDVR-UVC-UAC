@@ -64,3 +64,25 @@ host START(0x55)
 - 第一次 START 的 URB 可能在 patch 完成前被 host 提交；START 控制先 patch 再 ACK，
   主机在 ACK 前不会提交数据。
 - 如果 START 时 patch 失败，必须 stall 而不是带病开流。
+
+## 已实现（2026-10-28）
+
+- `source/uvc/uvc_device.c` 增加 `_applyIsoStreamPatch()`：START 时 dmnt attach usb，
+  应用 `isoRuntimeStreamEdits`（injection 684B + report branch），失败则 stall；
+- boot 仍用 base A23 + NOP；UVC init 不受 per-URB 影响；
+- Unicorn/构建验证：delta before 与 boot 后的 base 字节一致，per-URB 3 个 mailbox
+  各自完成；
+- 候选：
+
+| NSP | SHA256 | host | 预期 |
+| --- | --- | --- | --- |
+| `iso-stream-twostage3.nsp` | `e33b7237…` | `--transfers 1 --packets 256` | init 过，48 包，3/3/0 |
+| `iso-stream-twostage-reuse.nsp` | `631dac7f…` | `--transfers 1 --packets 10000` | 3 缓冲循环 ~10s，约 9958 包 |
+
+两个都未部署；卡安全 `52069a44…`。
+
+## 实机顺序
+
+1. 只 boot（不 START），确认 `UvcDeviceInitialize` 过、设备枚举；
+2. host START + 256 包：确认 delta 应用、3 个 URB 各自完成；
+3. host START + 10000 包：确认 10s 循环、无 DMA map 崩。

@@ -17,3 +17,4 @@ builddir
 .idea/*
 external/*
 source/uvc/iso_runtime_payload.h
+source/uvc/iso_runtime_stream_payload.h

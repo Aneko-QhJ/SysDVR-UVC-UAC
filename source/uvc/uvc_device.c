@@ -10,6 +10,7 @@
 #ifdef ISO_RUNTIME_PATCH
 #include "iso_runtime_patch.h"
 #include "iso_runtime_payload.h"
+#include "iso_runtime_stream_payload.h"
 #endif
 #endif
 
@@ -185,6 +186,51 @@ static bool _logIsoTarget(void)
     }
     return ready;
 }
+
+#ifdef ISO_RUNTIME_PATCH
+static bool _applyIsoStreamPatch(void)
+{
+    static bool applied;
+    if (applied) return true;
+    Result rc = pmdmntInitialize();
+    if (R_FAILED(rc)) return false;
+    u64 pid = 0;
+    rc = pmdmntGetProcessId(&pid, 0x0100000000000006ULL);
+    pmdmntExit();
+    if (R_FAILED(rc) || pid == 0) return false;
+    rc = ldrDmntInitialize();
+    if (R_FAILED(rc)) return false;
+    LoaderModuleInfo modules[4] = {0};
+    s32 count = 0;
+    rc = ldrDmntGetProcessModuleInfo(pid, modules, 4, &count);
+    ldrDmntExit();
+    if (R_FAILED(rc) || count != 1 || modules[0].size != 0x369000 ||
+        memcmp(modules[0].build_id, isoRuntimeBuildId, sizeof(isoRuntimeBuildId))) {
+        LOG("STREAM delta target mismatch\n");
+        return false;
+    }
+    Handle debug = INVALID_HANDLE;
+    rc = svcDebugActiveProcess(&debug, pid);
+    if (R_FAILED(rc)) {
+        LOG("STREAM delta attach rc=0x%x\n", rc);
+        return false;
+    }
+    IsoPatchContext context = {debug, modules[0].base_address, 0};
+    size_t failed = 0;
+    int result = isoApplyRuntimePatch(isoRuntimeStreamEdits,
+        sizeof(isoRuntimeStreamEdits) / sizeof(isoRuntimeStreamEdits[0]),
+        _isoPatchRead, _isoPatchWrite, &context, &failed);
+    LOG("STREAM delta result=%d record=%u last-rc=0x%x\n",
+        result, (unsigned)failed, context.last_result);
+    if (result == -4) {
+        LOG("STREAM delta rollback unverified; usb remains paused\n");
+        for (;;) svcSleepThread(1000000000ULL);
+    }
+    svcCloseHandle(debug);
+    applied = result >= 0;
+    return applied;
+}
+#endif
 
 static Result _setupIsoProbe(void)
 {
@@ -1782,6 +1828,13 @@ static void _handleIsoSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #ifdef ISO_PROBE_STREAM
     if (setup->bmRequestType == 0x41 && setup->bRequest == ISO_PROBE_STREAM_START &&
         setup->wValue == 0 && setup->wLength == 0) {
+#ifdef ISO_RUNTIME_PATCH
+        if (!_applyIsoStreamPatch()) {
+            LOG("ISO stream delta patch failed\n");
+            usbDsInterface_StallCtrl(iface);
+            return;
+        }
+#endif
         Result src = _isoStartStream();
         if (R_FAILED(src)) {
             LOG("ISO stream start rc=0x%x\n", src);

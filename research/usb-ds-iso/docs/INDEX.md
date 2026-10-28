@@ -23,7 +23,7 @@
 | [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md) | 2026-10-28 | 2K | `iso-stream-perurb3-fixed.nsp`（`c4ead1e3…`）启动后： |
 | [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 3K | 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | `iso_enter` 每次提交都重置同一个 mailbox： |
-| [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-28 | 2K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
+| [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-28 | 3K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-28 | 1K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md) | 2026-10-28 | 2K | `iso_burst_patch.S` 的 `iso_enter` 每次提交都会重置同一个 mailbox： |
@@ -165,7 +165,7 @@
 | [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md) | 2026-10-28 | 2K | A23 per-URB mailbox 汇编候选（2026-10-28） — `iso-stream-perurb3-fixed.nsp`（`c4ead1e3…`）启动后： |
 | [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 3K | A23 per-URB mailbox 实现草案（2026-10-28） — 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | A23 per-URB mailbox 设计（2026-10-28） — `iso_enter` 每次提交都重置同一个 mailbox： |
-| [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-28 | 2K | A23 per-URB 两阶段 patch（2026-10-28） — per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
+| [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-28 | 3K | A23 per-URB 两阶段 patch（2026-10-28） — per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
 | [A23_PINNED_BYTE_VIEW_MODEL.md](A23_PINNED_BYTE_VIEW_MODEL.md) | 2026-10-19 | 6K | 独立字节视图与硬链接模型 — 后续：[固定字节视图的只读语义消费者](A23_PINNED_SEMANTIC_CONSUMER.md)已完成六份材料的部分关系检查，保持完整链、事务和现场认证字段为false。以下保留原阶段。 |
 | [A23_PINNED_SEMANTIC_CONSUMER.md](A23_PINNED_SEMANTIC_CONSUMER.md) | 2026-10-19 | 5K | 固定字节视图的只读语义消费者 — 后续：[缓存中的完整日志与两轮事务子集](A23_CACHED_JOURNAL_EPOCHS.md)已固定完整92份原始材料并检查封存/事务/STATUS；完整SDK链和外部构建仍未认证。以下保留原阶段。 |
 | [A23_POSTCOMPLETION_STATUS_VIEW.md](A23_POSTCOMPLETION_STATUS_VIEW.md) | 2026-10-26 | 7K | 最终采样之后的状态表述（2026-10-26） — 已完成[终结采样修补](A23_LIVE132_COMPLETION_OFFLINE.md)之后的语义核对，并增加只读归档状态视图。6个原生诊断场景、13项拒绝检查和2种CLI展示通过。结论是：历史采样通过与后来观察到… |
