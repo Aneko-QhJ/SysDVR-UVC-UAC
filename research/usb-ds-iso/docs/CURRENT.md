@@ -108,6 +108,9 @@
 - **per-URB mailbox 实现草案已出**：3 个 0x20 mailbox，按 `slot/32%3` 选择；删除
   report/error 诊断后净余约 24B。见
   [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md)。
+- **per-URB mailbox 候选已汇编并通过 Unicorn**：656B/684B，3 个 in-flight 各自完成
+  一次；候选 NSP `a736ca70…`（3 URB）和 `84b58635…`（3 缓冲复用/10s）已归档未部署。
+  见 [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。**需要实机测试。**
 - 下一步：离线设计 **per-URB mailbox** 或 one-in-flight 基线；3-mailbox 最小布局
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。

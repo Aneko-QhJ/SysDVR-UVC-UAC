@@ -20,7 +20,8 @@
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md) | 2026-10-28 | 3K | 从反编译和反汇编看，Normal producer 的顺序是： |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
-| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 2K | 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
+| [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md) | 2026-10-28 | 1K | [patches/iso_burst_perurb.S](../patches/iso_burst_perurb.S)： |
+| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 3K | 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | `iso_enter` 每次提交都重置同一个 mailbox： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-28 | 1K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
@@ -31,9 +32,8 @@
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
-| [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |
 
-## 全部文档（258）
+## 全部文档（259）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -162,7 +162,8 @@
 | [A23_PATH_SPAN_FIRST_LIVE.md](A23_PATH_SPAN_FIRST_LIVE.md) | 2026-10-17 | 5K | 路径缓冲候选首次测试（2026-10-17，Asia/Shanghai） — 用户明确要求“开始测试”后，核验 233 项来源、旧记录、第 5 代接收器、新包及真实部署/弹出回执，签发并消费唯一一次新记录。主机 WAITING 先于新的 HS 到达，用户随后确认“已开机”；执行一次请求链，无自动… |
 | [A23_PATH_SPAN_MATERIALS.md](A23_PATH_SPAN_MATERIALS.md) | 2026-10-16 | 4K | 路径缓冲候选接收器、判读与部署包（2026-10-16，Asia/Shanghai） — 已为[完整路径缓冲候选](A23_PATH_SPAN_DEVICE_CANDIDATE.md)构建独立的第 5 代接收器和原件收集工具，并完成对应 NSP 包转换及核验。正式设备 ELF、recipe、NPDM、配置保… |
 | [A23_PATH_SPAN_READINESS.md](A23_PATH_SPAN_READINESS.md) | 2026-10-16 | 4K | 新路径候选部署与一次诊断入口（2026-10-16，Asia/Shanghai） — 已将[第 5 代接收器及新包](A23_PATH_SPAN_MATERIALS.md)接入独立卡文件工具、签发入口和执行工作流。旧工具/材料继续保持原身份。本次只在电脑临时目录演练，没有访问真实卡、创建正式一次记录或启… |
-| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 2K | A23 per-URB mailbox 实现草案（2026-10-28） — 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
+| [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md) | 2026-10-28 | 1K | A23 per-URB mailbox 汇编候选（2026-10-28） — [patches/iso_burst_perurb.S](../patches/iso_burst_perurb.S)： |
+| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 3K | A23 per-URB mailbox 实现草案（2026-10-28） — 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | A23 per-URB mailbox 设计（2026-10-28） — `iso_enter` 每次提交都重置同一个 mailbox： |
 | [A23_PINNED_BYTE_VIEW_MODEL.md](A23_PINNED_BYTE_VIEW_MODEL.md) | 2026-10-19 | 6K | 独立字节视图与硬链接模型 — 后续：[固定字节视图的只读语义消费者](A23_PINNED_SEMANTIC_CONSUMER.md)已完成六份材料的部分关系检查，保持完整链、事务和现场认证字段为false。以下保留原阶段。 |
 | [A23_PINNED_SEMANTIC_CONSUMER.md](A23_PINNED_SEMANTIC_CONSUMER.md) | 2026-10-19 | 5K | 固定字节视图的只读语义消费者 — 后续：[缓存中的完整日志与两轮事务子集](A23_CACHED_JOURNAL_EPOCHS.md)已固定完整92份原始材料并检查封存/事务/STATUS；完整SDK链和外部构建仍未认证。以下保留原阶段。 |

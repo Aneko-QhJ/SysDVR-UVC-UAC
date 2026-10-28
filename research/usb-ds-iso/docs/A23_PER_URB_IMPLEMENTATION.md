@@ -85,3 +85,7 @@ add  x5, x5, x11
   但要用 Unicorn 的三个 mailbox 结果确认。
 - 24B 余量很小；如果汇编超出，先删更多诊断（first control/error 上下文）。
 - 3 个 mailbox 只覆盖 3 in-flight；4 个以上仍会别名。
+
+## 实际汇编结果（2026-10-28）
+
+源码 [patches/iso_burst_perurb.S](../patches/iso_burst_perurb.S) 已汇编为 **656B/684B**（余 28B），Unicorn 3 in-flight 得到 3 次完成。候选 NSP 和 scope 见 [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
