@@ -56,6 +56,18 @@ PC = base+0x1927c (svc #0x26)
 - 继续在 A23 上试池大小/复用没有意义；下一步要么修正 A23 完成与 URB 表的记账
   （离线 Unicorn 证明），要么写新的 producer。
 
+## 诊断构建（已编译，未部署）
+
+`iso-stream-diag8.nsp`（SHA256 `1f6f3de5…`）：
+
+- 8 个不同、4K 对齐的 buffer，每个只用一次；
+- 每次 post 和 complete 都写日志（不再只记前 3 次）；
+- host `--transfers 1 --packets 256`；
+- 目的不是通过，而是拿到崩溃前的最后 `post b/rc/urb/posts/errors` 和
+  `complete b/urb/completes`；
+- 已归档 `private/deployments/20261027-alt1-probe/builds/iso-stream-diag8.nsp`；
+  实机需新的明确授权，且预计仍会触发 usb fatal。
+
 ## 下一步
 
 1. 用 Unicorn 对 `FUN_0002c520`/`FUN_0002c690` 建 8 项 URB 表模型，注入 6 轮
