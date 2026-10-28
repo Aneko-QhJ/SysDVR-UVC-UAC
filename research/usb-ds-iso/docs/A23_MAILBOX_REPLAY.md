@@ -47,6 +47,11 @@ URB。
   2. one-in-flight，接受 16ms 数据 / 48ms 周期（33%，32ms 空档）。
 - 当前 A23 诊断 producer 不应再用于多 URB/长流。
 
+## 设计续接
+
+per-URB mailbox 的最小布局和 cave 预算见
+[A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。
+
 ## 测试位置
 
 - `tests/test_mailbox_multiplex.py`；需要 Unicorn 和 A23 包，不在 quick 套件里。
