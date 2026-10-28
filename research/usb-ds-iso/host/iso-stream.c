@@ -100,7 +100,7 @@ int main(int argc, char **argv)
             break;
         }
         libusb_fill_iso_transfer(transfer, device, EP, buffer, per_transfer * PACKET,
-            (int)per_transfer, on_transfer, NULL, 1000);
+            (int)per_transfer, on_transfer, NULL, (int)per_transfer + 2000);
         libusb_set_iso_packet_lengths(transfer, PACKET);
         done = false;
         if (libusb_submit_transfer(transfer)) {

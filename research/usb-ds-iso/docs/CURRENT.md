@@ -85,8 +85,11 @@
   `private/runs/A-alt1-stream-reuse-crash-20261028/`。
 - 下一步：正常完成路径确实会 unmap（`FUN_0002c690` -> `FUN_00004c70`），但 A23
   完成选中的 URB 可能不对齐，导致旧映射未释放；见
-  [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md)。先做 640×4KB 的每 URB 新缓冲
-  有限验证，再评估 producer unmap 修正。
+  [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md)。
+- **640-buffer 有限池已构建，未部署**：NSP `dbab0a68…`，640 个各自 4K 对齐、
+  每个只用一次；host `--transfers 1 --packets 10000`（约 10s）。已归档
+  `private/deployments/20261027-alt1-probe/builds/iso-stream-pool640.nsp`；
+  实机需新的明确授权。卡上仍是安全的 3-URB NSP `52069a44…`。
 
 ## 工程状态（2026-10-27）
 

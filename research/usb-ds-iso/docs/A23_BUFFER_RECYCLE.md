@@ -53,5 +53,8 @@ if ([URB + 0x20] != 0)
 ## 下一步
 
 1. 离线确认 `entry+4/+8` 在 A23 事件完成时的实际值，及 `FUN_0002c690` 选中的 URB；
-2. 设计 640-buffer 池（内存、URB 上限、ring wrap）并离线检查；
-3. 有安全构建后再实机；不再直接复用 3-buffer。
+2. **640-buffer 池已构建，未部署**：NSP `dbab0a68…`，640×4KiB，
+   host `--packets 10000`（约 10s）；成功标准 ~625 posts/completes、valid>9000、
+   bad=0、无 fatal；实机需新的明确授权；
+3. 池验证通过后再接 UAC AC/AS alt1 和标准宿主；
+4. 真正的无限流仍需 producer 的 URB/unmap 对齐或 usb:ds 的 recycle 改动。
