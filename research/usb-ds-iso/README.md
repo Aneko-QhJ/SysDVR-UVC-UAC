@@ -27,8 +27,8 @@
   [A23_PER_URB_MAILBOX_DESIGN.md](docs/A23_PER_URB_MAILBOX_DESIGN.md)、
   [A23_SERIAL_BASELINE.md](docs/A23_SERIAL_BASELINE.md)、
   [A23_PER_URB_IMPLEMENTATION.md](docs/A23_PER_URB_IMPLEMENTATION.md)、
-  [A23_PER_URB_ASSEMBLY.md](docs/A23_PER_URB_ASSEMBLY.md)（首版 x13 clobber 崩溃，
-  修复版通过 Unicorn；实机待测）。
+  [A23_PER_URB_ASSEMBLY.md](docs/A23_PER_URB_ASSEMBLY.md)（x13 clobber 修复后又在
+  UVC init 暴露 report hook 缺失；加最小 report 抑制后通过 Unicorn，实机待测）。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

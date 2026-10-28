@@ -4,7 +4,7 @@
  * all 16 distinct EDs. Never chains one Isoch TRB into another Isoch TD.
  */
 .section .text.iso,"ax",%progbits
-.global iso_enter, iso_event, iso_end
+.global iso_enter, iso_event, iso_report, iso_end
 .equ ISO_ENTRY, 0x270
 iso_enter:
     cbz x2, reject_original
@@ -183,4 +183,7 @@ error:
     stp w6, w7, [x5, #8] /* word2=current MFI on error, not event count */
 done:
     ret
+iso_report:
+    add x0, x19, #0x10
+    b report_epilogue
 iso_end:

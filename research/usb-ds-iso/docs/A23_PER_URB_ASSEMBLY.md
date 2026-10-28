@@ -1,53 +1,50 @@
 # A23 per-URB mailbox 汇编候选（2026-10-28）
 
-## 第一次实机崩溃与修复
+## 第一次修复仍在 UVC init 崩溃
 
-`iso-stream-perurb3.nsp`（`a736ca70…`）在启动后崩溃：
+`iso-stream-perurb3-fixed.nsp`（`c4ead1e3…`）启动后：
 
 ```
+ISO runtime patch result=0
+UvcDeviceInitialize failed: 0xf601
 usb Data Abort at 0xc
-PC = base+0x68ea4  (advance: str w9,[x13,#12])
-X13 = 0, X10 = 0
-LR = base+0x3089c  (event hook return)
+PC = base+0x68ea4 (advance)
+LR = base+0x3089c (event hook)
+X13 = 0
 ```
 
-原因：event mailbox 选择用了 **x11/x12/x13**，其中 x13 是原事件路径仍在使用的
-ring 结束指针；hook 返回后 original 代码用 x13=0 进入 `advance`，写 `[x13,#12]`
-崩溃。
+per-URB 版为了省空间删掉了 `iso_report`。但 A23 的 report hook 不只是诊断：
+它**抑制**原 report 路径（只 copy 后跳 `report_epilogue`）。没有它，原 report 路径
+在 UVC init 期间把自定义 producer 带进 `advance`，x13=0 崩溃。
 
-第一次修复用 x9/x10 做除法，但 x10 是 entry 指针、x9 是 manager 指针，导致 3 个
-URB 全都不完成；Unicorn 立即暴露。
+## 修复
 
-最终：
+保留一个 **最小 report 抑制**（8B）：
 
-- 只保存/恢复 **x11**；
-- 除法临时用 **x6/x7**（原代码在后续才重新赋值）；
-- 不碰 x9/x10/x12/x13；
-- 汇编 **664B / 684B**，余 20B。
-
-## 离线验证
-
-Unicorn 3 in-flight：
-
-```
-submit 0/32/64 rc=0
-slot 0/32/64 各一次 0x2a980
-每个 mailbox: magic=ISO2, terminal=1, bitmap=0xffff, actual=3072
+```asm
+iso_report:
+    add x0, x19, #0x10
+    b report_epilogue
 ```
 
-## 修复后的候选
+- 与 A23 `report_done` 的收尾一致；不再 copy 诊断；
+- report hook `0x2cbe0` 重新指向新的 `iso_report`（`0x68fec`）；
+- 汇编 **672B / 684B**，余 12B；
+- Unicorn 3 in-flight：slot 0/32/64 各一次 `0x2a980`，mailbox 65535/3072。
+
+## 候选
 
 | NSP | SHA256 | host | 预期 |
 | --- | --- | --- | --- |
-| `iso-stream-perurb3-fixed.nsp` | `c4ead1e3…` | `--transfers 1 --packets 256` | 48 包，3/3/0 |
-| `iso-stream-perurb-reuse-fixed.nsp` | `91fc5290…` | `--transfers 1 --packets 10000` | 3 缓冲循环 ~10s，约 9958 包 |
+| `iso-stream-perurb3-fixed2.nsp` | `71ca5b1a…` | `--transfers 1 --packets 256` | 48 包，3/3/0，无 init fatal |
+| `iso-stream-perurb-reuse-fixed2.nsp` | `d2ea7cc4…` | `--transfers 1 --packets 10000` | 3 缓冲循环 ~10s，约 9958 包 |
 
-两个都在 `private/deployments/20261027-alt1-probe/builds/`，未部署。卡已恢复安全
-`52069a44…`；旧 staging 里的 perurb3/reuse 是崩溃版本，部署时要换成 `-fixed`。
+都在 `private/deployments/20261027-alt1-probe/builds/`，未部署。卡已恢复安全
+`52069a44…`；卡上 staging 里的 fixed1 是崩溃版本，部署时要换 fixed2。
 
 ## 下一步
 
-需要实机测试：
+需要实机：
 
-1. `perurb3-fixed`（256 包）：3 个 URB 各自完成、48 包、无 fatal；
-2. `perurb-reuse-fixed`（10000 包）：3 缓冲循环 10s、per-URB unmap 后复用不再崩。
+1. `perurb3-fixed2`（256 包）：先确认 `UvcDeviceInitialize` 能过、3 个 URB 各自完成；
+2. `reuse-fixed2`（10000 包）：3 缓冲循环 10s、无 DMA map 崩。

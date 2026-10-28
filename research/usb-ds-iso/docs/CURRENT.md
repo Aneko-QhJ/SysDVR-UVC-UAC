@@ -108,12 +108,12 @@
 - **per-URB mailbox 实现草案已出**：3 个 0x20 mailbox，按 `slot/32%3` 选择；删除
   report/error 诊断后净余约 24B。见
   [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md)。
-- **per-URB mailbox 第一次实机崩溃并修复**：event 选择 clobber x13，original 路径
-  `advance` 用 x13=0 崩；改为保存 x11、x6/x7 做除法、不碰 x9/x10/x12/x13 后，
-  Unicorn 3 个 in-flight 各完成一次（664B/684B）。修复版 NSP
-  `c4ead1e3…`（3 URB）和 `91fc5290…`（复用/10s）已归档未部署；卡已恢复安全
+- **per-URB 第二次修复**：`fixed` 版在 UVC init 崩（0xf601 + advance x13=0），因为
+  删掉了 A23 report hook；它是抑制原 report 路径所必需的，不只是诊断。改为 8B 最小
+  report 抑制后，Unicorn 3 个 in-flight 仍各完成一次；汇编 672/684。新候选
+  `71ca5b1a…`（3 URB）和 `d2ea7cc4…`（复用/10s）已归档未部署；卡安全
   `52069a44…`。见 [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
-  **需要实机测试（先 perurb3-fixed）。**
+  **需要实机测试（先 perurb3-fixed2）。**
 - 下一步：离线设计 **per-URB mailbox** 或 one-in-flight 基线；3-mailbox 最小布局
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。
