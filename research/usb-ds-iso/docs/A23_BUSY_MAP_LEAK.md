@@ -37,6 +37,13 @@ return puVar5 & 0xffffffff;
 这比“buffer 复用”更吻合 640 池也崩的事实：**根因是完成没有释放 URB/表项，随后
 busy 重试泄漏 DMA 映射**。
 
+## 离线 replay：完成只发生一次
+
+`test_mailbox_multiplex.py` 证实：3 个 in-flight URB，只有最后一个会调用
+`complete_original`；slot 0/32 的 16 个 ED 全部丢失。因此每个 3-URB 窗口
+`entry+8` 净增 2；到 8 后进入 busy-map 泄漏。见
+[A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md)。
+
 ## 为什么 A23 完成没有释放
 
 A23 的 terminal 完成调用是：

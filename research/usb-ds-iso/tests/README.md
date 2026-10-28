@@ -3,8 +3,8 @@
 | 目标 | 命令 | 规模 | 当前状态 |
 | --- | --- | --- | --- |
 | 快速 | `make check` | 7 个文件 | 绿，约 3 秒；每轮门禁 |
-| 单文件隔离 | `make check-file` | 182 个文件 | 用于定位崩溃/导入错误，较慢 |
-| 全量 | `make check-all` | 182 个文件 / 1074 tests | 约 8 分钟；**当前不是绿的** |
+| 单文件隔离 | `make check-file` | 183 个文件 | 用于定位崩溃/导入错误，较慢 |
+| 全量 | `make check-all` | 183 个文件 / 1074+ tests | 约 8 分钟；**当前不是绿的** |
 
 ## 2026-10-27 全量基线
 
@@ -23,6 +23,19 @@
 2. 私有 fixture：缺目录/缺字段时显式 skip，并给出恢复命令（见 [../STORAGE.md](../STORAGE.md)）。
 3. Python 版本：统一用 3.13；Makefile 已优先选择 `python3.13`/`python3.12`。
 4. 清零后，把 `check-all` 升级为门禁；在此之前只用 `make check` 和按主题 `--filter`。
+
+## Unicorn mailbox replay
+
+`test_mailbox_multiplex.py`（3 个 in-flight URB 的 mailbox 重放）需要 Unicorn 2.1.4
+和 A23 burst 包：
+
+```sh
+cd tests
+ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python   -m unittest test_mailbox_multiplex -v
+```
+
+它不在 quick 套件；没有 unicorn/包时 skip。当前默认 `python3.13` 没有 unicorn，
+全量里会 skip（不再 error）。
 
 ## 规则
 

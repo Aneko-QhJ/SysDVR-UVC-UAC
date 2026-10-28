@@ -22,6 +22,13 @@ str x8, [x5, #24]
 
 关键：**没有 URB ID、序号或 per-URB generation**。`A23_REARM_GENERATIONS.md` 已经写明这一点，并记录了第 16 轮的地址别名反例。
 
+## 离线 replay 已证实
+
+`tests/test_mailbox_multiplex.py` 执行真实补丁：3 个 submit 都接受；注入 slot 0/32
+的 16 个 ED 后 **没有** `complete_original`；只有 slot 64（最后一个）调用一次
+`0x2a980`。也就是说，3 个 in-flight URB 只有最后一个会递减 `entry+8`。细节见
+[A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md)。
+
 ## 3 个 URB in flight 会发生什么
 
 stream 每 16ms 提交一个 URB：

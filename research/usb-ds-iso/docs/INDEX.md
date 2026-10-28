@@ -19,6 +19,7 @@
 | --- | --- | --- | --- |
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md) | 2026-10-28 | 3K | 从反编译和反汇编看，Normal producer 的顺序是： |
+| [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 1K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md) | 2026-10-28 | 2K | `iso_burst_patch.S` 的 `iso_enter` 每次提交都会重置同一个 mailbox： |
 | [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
@@ -31,9 +32,8 @@
 | [A23_EVIDENCE_CONCLUSIONS.md](A23_EVIDENCE_CONCLUSIONS.md) | 2026-10-27 | 9K | 2026-10-27 推进策略更新：事实和证据边界继续保留，后续流程按 |
 | [A23_Q2B_GENERATION_MODEL.md](A23_Q2B_GENERATION_MODEL.md) | 2026-10-27 | 7K | 后续[Q2c整轮证据预算与交接合同](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md)已完成部署来源、边界和容量核对；下一项仅电脑设计整轮额度租约/停止门。下文为本模型阶段及当时下一步，原封存保… |
 | [A23_Q2C_EPOCH_LEASE_MODEL.md](A23_Q2C_EPOCH_LEASE_MODEL.md) | 2026-10-27 | 6K | 当前研究组织方式见 [研究规则](RESEARCH_RULES.md)。本文保留该模型的实际能力及未证明项； |
-| [A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md) | 2026-10-27 | 8K | 后续[单段整轮额度租约模型](A23_Q2C_EPOCH_LEASE_MODEL.md)已完成38项检查；仍无真实设备grant或全局互斥。下一项仅电脑定义设备额度回执协议与握手预算。下文为本来源合同阶段及当时下一步，… |
 
-## 全部文档（254）
+## 全部文档（255）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -149,6 +149,7 @@
 | [A23_LOG_ARM_CANDIDATE.md](A23_LOG_ARM_CANDIDATE.md) | 2026-10-14 | 5K | 日志限长与类型修正完整 ARM 候选（2026-10-14） — 本轮将[日志契约审查](A23_LOG_CONTRACT.md)的三文件修正接入新的完整隔离源码树。 |
 | [A23_LOG_CONTRACT.md](A23_LOG_CONTRACT.md) | 2026-10-14 | 6K | 日志格式、长度与类型契约审查（2026-10-14） — 两份封存候选的13个C单元各预处理出76处日志调用，仅使用d/s/u/x及已有ll长度和固定宽度，没有浮点、宽字符、位置参数或动态宽度。加入printf格式检查声明后，原代码各发现1处真实类型不匹配：ISO timin… |
 | [A23_LOG_GUARD_ARM_CANDIDATE.md](A23_LOG_GUARD_ARM_CANDIDATE.md) | 2026-10-15 | 6K | 日志大小读取失败保护的完整ARM隔离候选（2026-10-15） — 续接[SDK内存函数与日志保护](A23_SDK_MEMORY_LOG_GUARD.md)，将GetSize失败保护接入 |
+| [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 1K | A23 三 URB in-flight mailbox replay（2026-10-28） — `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
 | [A23_MODEL_SUPERVISOR.md](A23_MODEL_SUPERVISOR.md) | 2026-10-19 | 5K | A23 父子进程监督与环境交接模型 — 后续：[监督、消费许可与退出收集闭环模型](A23_BROKER_MODEL.md)已接通假SDK模型并验证真实环境拒绝；生产broker/现场入口仍未实现。以下保留context-only监督阶段及其5秒约束。 |
 | [A23_MULTIBURST_ADMISSION.md](A23_MULTIBURST_ADMISSION.md) | 2026-10-18 | 5K | 从单次突发到两轮串行：离线准入研究（2026-10-18） — 后续：[补丁双轮发布与旧事件代际](A23_REARM_GENERATIONS.md)完成离线重放，含第16轮地址别名反例；本页保留原服务/协调器模型结果。 |
 | [A23_NATIVE_CLOCK_CANDIDATE.md](A23_NATIVE_CLOCK_CANDIDATE.md) | 2026-10-20 | 5K | A23 原生精确等待与显式时钟域候选（2026-10-20） — 后续：[独立quiet轮询与deadline适配候选](A23_QUIET_POLL_CANDIDATE.md)已验证完成事件/guard/失败撤销及arrival/poll边界；未接入冻结Objective-C dr… |

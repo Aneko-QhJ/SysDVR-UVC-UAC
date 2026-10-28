@@ -99,7 +99,9 @@
   [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
 - 更上层根因：A23 mailbox 是 per-endpoint 单实例，`iso_enter` 每次重置，没有 URB
   ID/代际；3 个 in-flight 时后一个 URB 会覆盖前一个的事件归属，完成调用可能缺失/
-  错位。见 [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md)。
+  错位。**离线 replay 已证实**：3 个 submit 只有最后一个完成，slot 0/32 的 16 个
+  ED 全部丢失。见 [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md)、
+  [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md)。
 - 下一步：离线分析 `entry+4/+8`/8 项 URB 表/A23 完成释放，设计新的 producer；
   当前 A23 诊断 producer 不支持 10s 连续流，UAC 标准宿主还不能接。汇总见
   [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。
