@@ -86,3 +86,25 @@ host START(0x55)
 1. 只 boot（不 START），确认 `UvcDeviceInitialize` 过、设备枚举；
 2. host START + 256 包：确认 delta 应用、3 个 URB 各自完成；
 3. host START + 10000 包：确认 10s 循环、无 DMA map 崩。
+
+## 第一次实机：boot 过，START 崩（2026-10-29 07:56）
+
+- boot-only：`UvcDeviceInitialize` 过，host 枚举到 `SysDVR-UVC Capture`；
+- host 先提交第一个 ISO read，再发 START；设备日志：
+
+```
+STREAM delta result=0 record=1
+ISO stream create/start
+ISO stream try b=0 / post rc=0xf601
+```
+
+- usb 再次 Data Abort 0xc，X10=0/X13=0。
+- 判断：delta 在 host 第一个 ISO URB 已经排队时应用；base producer 有 active URB，
+  切换成 per-URB 后崩。
+- 修复：host 改为 **先发 START，再提交第一个 ISO read**，让 delta 在无 active ISO
+  时应用。`iso-stream.c` 已改并编译，但尚未复测。
+
+### 仍需验证
+
+1. START-before-submit + 256 包：delta 后 3 个 URB 各自完成；
+2. 若仍崩，说明 per-urb 代码本身对真实 request/event 不成立，需要真实 x1/x8/x10 trace。

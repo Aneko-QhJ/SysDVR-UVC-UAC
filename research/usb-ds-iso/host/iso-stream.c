@@ -103,13 +103,9 @@ int main(int argc, char **argv)
             (int)per_transfer, on_transfer, NULL, (int)per_transfer + 2000);
         libusb_set_iso_packet_lengths(transfer, PACKET);
         done = false;
-        if (libusb_submit_transfer(transfer)) {
-            fprintf(stderr, "submit failed at %u\n", n);
-            libusb_free_transfer(transfer);
-            free(buffer);
-            break;
-        }
         if (n == 0) {
+            /* START before submitting the first ISO read: the device applies
+               the per-URB delta while no ISO URB is active. */
             int crc = libusb_control_transfer(device, 0x41, 0x55, 0, (uint16_t)iface,
                 NULL, 0, 1000);
             if (crc < 0) {
@@ -118,6 +114,12 @@ int main(int argc, char **argv)
                 free(buffer);
                 break;
             }
+        }
+        if (libusb_submit_transfer(transfer)) {
+            fprintf(stderr, "submit failed at %u\n", n);
+            libusb_free_transfer(transfer);
+            free(buffer);
+            break;
         }
         while (!done) {
             if (libusb_handle_events(ctx) < 0) break;
