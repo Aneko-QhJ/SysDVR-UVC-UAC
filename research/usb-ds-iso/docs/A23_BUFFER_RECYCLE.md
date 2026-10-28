@@ -50,11 +50,19 @@ if ([URB + 0x20] != 0)
 - 先验证 10 s 连续 fresh-buffer 流，再接 UAC AC/AS alt1 和标准宿主；
 - 这仍不是产品级连续流；真正的无限流需要上面的 2 或 3。
 
+## 640-buffer 池实测：仍然崩（2026-10-28 14:15）
+
+NSP `dbab0a68…`：640 个各自 4K 对齐、每个只用一次；host 10000 包窗口。
+
+- host：`packets=80`（5 个 URB）、`bad=0`、`zero=9920`、exit 0；
+- 设备：b0/b1/b2 post/complete 成功；之后没到 640，usb 在 DMA map
+  `+0x2c584` 再次 `svcBreak`，签名与复用崩溃相同；
+- 结论：**新缓冲并不能解决持续流**。限制不在“复用同一个 buffer”，而在 A23
+  producer 的 URB/ring 完成/再提交状态；大约 5 个 URB 后就走坏。
+
 ## 下一步
 
-1. 离线确认 `entry+4/+8` 在 A23 事件完成时的实际值，及 `FUN_0002c690` 选中的 URB；
-2. **640-buffer 池已构建，未部署**：NSP `dbab0a68…`，640×4KiB，
-   host `--packets 10000`（约 10s）；成功标准 ~625 posts/completes、valid>9000、
-   bad=0、无 fatal；实机需新的明确授权；
-3. 池验证通过后再接 UAC AC/AS alt1 和标准宿主；
-4. 真正的无限流仍需 producer 的 URB/unmap 对齐或 usb:ds 的 recycle 改动。
+1. 离线确认 `entry+4/+8`、endpoint URB 表（8 项）和 A23 完成调用的释放路径；
+2. 需要新的 producer / URB 记账修正，不能只靠 640 池；
+3. UAC 10s 标准宿主在当前 A23 诊断 producer 上不可达；3-URB 一次成功只证明
+   alt1 传输和短 burst，不证明持续流。

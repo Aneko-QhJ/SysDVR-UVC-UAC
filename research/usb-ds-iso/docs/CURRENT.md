@@ -86,10 +86,14 @@
 - 下一步：正常完成路径确实会 unmap（`FUN_0002c690` -> `FUN_00004c70`），但 A23
   完成选中的 URB 可能不对齐，导致旧映射未释放；见
   [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md)。
-- **640-buffer 有限池已构建，未部署**：NSP `dbab0a68…`，640 个各自 4K 对齐、
-  每个只用一次；host `--transfers 1 --packets 10000`（约 10s）。已归档
-  `private/deployments/20261027-alt1-probe/builds/iso-stream-pool640.nsp`；
-  实机需新的明确授权。卡上仍是安全的 3-URB NSP `52069a44…`。
+- **640-buffer 有限池实测：仍崩（14:15）**：640 个不同、4K 对齐、每个只用一次；
+  host 10000 包窗口只收到 **80 包（5 个 URB）**，其余为空；设备 b0/b1/b2 成功，
+  之后 usb 在 DMA map `+0x2c584` 再次 `svcBreak`。所以持续流的限制不是 buffer
+  复用，而是 A23 producer 的 URB/ring 完成/再提交状态。证据
+  `private/runs/A-alt1-stream-pool640-crash-20261028/`。
+- 卡已恢复安全的 3-URB NSP `52069a44…`；640 池归档为危险构建。
+- 下一步：离线分析 `entry+4/+8`/URB 表/A23 完成释放，设计新的 producer；当前
+  A23 诊断 producer 不支持 10s 连续流，UAC 标准宿主还不能接。
 
 ## 工程状态（2026-10-27）
 

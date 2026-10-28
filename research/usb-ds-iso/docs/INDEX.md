@@ -18,7 +18,7 @@
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
-| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 4K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
+| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [CURRENT.md](CURRENT.md) | 2026-10-28 | 8K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
@@ -182,7 +182,7 @@
 | [A23_QUIET_RECEIVER.md](A23_QUIET_RECEIVER.md) | 2026-10-15 | 6K | A23 quiet 候选接收器与六项材料收集（2026-10-15） — 已把[隔离捕获与文本日志的设备候选](A23_QUIET_WINDOW_CANDIDATE.md)接入新独立接收器、 |
 | [A23_QUIET_WINDOW_CANDIDATE.md](A23_QUIET_WINDOW_CANDIDATE.md) | 2026-10-15 | 7K | A23 隔离捕获与文本日志的诊断候选（2026-10-15） — 已实现上一轮约定的最小设备候选：30 秒诊断窗口只推进 USB 请求，视频和音频工作 |
 | [A23_READONLY_SCOPE_VERIFIER.md](A23_READONLY_SCOPE_VERIFIER.md) | 2026-10-19 | 5K | A23 只读来源复核器、独立构建与联合回执 — 后续：[异常模型最终收集与独立归档复核](A23_FINAL_MODEL_COLLECTION.md)完成退出后文件收集与只读CLI；现场故障收集/采集仍未接通。以下保留来源复核阶段结果。 |
-| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 4K | A23 re-arm / 缓冲复用边界（2026-10-27） — `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
+| [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | A23 re-arm / 缓冲复用边界（2026-10-27） — `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_REARM_GENERATIONS.md](A23_REARM_GENERATIONS.md) | 2026-10-18 | 6K | 第二次发布、事件代际与主机存储（2026-10-18） — 后续：[独立两轮离线协调器与归档核验](A23_TWO_EPOCH_RECEIVER.md)已实现并验证；本页保留原ARM重放及第16轮代际反例。 |
 | [A23_SDK_INIT_ENVIRONMENT.md](A23_SDK_INIT_ENVIRONMENT.md) | 2026-10-18 | 8K | SDK初始化错误与启动标记审查（2026-10-17，Asia/Shanghai） — 后续：[序号65首次实测及只读回收](A23_CONTEXT65_FIRST_LIVE.md)已完成，SDK初始化及65..80载荷成功。65权限已消费，69原件已保存并弹出；下文保留原离线研究状态，不能据前后变化单独… |
 | [A23_SDK_MEMORY_LOG_GUARD.md](A23_SDK_MEMORY_LOG_GUARD.md) | 2026-10-15 | 6K | SDK内存函数边界与日志大小读取失败保护（2026-10-15） — 续接[完整格式化循环回放](A23_FORMAT_LOOP.md)，本轮完成两配置1282组SDK内存函数 |

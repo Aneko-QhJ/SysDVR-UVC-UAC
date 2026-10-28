@@ -17,8 +17,9 @@
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
-  正常完成会 unmap，但 A23 选中的 URB 可能不对齐；640-buffer 有限池已构建但未部署，
-  再评估 producer unmap 修正：[A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)。
+  正常完成会 unmap，但 A23 选中的 URB 可能不对齐；640 个全新缓冲的池仍在约 5 个
+  URB 后崩，说明限制在 producer 的 URB/ring 再提交，不只是 buffer 复用：
+  [A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

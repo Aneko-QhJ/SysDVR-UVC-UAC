@@ -102,6 +102,14 @@ host 只收到 16 valid / 1 bad / 496 zero；usb 模块再次 fatal，签名与 
 - **完成后复用同一个 DMA 缓冲：不可行**；A23 的完成路径没有让该缓冲变成可重新映射。
 - 连续 PCM 不能靠 3 缓冲循环；需要每 URB 新缓冲，或找到安全的 DMA unmap/recycle。
 
+## 640 fresh-buffer 池：也在约 5 个 URB 后崩（14:15）
+
+- NSP `dbab0a68…`：640 个不同、4K 对齐、每个只用一次；
+- host 10000 包窗口只收到 80 包（5 个 URB），其余为空；设备 b0/b1/b2 成功，
+  之后 usb 在 DMA map `+0x2c584` 再次 `svcBreak`；
+- 所以持续流的限制不是 buffer 复用，而是 A23 producer 的 URB/ring 完成/再提交
+  状态。新 buffer 不够，需要 producer/URB 记账修正。
+
 ## 仍未解决
 
 - 安全 DMA unmap/recycle：正常完成会 unmap，但 A23 完成选中的 URB 可能不对齐；
