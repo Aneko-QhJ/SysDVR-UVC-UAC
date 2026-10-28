@@ -20,20 +20,20 @@
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md) | 2026-10-28 | 3K | 从反编译和反汇编看，Normal producer 的顺序是： |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
+| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 2K | 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | `iso_enter` 每次提交都重置同一个 mailbox： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-28 | 1K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md) | 2026-10-28 | 2K | `iso_burst_patch.S` 的 `iso_enter` 每次提交都会重置同一个 mailbox： |
 | [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
 | [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-28 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-28 | 9K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-28 | 10K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-27 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_AUDIO_CADENCE_GAP.md](A23_AUDIO_CADENCE_GAP.md) | 2026-10-27 | 8K | 后续进展：[固定16TD×24字节候选](A23_SHORT24_OFFLINE_CANDIDATE.md)已完成独立控制器、 |
-| [A23_EVIDENCE_CONCLUSIONS.md](A23_EVIDENCE_CONCLUSIONS.md) | 2026-10-27 | 9K | 2026-10-27 推进策略更新：事实和证据边界继续保留，后续流程按 |
 
-## 全部文档（257）
+## 全部文档（258）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -162,6 +162,7 @@
 | [A23_PATH_SPAN_FIRST_LIVE.md](A23_PATH_SPAN_FIRST_LIVE.md) | 2026-10-17 | 5K | 路径缓冲候选首次测试（2026-10-17，Asia/Shanghai） — 用户明确要求“开始测试”后，核验 233 项来源、旧记录、第 5 代接收器、新包及真实部署/弹出回执，签发并消费唯一一次新记录。主机 WAITING 先于新的 HS 到达，用户随后确认“已开机”；执行一次请求链，无自动… |
 | [A23_PATH_SPAN_MATERIALS.md](A23_PATH_SPAN_MATERIALS.md) | 2026-10-16 | 4K | 路径缓冲候选接收器、判读与部署包（2026-10-16，Asia/Shanghai） — 已为[完整路径缓冲候选](A23_PATH_SPAN_DEVICE_CANDIDATE.md)构建独立的第 5 代接收器和原件收集工具，并完成对应 NSP 包转换及核验。正式设备 ELF、recipe、NPDM、配置保… |
 | [A23_PATH_SPAN_READINESS.md](A23_PATH_SPAN_READINESS.md) | 2026-10-16 | 4K | 新路径候选部署与一次诊断入口（2026-10-16，Asia/Shanghai） — 已将[第 5 代接收器及新包](A23_PATH_SPAN_MATERIALS.md)接入独立卡文件工具、签发入口和执行工作流。旧工具/材料继续保持原身份。本次只在电脑临时目录演练，没有访问真实卡、创建正式一次记录或启… |
+| [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 2K | A23 per-URB mailbox 实现草案（2026-10-28） — 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | A23 per-URB mailbox 设计（2026-10-28） — `iso_enter` 每次提交都重置同一个 mailbox： |
 | [A23_PINNED_BYTE_VIEW_MODEL.md](A23_PINNED_BYTE_VIEW_MODEL.md) | 2026-10-19 | 6K | 独立字节视图与硬链接模型 — 后续：[固定字节视图的只读语义消费者](A23_PINNED_SEMANTIC_CONSUMER.md)已完成六份材料的部分关系检查，保持完整链、事务和现场认证字段为false。以下保留原阶段。 |
 | [A23_PINNED_SEMANTIC_CONSUMER.md](A23_PINNED_SEMANTIC_CONSUMER.md) | 2026-10-19 | 5K | 固定字节视图的只读语义消费者 — 后续：[缓存中的完整日志与两轮事务子集](A23_CACHED_JOURNAL_EPOCHS.md)已固定完整92份原始材料并检查封存/事务/STATUS；完整SDK链和外部构建仍未认证。以下保留原阶段。 |
@@ -246,7 +247,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-28 | 9K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-28 | 10K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-09 | 4K | 实验分支目录与本地产物 — `research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |

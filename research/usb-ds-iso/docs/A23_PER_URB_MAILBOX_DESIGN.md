@@ -72,6 +72,11 @@ mailbox = 0xf80 + (slot / 32 % 3) * 0x20
 2. **per-URB mailbox**：如果 cave 能腾出空间，做 3-mailbox 生产版；
 3. 若 cave 放不下，认命 one-in-flight 或换 producer/usb:ds 方案。
 
+## 实现草案
+
+具体指令/地址/字节预算见
+[A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md)。
+
 ## 验收
 
 - 3 mailbox、3 in-flight：每个 URB 恰好一次 `complete_original`，bitmap/actual 互不
