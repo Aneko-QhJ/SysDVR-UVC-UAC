@@ -1,49 +1,53 @@
 # A23 per-URB mailbox 汇编候选（2026-10-28）
 
-## 源码与大小
+## 第一次实机崩溃与修复
 
-[patches/iso_burst_perurb.S](../patches/iso_burst_perurb.S)：
+`iso-stream-perurb3.nsp`（`a736ca70…`）在启动后崩溃：
 
-- enter：`slot=(enqueue-ring_base)/16`，`idx=slot/32%3`，选 `ring+0xf80+idx*0x20`；
-- event：event 指针算同一个 idx，再走现有 first/parity/bitmap/actual；
-- 删除 `iso_report`、first-control、error snapshot；
-- 汇编结果 **656B / 684B**，余 **28B**。
+```
+usb Data Abort at 0xc
+PC = base+0x68ea4  (advance: str w9,[x13,#12])
+X13 = 0, X10 = 0
+LR = base+0x3089c  (event hook return)
+```
+
+原因：event mailbox 选择用了 **x11/x12/x13**，其中 x13 是原事件路径仍在使用的
+ring 结束指针；hook 返回后 original 代码用 x13=0 进入 `advance`，写 `[x13,#12]`
+崩溃。
+
+第一次修复用 x9/x10 做除法，但 x10 是 entry 指针、x9 是 manager 指针，导致 3 个
+URB 全都不完成；Unicorn 立即暴露。
+
+最终：
+
+- 只保存/恢复 **x11**；
+- 除法临时用 **x6/x7**（原代码在后续才重新赋值）；
+- 不碰 x9/x10/x12/x13；
+- 汇编 **664B / 684B**，余 20B。
 
 ## 离线验证
 
-用 `/tmp/a23-burst` 的 manifest 替换 injection、去掉 `0x2cbe0` report hook，
-生成临时 per-URB 包；Unicorn `Machine` 3 个 in-flight：
+Unicorn 3 in-flight：
 
 ```
-submit 0/32/64 都 rc=0
-slot 0  -> 0x2a980
-slot 32 -> 0x2a980
-slot 64 -> 0x2a980
+submit 0/32/64 rc=0
+slot 0/32/64 各一次 0x2a980
 每个 mailbox: magic=ISO2, terminal=1, bitmap=0xffff, actual=3072
 ```
 
-也就是说，3 个 URB 各自完成一次，不再只有最后一个。
-
-## 候选 NSP
+## 修复后的候选
 
 | NSP | SHA256 | host | 预期 |
 | --- | --- | --- | --- |
-| `iso-stream-perurb3.nsp` | `a736ca70…` | `--transfers 1 --packets 256` | 48 包，posts=3/completes=3/errors=0 |
-| `iso-stream-perurb-reuse.nsp` | `84b58635…` | `--transfers 1 --packets 10000` | 3 缓冲循环 ~10s，约 9958 包，无 fatal |
+| `iso-stream-perurb3-fixed.nsp` | `c4ead1e3…` | `--transfers 1 --packets 256` | 48 包，3/3/0 |
+| `iso-stream-perurb-reuse-fixed.nsp` | `91fc5290…` | `--transfers 1 --packets 10000` | 3 缓冲循环 ~10s，约 9958 包 |
 
-两个都未部署，归档在
-`private/deployments/20261027-alt1-probe/builds/`。
-
-## 风险
-
-- event 指针必须是可与 ring base 相减的地址；现有过滤器已经这样用，但实机要确认。
-- report hook 已移除；stream host 不读 A23 report，正常 `GetReportData` 仍走原路径。
-- 3 个 mailbox 只覆盖 3 in-flight；4 个以上仍会别名。
-- reuse 版依赖 per-URB 完成后的 DMA unmap 真正发生；这是实机第一要看的点。
+两个都在 `private/deployments/20261027-alt1-probe/builds/`，未部署。卡已恢复安全
+`52069a44…`；旧 staging 里的 perurb3/reuse 是崩溃版本，部署时要换成 `-fixed`。
 
 ## 下一步
 
 需要实机测试：
 
-1. 先 `perurb3`（256 包窗口）：确认 3 个公完成、48 包、无 fatal；
-2. 再 `perurb-reuse`（10000 包窗口）：确认 10s/3 缓冲循环、无 DMA map 崩溃。
+1. `perurb3-fixed`（256 包）：3 个 URB 各自完成、48 包、无 fatal；
+2. `perurb-reuse-fixed`（10000 包）：3 缓冲循环 10s、per-URB unmap 后复用不再崩。

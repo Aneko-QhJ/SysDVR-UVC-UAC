@@ -109,15 +109,17 @@ iso_event:
     add x10, x9, #ISO_ENTRY
     ldr x5, [x10, #0x10]
     cbz x5, event_original
+    str x11, [sp, #-16]!
     ldr x11, [x1]
     sub x11, x11, x5
     lsr x11, x11, #9
-    mov w12, #3
-    udiv w13, w11, w12
-    msub w11, w13, w12, w11
+    mov w6, #3
+    udiv w7, w11, w6
+    msub w11, w7, w6, w11
     lsl x11, x11, #5
     add x5, x5, #0xf80
     add x5, x5, x11
+    ldr x11, [sp], #16
     ldr w6, [x5, #12]
     cbnz w6, done
     ldr x6, [x1]
