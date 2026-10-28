@@ -94,6 +94,9 @@
 - 卡已恢复安全的 3-URB NSP `52069a44…`；640 池归档为危险构建。
 - **诊断构建 `iso-stream-diag8…` 已编译，未部署**：8 个不同缓冲、每次 post/complete
   都写日志，用来拿第 5/6 轮崩溃前的最后计数；实机需新的明确授权。
+- 进一步：`FUN_0002c520` 先 map 后检查 8 项表；busy 分支不 unmap，会泄漏 IOVA。
+  如果 A23 完成没有按 URB 递减 `entry+8`，表满后的重试就会把 usb 带崩；见
+  [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
 - 下一步：离线分析 `entry+4/+8`/8 项 URB 表/A23 完成释放，设计新的 producer；
   当前 A23 诊断 producer 不支持 10s 连续流，UAC 标准宿主还不能接。汇总见
   [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。

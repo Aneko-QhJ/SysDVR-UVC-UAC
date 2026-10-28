@@ -35,6 +35,13 @@ PC = base+0x1927c (svc #0x26)
 3 个 URB 在飞时，5 个 URB 恰好是“8 - 3”的边界；第 6 个提交在 DMA map 崩，和
 “表/映射资源在 5 个之后走坏”一致。
 
+## 后续：busy-map 泄漏
+
+`FUN_0002c520` 是**先 DMA map，后检查 8 项 URB 表**；表满时返回 busy 但没有 unmap
+刚映射的 buffer。如果 A23 完成没有按每个 URB 递减 `entry+8`，post 到 8 个后表满，
+线程继续重试时每次 busy 都泄漏一个 IOVA，几次后 DMA map assert。这个机制比“buffer
+复用”更吻合 640 全新池也崩。详见 [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
+
 ## 三个候选解释（按可能性）
 
 1. **A23 完成与 URB 表下标不对齐**：A23 事件完成调用 `FUN_0002a980` 时，`+4/+8`
