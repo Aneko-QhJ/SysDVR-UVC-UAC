@@ -56,8 +56,11 @@ PC = base+0x1927c (svc #0x26)
 
 ## 结论
 
-- A23 是**诊断用 one-shot/短 burst producer**，不是持续流 producer。它的 mailbox、
-  URB 记账和完成调用都不是为多轮循环设计的。
+- A23 是**诊断用 one-shot/短 burst producer**，不是持续流 producer。它的 mailbox
+  是 per-endpoint 单实例、每次 `iso_enter` 重置，没有 URB ID/代际；3 个 in-flight
+  时事件会归属到错误的 URB，完成/URB 表漂移，最终走 busy-map 泄漏。
+  详见 [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md) 与
+  [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
 - 3 URB 成功只证明 alt1 端点、DMA 对齐、START 握手和短 burst 可用；**10 秒 PCM/
   标准 UAC 仍不可达**。
 - 继续在 A23 上试池大小/复用没有意义；下一步要么修正 A23 完成与 URB 表的记账

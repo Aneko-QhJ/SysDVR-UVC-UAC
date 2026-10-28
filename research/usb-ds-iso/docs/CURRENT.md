@@ -97,6 +97,9 @@
 - 进一步：`FUN_0002c520` 先 map 后检查 8 项表；busy 分支不 unmap，会泄漏 IOVA。
   如果 A23 完成没有按 URB 递减 `entry+8`，表满后的重试就会把 usb 带崩；见
   [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
+- 更上层根因：A23 mailbox 是 per-endpoint 单实例，`iso_enter` 每次重置，没有 URB
+  ID/代际；3 个 in-flight 时后一个 URB 会覆盖前一个的事件归属，完成调用可能缺失/
+  错位。见 [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md)。
 - 下一步：离线分析 `entry+4/+8`/8 项 URB 表/A23 完成释放，设计新的 producer；
   当前 A23 诊断 producer 不支持 10s 连续流，UAC 标准宿主还不能接。汇总见
   [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。

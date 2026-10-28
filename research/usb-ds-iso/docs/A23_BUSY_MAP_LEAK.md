@@ -51,7 +51,10 @@ iso_event -> FUN_0002a980(manager, 0x83, 0, 1, 3072, 1)
 完成调用没有发生，`entry+8` 只增不减，最终到 8。
 
 这与 A23 文档里“单 mailbox、无 URB ID/代际、不能扩展成无界循环”的警告一致；
-3 个 URB 的短 burst 不会暴露，8 个以上就会。
+3 个 URB 的短 burst 不会暴露，8 个以上就会。更上层的机制见
+[A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md)：`iso_enter`
+每次重置同一个 mailbox，3 个 in-flight 时后一个 URB 会覆盖前一个的事件归属，
+`complete_original` 可能缺失/错位；busy-map 泄漏是这条链的崩溃路径。
 
 ## 修法
 

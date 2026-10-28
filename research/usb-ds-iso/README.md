@@ -21,7 +21,8 @@
   URB 后崩，说明限制在 producer 的 URB/ring 再提交，不只是 buffer 复用：
   [A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)、
   [A23_SUSTAINED_STREAM_LIMIT.md](docs/A23_SUSTAINED_STREAM_LIMIT.md)、
-  [A23_BUSY_MAP_LEAK.md](docs/A23_BUSY_MAP_LEAK.md)。
+  [A23_BUSY_MAP_LEAK.md](docs/A23_BUSY_MAP_LEAK.md)、
+  [A23_SINGLE_MAILBOX_MULTI_URB.md](docs/A23_SINGLE_MAILBOX_MULTI_URB.md)。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录
