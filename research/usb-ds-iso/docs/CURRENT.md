@@ -108,12 +108,14 @@
 - **per-URB mailbox 实现草案已出**：3 个 0x20 mailbox，按 `slot/32%3` 选择；删除
   report/error 诊断后净余约 24B。见
   [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md)。
-- **per-URB 第二次修复**：`fixed` 版在 UVC init 崩（0xf601 + advance x13=0），因为
-  删掉了 A23 report hook；它是抑制原 report 路径所必需的，不只是诊断。改为 8B 最小
-  report 抑制后，Unicorn 3 个 in-flight 仍各完成一次；汇编 672/684。新候选
-  `71ca5b1a…`（3 URB）和 `d2ea7cc4…`（复用/10s）已归档未部署；卡安全
-  `52069a44…`。见 [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
-  **需要实机测试（先 perurb3-fixed2）。**
+- **per-URB fixed2 仍在 UVC init 崩（22:24）**：`71ca5b1a…` 日志
+  `UvcDeviceInitialize failed: 0xf601`，同一 Data Abort `advance` x13=0。
+  8B report 抑制没解决；per-URB 的 enter/event selector 改变了 init 路径。
+  **per-URB 不能作为 boot-time 全局 hook 直接部署**，需要 dormant guard 或 init 后
+  才启用。卡已恢复安全 `52069a44…`；per-URB 候选不可部署。见
+  [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
+- 当前稳定基线回到 base A23 3-URB（`52069a44…`）和已构建的 serial640
+  （`c129dce7…`，one-in-flight，33%）；连续 PCM 仍被 per-URB init 问题挡住。
 - 下一步：离线设计 **per-URB mailbox** 或 one-in-flight 基线；3-mailbox 最小布局
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。

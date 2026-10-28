@@ -32,7 +32,31 @@ iso_report:
 - 汇编 **672B / 684B**，余 12B；
 - Unicorn 3 in-flight：slot 0/32/64 各一次 `0x2a980`，mailbox 65535/3072。
 
-## 候选
+## fixed2 仍在 UVC init 崩（22:24）
+
+`iso-stream-perurb3-fixed2.nsp`（`71ca5b1a…`）日志：
+
+```
+ISO runtime patch result=0 record=29
+UvcDeviceInitialize failed: 0xf601
+usb Data Abort at 0xc
+PC = base+0x68ea4 (advance)
+LR = base+0x3089c (event hook)
+X10 = 0, X13 = 0
+```
+
+8B report 抑制没有解决问题。per-URB 的 enter/event selector 还是改变了 **init 时的
+producer/event 路径**；base A23 在 init 时不崩。
+
+结论：**per-URB patch 不能作为 boot-time 全局 hook 直接装**。它需要：
+
+- 在 stream START 之前完全走 base A23 的固定 mailbox（dormant guard）；
+- 或在 init 完成后才安装/启用 selector；
+- 或者换一个不经过 init URB/event 的实现。
+
+在这之前，per-URB 不再部署。
+
+## 候选（不可部署）
 
 | NSP | SHA256 | host | 预期 |
 | --- | --- | --- | --- |
