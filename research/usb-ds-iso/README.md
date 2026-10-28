@@ -19,7 +19,8 @@
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
   正常完成会 unmap，但 A23 选中的 URB 可能不对齐；640 个全新缓冲的池仍在约 5 个
   URB 后崩，说明限制在 producer 的 URB/ring 再提交，不只是 buffer 复用：
-  [A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)。
+  [A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)、
+  [A23_SUSTAINED_STREAM_LIMIT.md](docs/A23_SUSTAINED_STREAM_LIMIT.md)。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

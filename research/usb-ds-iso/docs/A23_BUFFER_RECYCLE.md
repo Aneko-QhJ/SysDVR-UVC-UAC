@@ -63,6 +63,7 @@ NSP `dbab0a68…`：640 个各自 4K 对齐、每个只用一次；host 10000 �
 ## 下一步
 
 1. 离线确认 `entry+4/+8`、endpoint URB 表（8 项）和 A23 完成调用的释放路径；
-2. 需要新的 producer / URB 记账修正，不能只靠 640 池；
+2. 需要新的 producer / URB 记账修正，不能只靠 640 池；汇总见
+   [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)；
 3. UAC 10s 标准宿主在当前 A23 诊断 producer 上不可达；3-URB 一次成功只证明
    alt1 传输和短 burst，不证明持续流。

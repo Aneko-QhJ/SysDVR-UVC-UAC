@@ -20,6 +20,7 @@
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
 | [A23_STREAM_CRASH.md](A23_STREAM_CRASH.md) | 2026-10-28 | 3K | `ISO_PROBE_STREAM` 的 3 缓冲、每 16ms 提交一次实验： |
+| [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-28 | 3K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 | [CURRENT.md](CURRENT.md) | 2026-10-28 | 8K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [A23_ALT1_ENDPOINT_PATCH.md](A23_ALT1_ENDPOINT_PATCH.md) | 2026-10-27 | 3K | HOS `usb:ds` 的 `FUN_000295d0` 在 bus state 变为 Configured 时，为每个接口/速度解析配置 |
@@ -31,9 +32,8 @@
 | [A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md](A23_Q2C_EVIDENCE_BUDGET_CONTRACT.md) | 2026-10-27 | 8K | 后续[单段整轮额度租约模型](A23_Q2C_EPOCH_LEASE_MODEL.md)已完成38项检查；仍无真实设备grant或全局互斥。下一项仅电脑定义设备额度回执协议与握手预算。下文为本来源合同阶段及当时下一步，… |
 | [A23_SHORT24_FIRST_LIVE.md](A23_SHORT24_FIRST_LIVE.md) | 2026-10-27 | 5K | 本轮已完成配套部署、唯一一次采集、关机后只读回收与分析。主机收到了连续的 |
 | [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-27 | 7K | 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
-| [A23_SHORT24_ONCE_PLAN.md](A23_SHORT24_ONCE_PLAN.md) | 2026-10-27 | 4K | 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 
-## 全部文档（251）
+## 全部文档（252）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -213,6 +213,7 @@
 | [A23_SUPERVISOR_CLEANUP.md](A23_SUPERVISOR_CLEANUP.md) | 2026-10-20 | 6K | A23 supervisor 管道、退出与清理边界（2026-10-20） — 后续：[统一supervisor候选](A23_SUPERVISOR_UNIFIED.md)合并两阶段32种指定安排并补5种关闭错误；503来源、37场景与60测试通过，同一观察/限额/终止/准入，保留来源未认证负对照… |
 | [A23_SUPERVISOR_JOB_LINK.md](A23_SUPERVISOR_JOB_LINK.md) | 2026-10-21 | 6K | A23 supervisor 与 job/receipt 的只读关联候选（2026-10-20） — 后续：[fixture自身job启动与结果绑定](A23_FIXTURE_JOB_BINDING.md)完成512来源、34安排和60测试；新Python fixture生成独立job/nonce与receipt，历史… |
 | [A23_SUPERVISOR_UNIFIED.md](A23_SUPERVISOR_UNIFIED.md) | 2026-10-20 | 6K | A23 统一 supervisor 收集、清理与关闭候选（2026-10-20） — 后续：[job/receipt只读关联](A23_SUPERVISOR_JOB_LINK.md)完成507来源、57场景与56测试；识别entry与SDK receipt绑定差异，提供未应用静态接入计划，只声明跨模型对… |
+| [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-28 | 3K | A23 持续流上限（2026-10-28） — 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 | [A23_TERMINAL_COMMIT.md](A23_TERMINAL_COMMIT.md) | 2026-10-21 | 7K | A23 局部终态目录同步与最终 commit 候选（2026-10-21） — 后续：[纯磁盘缓存只读恢复分类](A23_TERMINAL_RECOVERY.md)完成554来源、87安排和82测试；不接收事件/观察，完整commit仅关联字节，历史目录同步和wait保持unknown。原发布协议… |
 | [A23_TERMINAL_DEADLINE.md](A23_TERMINAL_DEADLINE.md) | 2026-10-22 | 6K | A23 取样独立期限与子进程直接wait（2026-10-22） — 后续：[调用者中断与运行时句柄交接](A23_TERMINAL_OWNER.md)完成565来源、两轮74安排和82测试。新增显式owner候选，原deadline监督器与固定worker保持。以下保留原阶段。 |
 | [A23_TERMINAL_INTAKE.md](A23_TERMINAL_INTAKE.md) | 2026-10-22 | 7K | A23 临时目录只读取样入口（2026-10-21） — 后续：[取样独立期限与子进程直接wait](A23_TERMINAL_DEADLINE.md)完成562来源、两轮67安排和82测试。原取样器保持；新监督器提供非阻塞管道与独立IO截止时间，未认证硬实时返回或调用者中断… |
