@@ -56,6 +56,9 @@ mailbox = 0xf80 + (slot / 32 % 3) * 0x20
 
 ## 备选：one-in-flight
 
+已构建 `iso-stream-serial640.nsp`（`c129dce7…`）：一次一个 URB、640 个不同 buffer，
+预期 208 轮/~3328 有效包、无 fatal。见 [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md)。
+
 不改 mailbox，直接串行：
 
 - 每 48ms 一个 URB：16ms 数据 + 32ms 空档（33%）；
