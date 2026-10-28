@@ -27,9 +27,10 @@
   [A23_PER_URB_MAILBOX_DESIGN.md](docs/A23_PER_URB_MAILBOX_DESIGN.md)、
   [A23_SERIAL_BASELINE.md](docs/A23_SERIAL_BASELINE.md)、
   [A23_PER_URB_IMPLEMENTATION.md](docs/A23_PER_URB_IMPLEMENTATION.md)、
-  [A23_PER_URB_ASSEMBLY.md](docs/A23_PER_URB_ASSEMBLY.md)（x13 clobber / report
-  hook 修复后，per-URB 仍在 UVC init 崩；不能作为 boot-time 全局 hook 部署，
-  需要 dormant guard；卡已恢复安全版本）。
+  [A23_PER_URB_ASSEMBLY.md](docs/A23_PER_URB_ASSEMBLY.md)（per-URB 仍在 UVC init
+  崩，不能作为 boot-time 全局 hook）；已设计两阶段 patch：
+  [A23_PER_URB_TWO_STAGE.md](docs/A23_PER_URB_TWO_STAGE.md)，boot 用 base A23，
+  START 时再换 per-URB。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

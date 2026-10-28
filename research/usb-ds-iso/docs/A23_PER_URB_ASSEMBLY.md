@@ -68,6 +68,10 @@ producer/event 路径**；base A23 在 init 时不崩。
 
 ## 下一步
 
+两阶段方案见 [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md)：boot 保持 base，
+START 时再应用 per-URB delta。
+
+
 需要实机：
 
 1. `perurb3-fixed2`（256 包）：先确认 `UvcDeviceInitialize` 能过、3 个 URB 各自完成；
