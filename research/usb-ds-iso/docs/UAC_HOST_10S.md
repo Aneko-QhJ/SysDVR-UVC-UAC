@@ -124,3 +124,19 @@ cat /proc/asound/cards > u0-asound-cards.txt
 
 通过：AC/AS 接口和音频 capture card 出现，dmesg 无 UAC/ISO 错误。
 失败：无 AC/AS、init 错误、crash；不重试，读卡并恢复 `52069a44…`。
+
+## U0 首次实机（2026-10-29 18:13，macOS）
+
+- 设备日志：`UAC initialized: AC=2 AS=3 EP=0x84`，`UVC device initialized`；
+  **没有** `USB host connected`，也没有 EP0 请求记录。
+- macOS：`ioreg` 看到 `SysDVR-UVC Capture`（IOUSBHostDevice），但
+  `system_profiler SPAudioDataType` 没有出现 UAC 音频设备；
+  `SPUSBDataType -json` 只返回空数组。
+- 判定：**U0 未通过**。设备侧 UAC 初始化成功，但主机没有配置/绑定新的复合
+  配置；需要确认是 macOS 对 UVC+UAC 复合配置的拒绝，还是 UAC 描述符/接口
+  问题。
+- 下一次 U0 应使用更丰富的主机记录：`ioreg -r -c IOUSBHostDevice -l`、
+  `ioreg -r -c IOUSBHostInterface -l`、macOS `log show` 中的
+  `AppleUSBHost`/`AppleUSBAudio` 错误，或直接换 Linux `lsusb -v`/`dmesg`。
+- 证据：`private/runs/UAC-u0-20261029/`（`device-log-u0.txt` `645f12d7…`、
+  `iorg.txt`、`audio.txt`、`run.json`）；卡已恢复 `52069a44…`。
