@@ -124,9 +124,19 @@ research/usb-ds-iso/host/uac-control --set-rate
 - usb fatal、断连、设备日志缺失；
 - 失败即停，读卡并恢复 `52069a44…`；不自动重试。
 
-## U1b（未准备）
+## U1b 离线评估与准备（2026-10-30）
 
-- `--alt=1` 会让 AS 选择 alt1；UAC alt1 端点安装可能仍受 alt0-only 端点
-  filter 影响（vendor alt1 需要 NOP patch）。需要单独的离线评估和有界实机，
-  不与 U1a 混。
-- 用户已表示后续部署无需另行授权，但 U1b 仍应先完成离线评估并给出有界范围。
+- vendor alt1 的根因是 `FUN_000295d0` 在 bus Configured 时只安装 alt0 端点：
+  8 个 `cbnz w9`（`35ffff09`）需要 NOP 成 `d503201f`，地址
+  `0x29694/0x29ad4/0x29ba4/0x29c88/0x29d54/0x29e38/0x29f04/0x29fe8`
+  （本机 usb.elf 已逐条核对）。
+- UAC AS 的 EP `0x84` 也是 alt1-only：alt0 无端点、alt1 一个端点，所以同样
+  受该 filter 影响。
+- 但 **U1b 只验证 `SET_INTERFACE(1)/0` 的控制与状态，不 post 数据**，因此
+  phase 1 **不需要 NOP**；NOP 只在 U2 需要端点 `entry+8=1` 时才必要。
+- phase 1（已备）：复用 r7 NSP `01c6ff26…`；`uac-control --alt-only`
+  依次 `GET_INTERFACE(0) → SET_INTERFACE(1) → GET_INTERFACE(1) →
+  SET_INTERFACE(0) → GET_INTERFACE(0)`，不 post、不 PCM。
+- phase 2/U2：加 8 条 NOP 后再做一次 PostBuffer；全局 NOP 会影响所有
+  接口的 alt 端点安装，需评估后再决定是否收窄。
+- 用户已表示后续部署无需另行授权；U1b 仍需一次 boot 的有界范围，失败即停。

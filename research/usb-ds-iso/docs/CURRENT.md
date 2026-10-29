@@ -328,8 +328,9 @@
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：U0 与 U1a 均已通过（257B/4 接口、音频设备；
    13/13 控制请求，`SET_CUR` ACK）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   下一步 U1b：先离线评估 `SET_INTERFACE(1)` 与 AS alt1 端点安装（可能需要
-   alt0-only filter 的 NOP）；然后 AS `0x84` 的 ISO producer 与 U2/U3 PCM。
+   下一步 U1b：离线评估已完成——U1b 只做 `SET_INTERFACE(1)/0`，不需要 NOP；
+   phase 1 复用 r7 NSP + `uac-control --alt-only`，卡插入后一次 boot。之后
+   U2 才需要 8 条 NOP 与 AS `0x84` 的 producer。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -339,9 +340,9 @@
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：U1b 的 `SET_INTERFACE(1)` 与 alt1 端点安装需先离线评估
-  alt0 filter/NOP 影响，再定有界范围；U2 才接一次 AS `0x84` burst。U0/U1a
-  已通过，不再重复。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
+- 实机（UAC 下一步）：U1b phase 1 复用 `01c6ff26…`，`uac-control --alt-only`
+  只做 alt 0→1→0；不 post、不 PCM，不需要 NOP。卡插入后部署。U2 才评估
+  8 条 NOP + AS `0x84` burst。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。

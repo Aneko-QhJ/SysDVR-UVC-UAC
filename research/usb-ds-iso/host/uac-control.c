@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define VID 0x1209
 #define PID 0xca57
@@ -42,15 +43,17 @@ static int rate_ok(const uint8_t *data, int length)
 
 int main(int argc, char **argv)
 {
-    int set_rate = 0, alt = -1;
+    int set_rate = 0, alt = -1, alt_only = 0;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--set-rate")) set_rate = 1;
+        else if (!strcmp(argv[i], "--alt-only")) alt_only = 1;
         else if (!strncmp(argv[i], "--alt=", 6)) alt = atoi(argv[i] + 6);
         else {
-            fprintf(stderr, "usage: %s [--set-rate] [--alt=0|1]\n", argv[0]);
+            fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1]\n", argv[0]);
             return 2;
         }
     }
+    if (alt_only && alt < 0) alt = 1;
 
     libusb_context *ctx = NULL;
     libusb_device_handle *h = NULL;
@@ -64,6 +67,26 @@ int main(int argc, char **argv)
 
     uint8_t data[8] = {0};
     int rc;
+
+    if (alt_only) {
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE before");
+        if (rc != 1 || data[0] != 0) ++failures;
+        rc = ctrl(h, 0x01, 0x0B, (uint16_t)alt, AS_INTERFACE, NULL, 0,
+                  alt == 1 ? "SET_INTERFACE(1)" : "SET_INTERFACE(alt)");
+        if (rc != 0) ++failures;
+        usleep(10000);
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE alt");
+        if (rc != 1 || data[0] != alt) ++failures;
+        rc = ctrl(h, 0x01, 0x0B, 0, AS_INTERFACE, NULL, 0, "SET_INTERFACE(0)");
+        if (rc != 0) ++failures;
+        usleep(10000);
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE after");
+        if (rc != 1 || data[0] != 0) ++failures;
+        libusb_close(h);
+        libusb_exit(ctx);
+        printf("failures=%d\n", failures);
+        return failures ? 1 : 0;
+    }
 
     rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE(AS)");
     if (rc != 1) ++failures; else printf("  alt=%u\n", data[0]);
