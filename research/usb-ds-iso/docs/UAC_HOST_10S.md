@@ -15,8 +15,8 @@ UAC 在默认构建中仍禁用。
 | U3 | 短 PCM | 1s 捕获，采样率/声道/位深正确，无 xrun |
 | U4 | 10s PCM | 10s 捕获，0 xrun、无截断、跨块样本连续、无重连 |
 
-U0–U4 的 host 入口已备；设备侧 U0 已构建并实机四轮（U0/U0b/U0c/UAC-only），
-均未通过，见下文。
+U0–U4 的 host 入口已备；U0 已在 2026-10-30 的 U0d 通过（见下文），
+U1–U4 尚未开始。
 
 ## 当前设备侧缺口
 
@@ -76,13 +76,12 @@ research/usb-ds-iso/tools/uac_host_10s.sh \
 
 ## 下一步（离线）
 
-1. 审计 usb:ds 的 `AppendConfigurationData`/配置状态、接口数/描述符长度约束，
-   解释“复合能枚举但 config 读失败、纯 AC/AS 无设备”；
-2. 机制清楚后，才设计最小的 AC/AS 读配置验证（需要新的实机授权）；
-3. 通过后再接 AS `0x84` 的 ISO producer；
-4. 最后才是 U2–U4 的 10s PCM。
+1. U1：在标准宿主下验证 AC/AS 控制请求（48k GET/SET、`SET_INTERFACE`
+   alt0/alt1）与 ACK；
+2. U2：设计 AS `0x84` 的 ISO producer，先做一次有界 burst；
+3. U3/U4：1s/10s PCM、xrun、跨块连续性与时钟/反馈。
 
-在这些完成前，UAC 仍保持禁用；不再部署 UAC 变体。
+UAC 仍只在 `UAC_HOST_PROBE` 下启用；实机需要新的明确授权。
 
 ## U0 枚举候选（2026-10-29 离线构建）
 
@@ -236,6 +235,28 @@ cat /proc/asound/cards > u0-asound-cards.txt
 1. 复合 UVC+UAC 还能枚举设备，但 config descriptor 读失败；
 2. 纯 AC/AS 连设备都不出现。
 在这两个现象有同一个可解释机制前，不再上 UAC 变体。
+
+## U0d 实机：U0 通过（2026-10-30 01:00）
+
+- 构建：`UAC_HOST_PROBE + UAC_DESCRIPTOR_PATCH`，NSP `48c872f1…`（86780B，
+  `private/analysis/UAC-descriptor-patch-20261029/build/outputs/exefs.nsp`）。
+- 部署：`atmosphere/contents/00FF0000A53BB666/exefs.nsp`；一次 boot；旧日志
+  已备份并移除；卡记录 `private/card-cycles/20261030-uac-descriptor-probe`。
+- 主机（macOS，USB）：
+  - `usb-config-dump`：`wTotalLength=257`、`bNumInterfaces=4`；
+    interface 2 = AC（01/01），interface 3 = AS（01/02）alt0/alt1，
+    alt1 EP `0x84` ISO MPS192/interval4；
+  - `ioreg`：AC → `AppleUSBAudioControlNub`，AS → `AppleUSBAudio`，
+    `usbaudiod` 独占；
+  - `SPAudioDataType`：`SysDVR-UVC Capture`，2 输入声道，48 kHz，USB，
+    Manufacturer Nintendo Switch。
+- 设备日志（`private/runs/UAC-u0d-20261030/device-log-u0d.txt`，`520afc3b…`）：
+  `UAC descriptor patch result=0 record=17 last-rc=0x0`；
+  `UAC initialized: AC=2 AS=3 EP=0x84`；`USB host connected`。
+- 判定：**U0 通过**。之前 U0/U0b/U0c 的 `0xE00002CD` 配置读取失败消失。
+- 未证明：未 `SET_INTERFACE(1)`、未选 alt1、无 AS ISO producer、无 PCM；
+  SS 269B 未单独验证；`log show` 被 macOS 沙箱拒绝，未抓内核日志。
+- 收尾：读卡后恢复 `52069a44…` 并安全弹出；无重试。
 
 ## 记录缺口（2026-10-29）
 

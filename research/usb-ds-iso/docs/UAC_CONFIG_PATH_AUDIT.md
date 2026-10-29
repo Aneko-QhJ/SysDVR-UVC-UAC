@@ -229,15 +229,29 @@ payload 只改 usb 模块代码，不改本应用；下一步需要把它接到 
 
 复现：`python3 research/usb-ds-iso/tools/build_uac_descriptor_probe.py`；记录
 `private/analysis/UAC-descriptor-patch-20261029/build-result.json`。该 NSP
-**未部署、未上卡、未实机**；按记录卡上仍是安全 `52069a44…`，本轮没有接触硬件。
+随后在 U0d 部署一次，测试后已恢复安全 `52069a44…`（见第 8 节）。
 
-## 8. 限制与未证明
+## 8. U0d 实机验证（2026-10-30）
+
+- 部署 `UAC_DESCRIPTOR_PATCH` 复合 NSP（`48c872f1…`，86780B），一次 boot，
+  无重试；卡记录 `private/card-cycles/20261030-uac-descriptor-probe`。
+- 主机读出 `wTotalLength=257`、`bNumInterfaces=4`；AC/AS 绑定
+  `AppleUSBAudio`；`SysDVR-UVC Capture` 2ch/48k/USB 输入。
+- 设备日志：`UAC descriptor patch result=0 record=17 last-rc=0x0`，
+  18 条编辑全部应用；`UAC initialized: AC=2 AS=3 EP=0x84`。
+- 结论：**257B 的 u8 截断修复在硬件上成立，U0 通过**；之前
+  `GET_DESCRIPTOR(config)` 的 `0xE00002CD` 消失。
+- 未证明：UAC 数据路径、`SET_INTERFACE(1)`/alt1 选择、SS 269B、PCM。
+- 收尾：读卡后恢复 `52069a44…` 并安全弹出。
+
+## 9. 限制与未证明
 
 - `0xE00002CD` 的 host 侧映射是按“配置头长度 1 字节”推断的，未在主机
   侧逐包验证。
-- 257B + 补丁尚未实机；本审计不对硬件行为作保证。
+- HS 257B 已在 U0d 实机验证；SS 269B 未单独验证，UAC 数据路径未验证。
 - 仿真短路了 mutex/cleanup，只覆盖组装器与 getter，不是 EP0/主机栈的端到端测试。
-- NSP 未部署；dmnt 附加/恢复与 fail-closed 只在 A23 上验证过，UAC 变体未实机。
+- U0d 的 `log show` 被 macOS 沙箱拒绝，未抓内核日志；主机证据来自
+  `usb-config-dump`、`ioreg`、`SPAudioDataType`。
 - usb:ds 对“从未设置设备描述符”的默认对象状态没有完整追踪。
 - runtime edits 只对 BuildID `AD8D36F2…` / size `0x369000` 的 usb 模块有效；
   其他固件版本需要重新定位。
@@ -245,16 +259,13 @@ payload 只改 usb 模块代码，不改本应用；下一步需要把它接到 
   SHA256 写成 `…309688e8…`，实际文件与 Ghidra 程序都是 `…3019688e…`；
   本审计以实际文件为准，旧 README 的摘要待单独校正。
 
-## 9. 下一步（离线优先）
+## 10. 下一步（离线优先）
 
-1. **已完成**：descriptor-only 的 18 条 payload（`uac_descriptor_payload.h`）。
-2. **已完成**：HS 257B / SS 269B 的组装与 getter 仿真（1/13 → 257/269）。
-3. **已完成**：UAC build 接入（`UAC_DESCRIPTOR_PATCH`），四种配置均构建通过；
-   产物 NSP `48c872f1…`（未部署）。若保留 UAC-only 隔离实验，仍需把
-   `_setupDescriptors5x(config)` 移到它也会执行的路径。
-4. 实机（需要新的明确授权）：复合 UAC + descriptor-only 补丁，
-   一次 boot，`usb-config-dump` 期望 4 接口/257B，`SPAudioDataType` 或
-   `arecord -l` 出现音频设备；本轮不做 PCM。
+1-3. **已完成**：payload、HS/SS 仿真、build 接入。
+4. **已完成**：U0d 一次实机，257B/4 接口/音频设备；U0 通过。
+5. 下一步（需新的明确授权）：U1 的 AC/AS 控制请求与 `SET_INTERFACE`；
+   然后 AS `0x84` 的 ISO producer 与 U2/U3 PCM。UAC-only 若保留，仍需补
+   `_setupDescriptors5x(config)`。
 
 ## 证据
 

@@ -1,3 +1,7 @@
+> 2026-10-30 更新：U0 已通过（257B/4 接口，macOS 绑定 `AppleUSBAudio`，
+> 出现 2ch/48k 输入）；见 [CURRENT.md](CURRENT.md) 与
+> [UAC_HOST_10S.md](UAC_HOST_10S.md)。本文其余部分是 2026-10-27 的离线 P0 记录。
+
 # UAC1 标准层（离线 P0）
 
 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用

@@ -9,8 +9,10 @@
 
 ## 现在做什么
 
-- 最近一次实机（2026-10-29 18:40）：UAC-only 隔离构建下主机完全枚举不到 USB
-  设备，构建已标 dangerous，卡已恢复 `52069a44…`；停止 UAC 变体试验。
+- 最近一次实机（2026-10-30 01:00）：UAC 探针 U0d **通过**——257B/4 接口配置
+  可读，macOS 绑定 `AppleUSBAudio`，出现 `SysDVR-UVC Capture` 2ch/48k 输入；
+  未测 PCM。卡已恢复 `52069a44…`。
+- UAC-only 隔离构建（`7ffdf733…`）仍标 dangerous，不再部署。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
@@ -19,8 +21,8 @@
   UAC `0x84`），UAC 仍禁用。
 - UAC 配置路径审计完成：[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)：
   复合 HS 257B/SS 269B 撞上 usb:ds 的 u8 长度截断；UAC-only 跳过了设备描述符
-  设置。payload、HS/SS 仿真与 `UAC_DESCRIPTOR_PATCH` build 接入已完成
-  （NSP `48c872f1…`，未部署）；实机另需授权。
+  设置。payload、HS/SS 仿真与 `UAC_DESCRIPTOR_PATCH` build 接入已完成；
+  U0d 已实机一次通过（257B/4 接口/音频设备），卡已恢复 `52069a44…`。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
@@ -57,16 +59,13 @@
   [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
   [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
 - 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)）。
-  **U0 已实机一次未通过**（`3c3bf145…`）：设备 `UAC initialized: AC=2 AS=3
-  EP=0x84`，但 macOS 只看到 USB 设备、没有音频设备/无 host-connected 记录。
-  **U0b/U0c 均未通过**：macOS 内核日志显示 `GET_DESCRIPTOR(config)` 返回
-  `0xE00002CD`（`kIOReturnNotReadable`），即设备/usb:ds 无法提供新的 UAC
-  复合配置；safe build 的 config 可读（185B/3 接口）。**UAC-only 隔离构建
-  实机后主机完全枚举不到 USB 设备**（`7ffdf733…`），已标 dangerous，卡恢复
-  `52069a44…`。停止 UAC 变体试验；配置路径审计已完成
-  （[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)），
-  payload、仿真与 build 接入已完成（NSP `48c872f1…`，未部署）。
-  UAC 默认仍禁用，10s PCM 未就绪。
+  **U0 最终通过（U0d，10-30 01:00）**：部署 `UAC_DESCRIPTOR_PATCH` 复合 NSP
+  （`48c872f1…`）后，配置读出 257B/4 接口，AC/AS 绑定 `AppleUSBAudio`，
+  音频设备 `SysDVR-UVC Capture` 2ch/48k/USB；设备日志
+  `UAC descriptor patch result=0 record=17`。此前 U0/U0b/U0c 失败于
+  `GET_DESCRIPTOR(config)` 0xE00002CD；UAC-only（`7ffdf733…`）因跳过设备
+  描述符而不可见，均已定位。UAC 默认仍禁用；未选 alt1、无 ISO producer，
+  10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录

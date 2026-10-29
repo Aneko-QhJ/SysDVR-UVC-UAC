@@ -1,18 +1,31 @@
-# 当前状态（2026-10-30 00:15，Asia/Shanghai）
+# 当前状态（2026-10-30 01:05，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-29 18:40 的 UAC-only 轮；本轮为 UAC 配置路径离线审计，
-> 没有 USB/SD/实机操作。
+> 最后一次实机是 2026-10-30 01:00 的 U0d；本轮部署 UAC 补丁 NSP、抓取主机
+> 枚举证据、读卡确认补丁并恢复安全构建 `52069a44…`。
 
 ## 一句话
 
-视频可用；音频不可用。UAC 标准层离线已完成，标准宿主枚举四轮均未通过
-（U0/U0b/U0c/UAC-only）；配置路径审计已解释两个现象：复合配置 257B 撞上
-usb:ds 的 u8 长度截断，UAC-only 则跳过了设备描述符设置。descriptor-only
-payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1…`，
-未部署）已完成；下一步实机另需授权。最近一次短包实机（2026-10-27）主机侧通过、
-设备侧保存失败；路径修正版已存在，未打包/未部署。
+视频可用；UAC 枚举可用，数据路径仍不可用。U0 已通过（U0d）：257B/4 接口的
+复合配置可读，macOS 绑定 AppleUSBAudio 并出现 `SysDVR-UVC Capture` 2ch/48k
+输入；AS alt1 尚未被选择，仍无 ISO producer，PCM 未测试。UAC 默认仍禁用
+（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`。最近一次短包实机
+（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
+
+## 最近一次 UAC 实机（2026-10-30，U0 通过）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `UAC_HOST_PROBE + UAC_DESCRIPTOR_PATCH`，NSP `48c872f1…`（86780B） |
+| 部署 | `atmosphere/contents/00FF0000A53BB666/exefs.nsp`；一次 boot，无重试 |
+| 主机 | 配置 `wTotalLength=257`、`bNumInterfaces=4`；AC/AS 可见，AS alt1 EP `0x84` ISO MPS192/interval4 |
+| 驱动 | AC → `AppleUSBAudioControlNub`；AS → `AppleUSBAudio`；`usbaudiod` 独占 |
+| 音频 | `SysDVR-UVC Capture`，2 声道输入，48 kHz，USB，Nintendo Switch |
+| 设备 | `UAC descriptor patch result=0 record=17`；`UAC initialized: AC=2 AS=3 EP=0x84` |
+| 判定 | **U0 通过**；未选 alt1、无 PCM、未测 U1/U2 |
+| 证据 | `private/runs/UAC-u0d-20261030`、`private/card-cycles/20261030-uac-descriptor-probe` |
+| 收尾 | 已恢复 `52069a44…` 并安全弹出；无重试 |
 
 ## 最近一次短包实机（2026-10-27）
 
@@ -38,14 +51,15 @@ payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1�
   - 描述符构建器 + lint + alt0/alt1/类请求状态机；`make check` 覆盖。
   - 设备构建通过；UAC 默认仍禁用，`_setupAudioInterfaces5x` 在默认构建未调用。
   - alt1 端点安装已由 runtime NOP patch 证明（vendor `0x83`）；UAC 的 AS `0x84`
-    alt1 仍未被标准宿主验证。
+    alt1 已在 U0d 描述符/枚举中出现（MPS192/interval4），但未被选择、无 producer，
+    数据路径未验证。
   - 接口预算：usb:ds/libnx 最多 4 个接口；UVC 2 + UAC 2 = 4，因此 UAC 不能与
     `ISO_PROBE` 的 vendor 接口同 build；`_setupAudioInterfaces5x` 已加拒绝。
 - UAC 配置路径审计已完成：[UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)。
   复合 HS 257B/SS 269B 被 usb:ds 的 u8 长度截断；UAC-only 只 97B，但跳过了
   设备描述符设置。descriptor-only payload（18 条）、Unicorn 仿真与 build 接入
   已完成：未修补 HS `wTotalLength=1`、SS=13，修补后 257/269；补丁 NSP
-  `48c872f1…`（86780B，未部署）。该审计没有硬件操作。
+  `48c872f1…`（86780B）已在 U0d 实机一次并恢复。
 
 ## 授权与边界
 
@@ -56,6 +70,9 @@ payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1�
 - UAC 四轮实机（2026-10-29 18:13–18:40）只留下部署/恢复记录，没有书面 authorization
   票据，相关 scope 仍写 `hardware_authorized: false`；按 RESEARCH_RULES 属于记录缺口，
   不构成后续实机授权。见 [UAC_HOST_10S.md](UAC_HOST_10S.md) 末尾的记录缺口。
+- U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
+  恢复 `52069a44…` 并安全弹出；原始日志
+  `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
 
 ## ALT1 探针（bulk alt1 已通过）
 
@@ -225,7 +242,14 @@ payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1�
   - **build 接入完成（10-30）**：`UAC_DESCRIPTOR_PATCH` 在 `usbDsEnable()` 前由
     dmnt 应用 18 条编辑，校验 BuildID/size，失败即拒绝启用；四种配置（默认/
     UAC probe/UAC-only/probe+patch）均构建通过。补丁 NSP `48c872f1…`
-    （86780B）**未部署、未上卡**。详见审计文档第 7 节。
+    （86780B）随后在 U0d 部署一次。详见审计文档第 7 节。
+  - **U0d 实机通过（10-30 01:00）**：部署 `48c872f1…` 一次 boot；
+    `usb-config-dump` 读出 `wTotalLength=257`、4 接口；AC/AS 绑定
+    `AppleUSBAudio`，音频设备 `SysDVR-UVC Capture` 2ch/48k/USB；设备日志
+    `UAC descriptor patch result=0 record=17`、`UAC initialized: AC=2 AS=3 EP=0x84`。
+    **U0 通过**；未选 alt1、无 PCM。卡已恢复 `52069a44…`。证据
+    `private/runs/UAC-u0d-20261030`、
+    `private/card-cycles/20261030-uac-descriptor-probe`。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
@@ -269,14 +293,11 @@ payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1�
    无 fatal）；下一步在标准宿主（Linux `snd-usb-audio`）接连续 PCM，验证
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
-   打通（vendor `0x83`，不是 UAC `0x84`）。U0/U0b/U0c 与 UAC-only 四轮实机均未通过：
-   复合配置能枚举但 config GET 返回 `0xE00002CD`，UAC-only 连设备都不出现；UAC-only
-   已标 dangerous。**配置路径审计已完成**（[UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)）：
-   复合 HS 257B/SS 269B 撞上 usb:ds 未修补的 u8 长度截断（`wTotalLength` 变 1/13）；
-   UAC-only 的 97B 不触发截断，但构建跳过了 `_setupDescriptors5x`，没有设备描述符。
-   build 接入已完成（NSP `48c872f1…`，未部署）；下一步实机另需授权。
-   接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
+3. **标准 UAC 层**：U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，
+   `SysDVR-UVC Capture` 2ch/48k 输入）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+   下一步是 U1：AC/AS 控制请求（48k GET/SET、SET_INTERFACE alt0/alt1）在标准
+   宿主下 ACK；然后设计 AS `0x84` 的 ISO producer 与 U2/U3 PCM。接口预算 4
+   已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
@@ -285,16 +306,17 @@ payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1�
 
 ## 下一步（未授权）
 
-- 实机（UAC 当前优先，需新的明确授权）：用 `UAC_DESCRIPTOR_PATCH` 复合 NSP
-  （`48c872f1…`，未部署）做一次 U0 枚举：`usb-config-dump` 期望 4 接口/257B，
-  `SPAudioDataType` 或 `arecord -l` 出现音频设备；本轮不做 PCM。离线部分见
-  [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)。
+- 实机（UAC 下一步，需新的明确授权）：U1 只验证 AC/AS 控制请求与
+  `SET_INTERFACE(alt0/alt1)` ACK；U2 才接一次 AS `0x84` burst。U0 已通过，
+  不再重复 U0。离线准备见
+  [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) 与
+  [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
-  模型已备，但接真实数据要等 UAC 枚举通过。
+  模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
 - 实机：另定范围与授权；标准 UAC、alt1 探针、路径修正版不要混在同一轮变量里。
 
 ## 不证明
 
-10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作（包括 257B 补丁后的枚举）、
+10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作、UAC 数据路径/alt1 选择、
 时钟同步、SDK 排空、旧超时根因、未来无事件。
