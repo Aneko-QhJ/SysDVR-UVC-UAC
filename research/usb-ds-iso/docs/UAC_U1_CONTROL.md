@@ -3,7 +3,7 @@
 > 目标：在标准宿主上验证 AC/AS 控制平面（U1a）：`GET_INTERFACE`、
 > SAMPLING_FREQ 的 `GET_CUR/MIN/MAX/RES/LEN` 与 `SET_CUR(48000)`。
 > **不碰 alt1 数据路径**；`SET_INTERFACE(1)` 归 U1b，单独授权。
-> r7 已实机通过（13/13，2026-10-30 01:46）；U1b 未开始。
+> U1a（r7，13/13）与 U1b（alt 0→1→0）均已实机通过；U2 未开始。
 
 ## 现状与边界
 
@@ -12,8 +12,8 @@
 - UAC 仍只在 `UAC_HOST_PROBE` 下启用；默认构建禁用。
 - `UacStandardHandle` 已实现 U1a 的请求；`_handleUacSetup` 在
   `UAC_HOST_PROBE` 下轮询 AC/AS SetupEvent。
-- U1a 已通过（r7）；U1b 的 `SET_INTERFACE(1)` 仍可能受 usb:ds 的 alt1 端点
-  安装限制影响，不能与 U1a 混在同一轮。
+- U1a 与 U1b 均已通过；U2 的端点安装/数据路径仍受 alt0-only filter 影响，
+  需要 8 条 NOP。
 
 ## 设备构建（U1a）
 
@@ -140,3 +140,14 @@ research/usb-ds-iso/host/uac-control --set-rate
 - phase 2/U2：加 8 条 NOP 后再做一次 PostBuffer；全局 NOP 会影响所有
   接口的 alt 端点安装，需评估后再决定是否收窄。
 - 用户已表示后续部署无需另行授权；U1b 仍需一次 boot 的有界范围，失败即停。
+
+## U1b 通过（2026-10-30 01:55）
+
+- 复用 r7 NSP `01c6ff26…`，无 NOP、无数据 post，一次 boot。
+- 主机：`GET_INTERFACE` 0 → `SET_INTERFACE(1)` ACK → `GET_INTERFACE` 1 →
+  `SET_INTERFACE(0)` ACK → `GET_INTERFACE` 0；failures=0。
+- 设备日志：`UAC setup[3] type=01 req=0b val=0001 ... action=3`；
+  `... val=0000 ... action=4`；无 usb fatal。alt 切换期间 macOS 有
+  disconnect/connect 重枚举，但控制请求全部完成。
+- 结论：**alt-setting 控制生命周期可用**；端点安装未被验证（未 post），
+  U2 才需要 8 条 NOP 让 `entry+8=1`。

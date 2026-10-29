@@ -1,17 +1,17 @@
-# 当前状态（2026-10-30 01:50，Asia/Shanghai）
+# 当前状态（2026-10-30 02:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 01:46 的 U1a-r7；U1a 通过，卡已恢复 `52069a44…`
-> 并安全弹出。
+> 最后一次实机是 2026-10-30 01:55 的 U1b；U1a/U1b 均通过，卡已恢复
+> `52069a44…` 并安全弹出。
 
 ## 一句话
 
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
-`SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13：GET_INTERFACE、
-两种 recipient 的 CUR/MIN/MAX/RES/LEN、SET_CUR 48000）。AS alt1 尚未被选择，
-仍无 ISO producer，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+`SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
+U1b 已通过（alt 0→1→0，无 NOP）。AS alt1 尚未 post 数据，仍无 ISO producer，
+PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 卡已恢复安全 `52069a44…` 并安全弹出。最近一次短包实机（2026-10-27）主机侧
 通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
 
@@ -87,9 +87,9 @@
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
-- U1a 的 r4–r7 在用户“如果还要部署，无需另外授权”下连续执行；每次一次 boot，
-  r7 通过后已恢复 `52069a44…` 并安全弹出。r1–r3 的日志与恢复记录保留在
-  `private/runs/UAC-u1a*`。
+- U1a 的 r4–r7 与 U1b 在用户“如果还要部署，无需另外授权”下连续执行；
+  每次一次 boot，U1a-r7/U1b 通过后均恢复 `52069a44…` 并安全弹出。
+  r1–r3 的日志与恢复记录保留在 `private/runs/UAC-u1a*`。
 
 ## ALT1 探针（bulk alt1 已通过）
 
@@ -260,6 +260,10 @@
     dmnt 应用 18 条编辑，校验 BuildID/size，失败即拒绝启用；四种配置（默认/
     UAC probe/UAC-only/probe+patch）均构建通过。补丁 NSP `48c872f1…`
     （86780B）随后在 U0d 部署一次。详见审计文档第 7 节。
+  - **U1b 通过（10-30 01:55）**：复用 r7 NSP，无 NOP、无数据 post；
+    `GET_INTERFACE` 0→1→0，两条 `SET_INTERFACE` ACK；设备日志
+    `action=3`（START）后 `action=4`（STOP），无 usb fatal；切换期间有
+    host 重枚举。端点安装未验证，U2 才需要 NOP。
   - **U1a 通过（10-30 01:46，r7）**：NSP `01c6ff26…`（87321B）一次 boot；
     13/13 控制请求通过；设备日志 `UAC setup[2] type=22 ... action=1`，AS 的
     重复投递 `0x25c8c` 但未 STALL；后续 GET 正常。修复链：wValue 0x0100、
@@ -326,11 +330,10 @@
    无 fatal）；下一步在标准宿主（Linux `snd-usb-audio`）接连续 PCM，验证
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-3. **标准 UAC 层**：U0 与 U1a 均已通过（257B/4 接口、音频设备；
-   13/13 控制请求，`SET_CUR` ACK）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   下一步 U1b：离线评估已完成——U1b 只做 `SET_INTERFACE(1)/0`，不需要 NOP；
-   phase 1 复用 r7 NSP + `uac-control --alt-only`，卡插入后一次 boot。之后
-   U2 才需要 8 条 NOP 与 AS `0x84` 的 producer。
+3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
+   13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+   下一步 U2：8 条 alt0-filter NOP + AS `0x84` 的一次有界 ISO burst，
+   验证端点安装与数据路径；再谈 PCM。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -340,9 +343,9 @@
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：U1b phase 1 复用 `01c6ff26…`，`uac-control --alt-only`
-  只做 alt 0→1→0；不 post、不 PCM，不需要 NOP。卡插入后部署。U2 才评估
-  8 条 NOP + AS `0x84` burst。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
+- 离线（UAC 下一步）：准备 U2 的 8 条 NOP + descriptor 补丁合并 payload，
+  以及一次 AS `0x84` ISO burst 的有界入口；NOP 是全局的，需先评估对其他
+  接口的影响。实机另定范围。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
@@ -351,4 +354,4 @@
 ## 不证明
 
 10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作、UAC 数据路径/alt1 选择、
-U1b 的 alt1 选择与数据路径、时钟同步、SDK 排空、旧超时根因、未来无事件。
+U1b 的 alt1 端点安装与数据路径、时钟同步、SDK 排空、旧超时根因、未来无事件。

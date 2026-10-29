@@ -77,9 +77,8 @@ research/usb-ds-iso/tools/uac_host_10s.sh \
 ## 下一步（离线）
 
 1. U1a：在标准宿主下验证 AC/AS 控制请求（`GET_INTERFACE`、48k GET/SET）与
-   ACK；**U1a 已通过**（r7，13/13；见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)）。
-   U1b 的
-   `SET_INTERFACE(alt0/alt1)` 单独授权；
+   ACK；**U1a、U1b 均已通过**（r7 13/13；alt 0→1→0；见
+   [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)）。
 2. U2：设计 AS `0x84` 的 ISO producer，先做一次有界 burst；
 3. U3/U4：1s/10s PCM、xrun、跨块连续性与时钟/反馈。
 
