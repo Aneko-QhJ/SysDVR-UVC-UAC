@@ -18,6 +18,7 @@
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
+| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 2K | 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-29 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 5K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
@@ -31,9 +32,8 @@
 | [A23_PER_URB_IMPLEMENTATION.md](A23_PER_URB_IMPLEMENTATION.md) | 2026-10-28 | 3K | 把单 mailbox 改成 3 个 0x20 的 mailbox，按 URB 起始槽 `slot/32 % 3` 选择；每个 URB |
 | [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md) | 2026-10-28 | 2K | `iso_enter` 每次提交都重置同一个 mailbox： |
 | [A23_REARM_BOUNDARY.md](A23_REARM_BOUNDARY.md) | 2026-10-28 | 5K | `0xF601` 是 **`KernelError_SessionClosed`**：第二次/第三次 `PostBufferAsync` 时 |
-| [A23_SINGLE_MAILBOX_MULTI_URB.md](A23_SINGLE_MAILBOX_MULTI_URB.md) | 2026-10-28 | 2K | `iso_burst_patch.S` 的 `iso_enter` 每次提交都会重置同一个 mailbox： |
 
-## 全部文档（263）
+## 全部文档（264）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -196,6 +196,7 @@
 | [A23_SEQUENCE_READINESS.md](A23_SEQUENCE_READINESS.md) | 2026-10-17 | 5K | 序号49的一次流程准备（2026-10-17） — 后续状态：序号49..64已在一次授权测试中永久保留，主机于SDK初始化失败且未提交ISO。59原件已回收并弹出，但boot2.flag缺失，部署核验未通过；见[首次实测及回收](A23_SEQUENCE_FIRST_… |
 | [A23_SEQUENCE_RECEIVER.md](A23_SEQUENCE_RECEIVER.md) | 2026-10-17 | 6K | 历史范围绑定的序号主机候选（2026-10-17） — 后续更新：正式一次流程已完成离线接入和验证，见[序号49流程准备](A23_SEQUENCE_READINESS.md)。本页保留候选构建阶段的历史状态；49..64仍未正式保留，本轮无实机测试。 |
 | [A23_SEQUENCE_WITNESS.md](A23_SEQUENCE_WITNESS.md) | 2026-10-17 | 6K | 跨端会话关联与起始序号可行性（2026-10-17） — 离线复核确认：当前SETUP顺序和状态比较不能区分两次成功运行的设备文件。现有设备协议已把主机指定的16位起始序号传到STATUS、trace和16个ISO包；可以优先准备一个绑定不同起始序号的新主机候选，以提高已知旧… |
+| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 2K | A23 serial640 复测方案（2026-10-29 准备） — 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | A23 one-in-flight 串行基线（2026-10-28） — `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SERVICE_OBSERVATION_OFFLINE.md](A23_SERVICE_OBSERVATION_OFFLINE.md) | 2026-10-25 | 7K | 末轮观察的队列服务证据候选（2026-10-25） — 继续离线审查[417..464实测](A23_LIVE126_INTEREPOCH_FIRST_RESULT.md)，结论是下一项应补末轮观察证据，而不是重复相同三轮或继续缩短ISO空槽。本轮核对旧证据/可变票据后，新… |
 | [A23_SESSION_ARM_CANDIDATE.md](A23_SESSION_ARM_CANDIDATE.md) | 2026-10-14 | 8K | 启动关联与独立保存ARM候选（2026-10-14） — 在上一轮启动ARM候选的新副本中接入REL1：VideoThread在Ep0CandidateStart成功后发布既有writer/boot/session nonce，main在诊断保存返回后发布绑定该份DIA1输入… |

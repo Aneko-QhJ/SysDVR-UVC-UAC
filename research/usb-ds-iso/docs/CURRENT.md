@@ -171,6 +171,11 @@
   固有“5 URB/5 页”硬限制。serial640 的 5 URB 崩溃需要用当时的 in-flight/
   主机状态或构建差异重新解释。下一步用更长窗口或标准宿主复测该条件。
   见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+- **serial640 复测已准备（10-29，未授权）**：候选仍是 v5 `11d5e9eb…`，
+  host 改回 10000 包并加 `caffeinate`，保持 640 缓冲 + `posts == completes`
+  单飞；只准备 scope，未部署/未开机。判别：稳定 ~200 post → 旧崩不是固有
+  5 页墙；仍在 ~5 post 崩 → 设备侧边界。见
+  [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
@@ -199,7 +204,8 @@
 
 1. **A23 持续流复测**：v5 320 包已到 8 post、两页复用、无 fatal；先在
    `caffeinate` + 明确 one-in-flight 下复测 serial640 的旧条件（640/10000 包），
-   解释当时的 5 URB 崩溃，再定 10s 连续流是否可达。需要新的明确授权。
+   解释当时的 5 URB 崩溃，再定 10s 连续流是否可达。scope 已准备：
+   [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。需要新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
    打通；连续 PCM 的 3-URB 方案已被硬件否决（usb assert）。剩下单 URB 长传输/低 lead、
