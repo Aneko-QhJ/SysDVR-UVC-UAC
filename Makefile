@@ -19,6 +19,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #TARGET		:=	sys-dvr-uvc
 TARGET		:=	exefs
 BUILD		:=	build
+OUTPUT_DIR	?=	.
 SOURCES		:=	source source/sysmodule source/uvc
 DATA		:=	data
 INCLUDES	:=	include
@@ -51,10 +52,10 @@ LIBDIRS	:= $(PORTLIBS) $(LIBNX)
 # no real need to edit anything past this point unless you need to add additional
 # rules for different file extensions
 #---------------------------------------------------------------------------------
-ifneq ($(BUILD),$(notdir $(CURDIR)))
+ifneq ($(notdir $(BUILD)),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
 
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
+export OUTPUT	:=	$(abspath $(OUTPUT_DIR))/$(TARGET)
 export TOPDIR	:=	$(CURDIR)
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
@@ -127,7 +128,7 @@ ifeq ($(strip $(NO_ICON)),)
 endif
 
 ifeq ($(strip $(NO_NACP)),)
-	export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
+	export NROFLAGS += --nacp=$(OUTPUT).nacp
 endif
 
 ifneq ($(APP_TITLEID),)
@@ -145,15 +146,16 @@ all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
+	@mkdir -p $(dir $(OUTPUT))
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
 ifeq ($(strip $(APP_JSON)),)
-	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
+	@rm -fr $(BUILD) $(OUTPUT).nro $(OUTPUT).nacp $(OUTPUT).elf
 else
-	@rm -fr $(BUILD) $(TARGET).nsp $(TARGET).nso $(TARGET).npdm $(TARGET).elf
+	@rm -fr $(BUILD) $(OUTPUT).nsp $(OUTPUT).nso $(OUTPUT).npdm $(OUTPUT).elf
 endif
 
 
