@@ -52,9 +52,10 @@
 - 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)）。
   **U0 已实机一次未通过**（`3c3bf145…`）：设备 `UAC initialized: AC=2 AS=3
   EP=0x84`，但 macOS 只看到 USB 设备、没有音频设备/无 host-connected 记录。
-  **U0b 已离线修正**：IAD subclass 改为 0，AC+AS 全部 append/register 后再
-  enable；NSP `bdae4cd6…`，未部署。下一步用更丰富的 macOS/Linux 记录复测。
-  UAC 默认仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
+  **U0b 也已实机一次未通过**（IAD subclass=0、先 append/register 后 enable）：
+  设备日志仍无 host-connected，`ioreg` 无 SysDVR AC/AS 接口块，macOS 无音频
+  设备。新增 `host/usb-config-dump`（libusb 只读配置描述符）；U0c 将先确认
+  AC/AS/0x84 是否真的在发布配置中。UAC 默认仍禁用，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录

@@ -160,3 +160,19 @@ cat /proc/asound/cards > u0-asound-cards.txt
   `system_profiler SPUSBDataType` 文本和 `log show` 的 USB/audio 记录，
   以区分“host 未配置”与“audio driver 未绑定”；
 - **未部署、未开机**。
+
+### U0b 实机结果（2026-10-29 18:20，macOS）
+
+- 设备日志仍是 `UAC initialized: AC=2 AS=3 EP=0x84`，**没有**
+  `USB host connected`/EP0 记录；
+- `ioreg -c IOUSBHostInterface` 没有 SysDVR 的 AC/AS 接口块；
+- `system_profiler SPAudioDataType` 没有音频设备；
+- U0b 的 IAD subclass/enable 顺序修正 **没有改变** host 不 configure 的结果。
+
+因此下一步先不继续猜描述符，而是直接读配置：
+
+- 新增 [host/usb-config-dump.c](../host/usb-config-dump.c)：libusb 只读打印
+  device/config/interface/alt/endpoint 及 class-specific extra，不 claim、不选配置。
+- U0c 主机脚本会先跑 `usb-config-dump`，再抓 ioreg/audio/log。
+- 判别：配置里若已有 AC/AS 和 `0x84` alt1，问题在 host 类驱动/复合配置；
+  若缺 AC/AS，问题在设备 append/配置描述符。

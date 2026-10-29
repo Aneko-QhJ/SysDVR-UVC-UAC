@@ -19,7 +19,10 @@ alt1-probe: alt1-probe.c ../../../source/uvc/alt1_probe_protocol.h
 iso-stream: iso-stream.c
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+usb-config-dump: usb-config-dump.c
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
+
 clean:
-	rm -f iso-probe alt1-probe iso-stream
+	rm -f iso-probe alt1-probe iso-stream usb-config-dump
 
 .PHONY: clean

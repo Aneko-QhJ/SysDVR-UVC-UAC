@@ -181,11 +181,12 @@
   U0 NSP `3c3bf145…`（`UAC_HOST_PROBE`，83942B）已实机一次：
   设备日志 `UAC initialized: AC=2 AS=3 EP=0x84`，但 macOS 只看到 USB 设备，
   没有音频设备，也没有 `USB host connected`/EP0 记录 → **U0 未通过**。
-  **U0b 已离线修正**：IAD `bFunctionSubClass` 改为 0（测试新增断言），并把
-  AC+AS 的全部 append/register 放到 enable 之前；NSP `bdae4cd6…`（83929B），
-  **未部署**。下一步用更丰富的 macOS `ioreg`/`log show` 或 Linux
-  `lsusb -v`/`dmesg` 复测 U0b；UAC 默认生产路径仍禁用，AS `0x84` 仍无
-  ISO producer，10s PCM 未就绪。见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
+  **U0b 已实机一次，仍未通过**：IAD subclass=0 + 先 append/register 后 enable，
+  但设备日志仍无 `USB host connected`，`ioreg` 没有 SysDVR 的 AC/AS 接口块，
+  macOS 仍无音频设备。**新增 `host/usb-config-dump`**（libusb 只读配置描述符），
+  U0c 将先读 config 再判断是 host 类驱动还是设备描述符问题。UAC 默认生产路径
+  仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
+  见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
