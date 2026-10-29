@@ -126,33 +126,38 @@ static void test_state(void)
     const uint8_t rate48[3] = { 0x80, 0xBB, 0x00 };
     const uint8_t rate44[3] = { 0x44, 0xAC, 0x00 };
 
-    r = call(&state, 0x22, 0x01, 0x0101, 0x84, 3, rate48, sizeof(rate48));
+    r = call(&state, 0x22, 0x01, 0x0100, 0x84, 3, rate48, sizeof(rate48));
     CHECK(r.action == UAC_ACT_ACK && state.sample_rate == 48000);
 
-    r = call(&state, 0x22, 0x01, 0x0101, 0x84, 3, rate44, sizeof(rate44));
+    r = call(&state, 0x22, 0x01, 0x0100, 0x84, 3, rate44, sizeof(rate44));
     CHECK(r.action == UAC_ACT_STALL && state.sample_rate == 48000);
 
-    CHECK(call(&state, 0x22, 0x01, 0x0101, 0x84, 2, rate48, 3).action == UAC_ACT_STALL);
-    CHECK(call(&state, 0x22, 0x01, 0x0101, 0x85, 3, rate48, 3).action == UAC_ACT_STALL);
-    CHECK(call(&state, 0xA2, 0x01, 0x0101, 0x84, 3, rate48, 3).action == UAC_ACT_STALL);
-    CHECK(call(&state, 0x22, 0x01, 0x0101, 0x84, 3, NULL, 0).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0x22, 0x01, 0x0100, 0x84, 2, rate48, 3).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0x22, 0x01, 0x0100, 0x85, 3, rate48, 3).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0xA2, 0x01, 0x0100, 0x84, 3, rate48, 3).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0x22, 0x01, 0x0100, 0x84, 3, NULL, 0).action == UAC_ACT_STALL);
 
-    r = call(&state, 0xA2, 0x81, 0x0101, 0x84, 3, NULL, 0);
+    r = call(&state, 0xA2, 0x81, 0x0100, 0x84, 3, NULL, 0);
     CHECK(r.action == UAC_ACT_WRITE && r.data_len == 3);
     CHECK(r.data[0] == 0x80 && r.data[1] == 0xBB && r.data[2] == 0x00);
 
-    CHECK(call(&state, 0xA2, 0x82, 0x0101, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
-    CHECK(call(&state, 0xA2, 0x83, 0x0101, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
-    CHECK(call(&state, 0xA2, 0x84, 0x0101, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
+    CHECK(call(&state, 0xA2, 0x82, 0x0100, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
+    CHECK(call(&state, 0xA2, 0x83, 0x0100, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
+    CHECK(call(&state, 0xA2, 0x84, 0x0100, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
 
-    r = call(&state, 0xA2, 0x85, 0x0101, 0x84, 2, NULL, 0);
+    r = call(&state, 0xA2, 0x85, 0x0100, 0x84, 2, NULL, 0);
     CHECK(r.action == UAC_ACT_WRITE && r.data_len == 2 && r.data[0] == 3 && r.data[1] == 0);
 
-    CHECK(call(&state, 0xA1, 0x81, 0x0101, 4, 3, NULL, 0).action == UAC_ACT_WRITE);
-    CHECK(call(&state, 0xA1, 0x81, 0x0101, 3, 3, NULL, 0).action == UAC_ACT_STALL);
-    CHECK(call(&state, 0x21, 0x01, 0x0101, 3, 3, rate48, 3).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0xA1, 0x81, 0x0100, 4, 3, NULL, 0).action == UAC_ACT_WRITE);
+    CHECK(call(&state, 0xA1, 0x81, 0x0100, 3, 3, NULL, 0).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0x21, 0x01, 0x0100, 3, 3, rate48, 3).action == UAC_ACT_STALL);
     CHECK(call(&state, 0x21, 0x01, 0x0201, 4, 3, rate48, 3).action == UAC_ACT_STALL);
-    CHECK(call(&state, 0x41, 0x01, 0x0101, 4, 3, rate48, 3).action == UAC_ACT_STALL);
+    CHECK(call(&state, 0x41, 0x01, 0x0100, 4, 3, rate48, 3).action == UAC_ACT_STALL);
+
+    /* Older 0x0101 convention is accepted; other reserved bytes stall. */
+    CHECK(call(&state, 0x22, 0x01, 0x0101, 0x84, 3, rate48, sizeof(rate48)).action == UAC_ACT_ACK);
+    CHECK(call(&state, 0xA2, 0x81, 0x0101, 0x84, 3, NULL, 0).action == UAC_ACT_WRITE);
+    CHECK(call(&state, 0xA2, 0x81, 0x0102, 0x84, 3, NULL, 0).action == UAC_ACT_STALL);
 }
 
 int main(void)

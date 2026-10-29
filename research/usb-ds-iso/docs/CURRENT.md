@@ -1,17 +1,17 @@
-# 当前状态（2026-10-30 01:10，Asia/Shanghai）
+# 当前状态（2026-10-30 01:20，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
 > 最后一次实机是 2026-10-30 01:00 的 U0d；部署、主机枚举、读卡确认补丁和
-> 恢复安全构建均已完成。随后做了 U1a 控制请求离线准备（未部署）。
+> 恢复安全构建均已完成。U1a 第一次实机未通过；根因已修复，r2 已构建未部署。
 
 ## 一句话
 
 视频可用；UAC 枚举可用，数据路径仍不可用。U0 已通过（U0d）：257B/4 接口的
 复合配置可读，macOS 绑定 AppleUSBAudio 并出现 `SysDVR-UVC Capture` 2ch/48k
 输入；AS alt1 尚未被选择，仍无 ISO producer，PCM 未测试。UAC 默认仍禁用
-（仅 `UAC_HOST_PROBE`）。U1a 控制工具与 NSP 已备（未部署）。卡已恢复安全
-`52069a44…`。最近一次短包实机
+（仅 `UAC_HOST_PROBE`）。U1a 第一次实机失败（`wValue` 低字节判断错误），
+根因已修复、r2 已构建未部署。卡已恢复安全 `52069a44…`。最近一次短包实机
 （2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
 
 ## 最近一次 UAC 实机（2026-10-30，U0 通过）
@@ -244,6 +244,12 @@
     dmnt 应用 18 条编辑，校验 BuildID/size，失败即拒绝启用；四种配置（默认/
     UAC probe/UAC-only/probe+patch）均构建通过。补丁 NSP `48c872f1…`
     （86780B）随后在 U0d 部署一次。详见审计文档第 7 节。
+  - **U1a 第一次实机未通过（10-30 01:17）**：部署 `2f7b5f57…` 一次；
+    `GET_INTERFACE` 通过，所有 sampling-frequency 请求 `LIBUSB_ERROR_PIPE`。
+    设备日志 `val=0100 ... action=0`，根因是 `UacStandardHandle` 要求 wValue
+    低字节 0x01（应 0x00）；另发现 usb:ds 广播 setup，UAC 处理器误应答其他
+    接口请求。已修复（接受 0/1 + `_uacOwnsSetup` 过滤）并更新测试；r2 NSP
+    `40b55391…`（87102B，未部署）。卡已恢复 `52069a44…`。
   - **U0d 实机通过（10-30 01:00）**：部署 `48c872f1…` 一次 boot；
     `usb-config-dump` 读出 `wTotalLength=257`、4 接口；AC/AS 绑定
     `AppleUSBAudio`，音频设备 `SysDVR-UVC Capture` 2ch/48k/USB；设备日志
@@ -297,8 +303,9 @@
 3. **标准 UAC 层**：U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，
    `SysDVR-UVC Capture` 2ch/48k 输入）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
    下一步是 U1a：AC/AS 控制请求（`GET_INTERFACE`、48k GET/SET）在标准宿主下
-   ACK；`host/uac-control` 与 NSP `2f7b5f57…`（86883B，未部署）已备。U1b 的
-   `SET_INTERFACE(1)` 单独授权；之后设计 AS `0x84` 的 ISO producer 与 U2/U3 PCM。
+   ACK；第一次实机失败已定位并修复，r2 NSP `40b55391…`（87102B，未部署）已备。
+   U1b 的 `SET_INTERFACE(1)` 单独授权；之后设计 AS `0x84` 的 ISO producer 与
+   U2/U3 PCM。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -308,9 +315,9 @@
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步，需新的明确授权）：U1a 用 `host/uac-control` 验证
+- 实机（UAC 下一步，需新的明确授权）：U1a-r2 用 `host/uac-control` 重测
   `GET_INTERFACE`、`GET_CUR/MIN/MAX/RES/LEN`、`SET_CUR(48000)`；NSP
-  `2f7b5f57…`（86883B，未部署）。U1b 的 `SET_INTERFACE(1)` 单独授权；U2 才接
+  `40b55391…`（87102B，未部署）。U1b 的 `SET_INTERFACE(1)` 单独授权；U2 才接
   一次 AS `0x84` burst。U0 已通过，不再重复 U0。见
   [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
@@ -321,4 +328,4 @@
 ## 不证明
 
 10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作、UAC 数据路径/alt1 选择、
-时钟同步、SDK 排空、旧超时根因、未来无事件。
+U1a 控制平面（首次失败，r2 未测）、时钟同步、SDK 排空、旧超时根因、未来无事件。

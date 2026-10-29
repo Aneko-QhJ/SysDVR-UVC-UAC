@@ -179,7 +179,10 @@ UacActionResult UacStandardHandle(UacStandardState *state,
     }
 
     if (type == UAC_TYPE_CLASS) {
-        if (control != UAC_EP_CS_SAMPLING_FREQ_CONTROL || channel != 0x01) {
+        /* UAC1 hosts send wValue=0x0100 (CS in the high byte, zero channel).
+           Accept the older 0x0101 test convention as well. */
+        if (control != UAC_EP_CS_SAMPLING_FREQ_CONTROL ||
+            (channel != 0x00 && channel != 0x01)) {
             return action(UAC_ACT_STALL);
         }
         if (recipient == UAC_RECIPIENT_ENDPOINT) {
