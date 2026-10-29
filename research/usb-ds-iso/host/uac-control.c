@@ -73,28 +73,29 @@ int main(int argc, char **argv)
     for (int t = 0; t < 2; ++t) {
         uint16_t index = indexes[t];
         char label[48];
+        const uint8_t get_type = t == 0 ? 0xA2 : 0xA1;  // endpoint vs interface
         snprintf(label, sizeof(label), "GET_CUR rate (%s)", names[t]);
-        rc = ctrl(h, 0xA1, 0x81, 0x0100, index, data, 3, label);
+        rc = ctrl(h, get_type, 0x81, 0x0100, index, data, 3, label);
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
         snprintf(label, sizeof(label), "GET_MIN rate (%s)", names[t]);
-        rc = ctrl(h, 0xA1, 0x82, 0x0100, index, data, 3, label);
+        rc = ctrl(h, get_type, 0x82, 0x0100, index, data, 3, label);
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
         snprintf(label, sizeof(label), "GET_MAX rate (%s)", names[t]);
-        rc = ctrl(h, 0xA1, 0x83, 0x0100, index, data, 3, label);
+        rc = ctrl(h, get_type, 0x83, 0x0100, index, data, 3, label);
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
         snprintf(label, sizeof(label), "GET_RES rate (%s)", names[t]);
-        rc = ctrl(h, 0xA1, 0x84, 0x0100, index, data, 3, label);
+        rc = ctrl(h, get_type, 0x84, 0x0100, index, data, 3, label);
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
         snprintf(label, sizeof(label), "GET_LEN rate (%s)", names[t]);
-        rc = ctrl(h, 0xA1, 0x85, 0x0100, index, data, 2, label);
+        rc = ctrl(h, get_type, 0x85, 0x0100, index, data, 2, label);
         if (rc != 2 || data[0] != 3 || data[1] != 0) ++failures;
     }
 
     if (set_rate) {
         uint8_t payload[3] = {0x80, 0xBB, 0x00};
-        rc = ctrl(h, 0x21, 0x01, 0x0100, AS_ENDPOINT, payload, 3, "SET_CUR rate 48k (ep)");
+        rc = ctrl(h, 0x22, 0x01, 0x0100, AS_ENDPOINT, payload, 3, "SET_CUR rate 48k (ep)");
         if (rc != 3) ++failures;
-        rc = ctrl(h, 0xA1, 0x81, 0x0100, AS_ENDPOINT, data, 3, "GET_CUR after SET (ep)");
+        rc = ctrl(h, 0xA2, 0x81, 0x0100, AS_ENDPOINT, data, 3, "GET_CUR after SET (ep)");
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
     }
 

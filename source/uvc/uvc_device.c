@@ -2032,20 +2032,24 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 // 3-byte OUT data stage; read it before deciding ACK vs STALL.
 // usb:ds may signal the same setup on several interfaces' SetupEvents, so this
 // handler must ignore requests that are not addressed to AC/AS or EP 0x84.
-static bool _uacOwnsSetup(const UsbSetupPacket* setup)
+static bool _uacOwnsSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 {
     const u8 recipient = setup->bmRequestType & 0x1F;
-    if (recipient == 0x02)  // endpoint
-        return (setup->wIndex & 0xFF) == g_uacStd.ep_address;
-    if (recipient == 0x01)  // interface
-        return setup->wIndex == g_uacStd.ac_interface ||
-               setup->wIndex == g_uacStd.as_interface;
+    if (recipient == 0x02)  // endpoint: only the AS interface owns EP 0x84
+        return iface == g_uacCtx.asInterface &&
+               (setup->wIndex & 0xFF) == g_uacStd.ep_address;
+    if (recipient == 0x01) {  // interface: only the addressed interface replies
+        if (setup->wIndex == g_uacStd.ac_interface)
+            return iface == g_uacCtx.acInterface;
+        if (setup->wIndex == g_uacStd.as_interface)
+            return iface == g_uacCtx.asInterface;
+    }
     return false;  // device recipient: not ours
 }
 
 static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 {
-    if (!_uacOwnsSetup(setup)) {
+    if (!_uacOwnsSetup(iface, setup)) {
 #ifdef UAC_HOST_PROBE
         LOG("UAC setup ignored: type=%02x req=%02x idx=%04x\n",
             setup->bmRequestType, setup->bRequest, setup->wIndex);

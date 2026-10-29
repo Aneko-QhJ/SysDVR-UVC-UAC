@@ -3,7 +3,7 @@
 > 目标：在标准宿主上验证 AC/AS 控制平面（U1a）：`GET_INTERFACE`、
 > SAMPLING_FREQ 的 `GET_CUR/MIN/MAX/RES/LEN` 与 `SET_CUR(48000)`。
 > **不碰 alt1 数据路径**；`SET_INTERFACE(1)` 归 U1b，单独授权。
-> 首次构建已实机一次（失败，根因见下）；修复后的 r2 未部署。
+> 首次与 r2 已实机（分别失败/部分通过，见下）；r3 已构建未部署。
 
 ## 现状与边界
 
@@ -19,8 +19,10 @@
 
 - 首次构建（已实机失败）：`private/analysis/UAC-u1a-20261030/build/outputs/exefs.nsp`
   - 86883 B，SHA256 `2f7b5f57…`
-- 修复后 r2（**未部署**）：`private/analysis/UAC-u1a-r2-20261030/build/outputs/exefs.nsp`
-  - 87102 B，SHA256 `40b55391ce2b89975b776b3b68c3d5b66993f0ef667d2ff3821bc2d856a64b41`
+- r2（已实机部分通过）：`private/analysis/UAC-u1a-r2-20261030/build/outputs/exefs.nsp`
+  - 87102 B，SHA256 `40b55391…`
+- r3（**未部署**）：`private/analysis/UAC-u1a-r3-20261030/build/outputs/exefs.nsp`
+  - 86994 B，SHA256 `c1e91c1124dc802cffc45f8d6412f5769788ecbf9b05092e0084a9b90c89e69e`
 - 两者 defines 相同：`-DUAC_HOST_PROBE -DUAC_DESCRIPTOR_PATCH -DFILE_LOGGING`
   - 复用 18 条 descriptor-only payload，无 ISO cave/hook。
 - 新增请求日志（`UAC_HOST_PROBE`）：
@@ -69,6 +71,24 @@ research/usb-ds-iso/host/uac-control --set-rate
 - 收尾：读卡后恢复 `52069a44…` 并安全弹出；未重试。
 - 证据：`private/runs/UAC-u1a-20261030/`、
   `private/card-cycles/20261030-u1a-control/`。
+
+## U1a-r2 实机（2026-10-30 01:24，部分通过）
+
+- 部署 `40b55391…` 一次 boot；`uac-control --set-rate`：
+  - `GET_INTERFACE(AS)` 通过；
+  - **接口 recipient** 的 CUR/MIN/MAX/RES 全部 48000（3 字节），LEN=3；
+  - **endpoint recipient**（EP `0x84`）的 GET 超时/PIPE，SET_CUR PIPE。
+- 设备日志（3761B，`935ce949…`）：endpoint 请求全部
+  `UAC setup ignored`——主机工具把 `bmRequestType` 写成 `0xA1/0x21`
+  （interface recipient），却把 `wIndex` 写成 `0x84`；r2 的过滤按接口
+  recipient 正确忽略了它。
+- 同时看到接口 recipient 请求被 AC/AS 各应答一次（两条 `action=2`）。
+- 修复：
+  - 主机工具：endpoint 请求改用 `0xA2`（GET）/`0x22`（SET）；interface
+    请求保持 `0xA1/0x21`；
+  - 设备：`_uacOwnsSetup(iface, setup)` 增加 `iface` 归属判断——endpoint
+    只由 AS 应答，AC/AS 接口只由对应接口应答。
+- r3 NSP `c1e91c11…`（86994B）已构建未部署；重测需新的授权。
 
 ## U1a 判定
 
