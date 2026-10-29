@@ -1,7 +1,7 @@
 # 实验分支目录与本地产物
 
-`research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验
-写入`docs/`，历史结果保留在`docs/RESULTS.md`，后续条件集中于[TEST_PLAN.md](TEST_PLAN.md)。
+当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。
+详细证据按实验写入`docs/`，`STATUS.md`、`TEST_PLAN.md` 和 `RESULTS.md` 保留历史语境。
 补丁汇编集中到`patches/`，主机源码在`host/`，
 构建与离线分析在`tools/`，可持续使用的采集流程在`tools/workflows/`，测试在`tests/`。
 
@@ -17,24 +17,21 @@
 ```sh
 python3 research/usb-ds-iso/tools/experiment.py status
 python3 research/usb-ds-iso/tools/experiment.py verify
-python3 research/usb-ds-iso/tools/experiment.py restore --dry-run
-python3 research/usb-ds-iso/tools/experiment.py restore --scope capture
-python3 research/usb-ds-iso/tools/experiment.py restore --scope patch
+make -C research/usb-ds-iso check
 ```
 
 `status`读取本地状态，不访问USB。`verify`核验当前包、冻结主机工具、最新run/collection/
 deployment的SHA256SUMS；缺失或不一致会报错。
 
-`restore`默认从Git公共目录中的`experiment-artifacts/<实验分支名>/research/usb-ds-iso/private`
-选择性恢复输入。这是只读历史快照：只补齐缺失文件/目录，已有计划、当前证据和库均保留，
-不执行归档脚本、不写归档。可用`--archive /绝对路径/private`明确选择另一份归档。
-`capture`恢复有界测试所需冻结包/库/基线及已有状态，`patch`只恢复原始HOS模块输入。
-恢复后应运行`verify`；当前较新的本地日志与阶段优先于旧快照。
+2026-10-29 按用户要求精简后，Git 公共目录中的 `experiment-artifacts` 只留存独有证据、
+模块和必要工具，默认 `restore --scope capture` 所需整套输入已退役。这里不再提供
+完整快照恢复流程；现存证据归档的读取方式见 [STORAGE.md](../STORAGE.md)。旧工具的
+`--archive` 接口保留用于用户另行提供的完整快照，不能用旧票据恢复已消耗次数。
 
 准备完成后可用`experiment.py test`调用受版本控制的`tools/workflows/capture_native_serial.py`。
 该入口以及采集脚本自身均检查`native_guard_serial_prepared`和最多16次；失败阶段会在USB
 操作前停止。现有停止机制、raw保存、native逐包校验、完成URB不取消和禁止失败重投规则保留。
-当前最新计划指向该受版本控制的入口，旧private脚本作为冻结历史文件保留。
+这些是旧实验入口；是否适用于下一轮只看 CURRENT 和新的明确授权。
 
 ## 构建与测试
 
@@ -54,7 +51,7 @@ A23的680字节注入和IPS重建逐字节匹配冻结包。未改写卡文件�
 
 ## 文档与冻结证据的关系
 
-[STATUS.md](STATUS.md)维护最新已核验事实，[TEST_PLAN.md](TEST_PLAN.md)维护推进条件。
+[CURRENT.md](CURRENT.md)维护当前事实；[STATUS.md](STATUS.md)、[TEST_PLAN.md](TEST_PLAN.md)是历史快照。
 专题说明维护对应版本的技术设计和最终结果；[RESULTS.md](RESULTS.md)保留按日期的原始观察，
 其中旧“待读卡”由后续核验记录解除，旧采集计划不自动成为当前操作指令。
 截至2026-10-09，原串行失败3365byte日志保留；最新单次burst2630byte完整日志核验通过。

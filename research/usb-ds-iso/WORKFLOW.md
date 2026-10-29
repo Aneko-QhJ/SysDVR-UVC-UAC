@@ -29,6 +29,8 @@
 - 同类逻辑优先复用已有函数；不要复制 manifest/hash/verify。
 - 一次性脚本用完移到 `tools/archive/`；迁移前先跑 `make links`。
 - 生成物（`docs/INDEX.md`、`tools/INDEX.md`、JSON 报告）不手改，用脚本重生成。
+- 常规测试使用临时目录，长期只保留必要输入、结论和关键反例；
+  原始实机证据不自动清理。本次一次性整理见 [STORAGE.md](STORAGE.md)。
 
 ## 提交规则
 

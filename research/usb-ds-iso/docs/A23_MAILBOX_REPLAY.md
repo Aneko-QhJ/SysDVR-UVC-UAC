@@ -6,7 +6,8 @@
 
 ```sh
 cd research/usb-ds-iso/tests
-ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python \
+ISO_PATCH_PACKAGES=../private/tmp-import-20261029/builds/a23-burst \
+  ../private/tmp-import-20261029/deps/dsh-unicorn/bin/python \
   -m unittest test_mailbox_multiplex -v
 ```
 

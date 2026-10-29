@@ -46,7 +46,7 @@
 ## ALT1 探针（bulk alt1 已通过）
 
 - 目的：只回答“alt1 上的 bulk 端点能否安装/被宿主选中”，不引入 UAC、ISO 或 IPS。
-- NSP：`/tmp/alt1-probe-log/exefs.nsp`，SHA256 `7fa38c98…`；NPDM 与卡上一致。
+- NSP：`../private/tmp-import-20261029/builds/alt1-probe-log/exefs.nsp`，SHA256 `7fa38c98…`；NPDM 与卡上一致。
 - Host：[alt1-probe](../host/alt1-probe)，libusb，SHA256 `a7e4ca89…`。
 - 卡操作：完全关机后插入 SD；备份 `exefs.nsp`/`logfile.txt`/旧 `.ips`，只替换 `exefs.nsp`，
   移除旧 IPS，回读并安全弹出。
@@ -210,7 +210,20 @@
   A23 诊断 producer 尚未验证 10s 连续流（v5 只到 8 post/320 包），UAC 标准宿主
   还不能接。汇总见 [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。
 
-## 工程状态（2026-10-27）
+## 工作区留存（2026-10-29）
+
+- 按用户明确要求精简至约 **896 MiB / 1.93 万文件**（含 `.git` 和 `private/`）；
+  淘汰 270 个历史离线目录、426 个过时 ZIP、74 个 Git 内旧构建/恢复副本。
+- 当前源码、10-27 至 10-29 结果、short24 所需旧父树、固件/Ghidra/依赖、实机原件、
+  启动/电源/收尾材料及现行票据保留；16,678 个保留文件/链接逐项核验未变。
+  另 1 项未封存的 Finder 目录元数据被系统改写，差异单独记入收据。
+- 精简后实际构建当前设备、4 个主机工具、v5 trace 和 short24 路径修正版通过；
+  7 场景 short24 审计、Q1 时序重分析、快速测试及公开链接检查通过。没有 USB/SD 操作。
+- 本次精简是一次性工作，不设置后续容量门禁；`make check` 只运行快速测试。
+  旧离线流程不保证继续回放，详见 [存储策略](../STORAGE.md) 和
+  [整理收据](../private/storage/trim-20261029/)；清单区分仍保留的证据与已永久退役的输入。
+
+## 工程状态（2026-10-27 历史测试基线）
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。

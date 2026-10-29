@@ -23,11 +23,11 @@
 
 | 文件 | 路径 / SHA256 |
 | --- | --- |
-| NSP（含 `/logfile.txt` 日志） | `/tmp/alt1-probe-log/exefs.nsp`，`7fa38c98defa87eaa4bbec7e42628e890e1928d53bc305cb6a0180eca6103b60` |
-| NPDM | `/tmp/alt1-probe-log/exefs.npdm`，与当前卡上 NPDM 逐字节相同 |
+| NSP（含 `/logfile.txt` 日志） | `../private/tmp-import-20261029/builds/alt1-probe-log/exefs.nsp`，`7fa38c98defa87eaa4bbec7e42628e890e1928d53bc305cb6a0180eca6103b60` |
+| NPDM | `../private/tmp-import-20261029/builds/alt1-probe-log/exefs.npdm`，与当前卡上 NPDM 逐字节相同 |
 | Host | [alt1-probe](../host/alt1-probe)，libusb，`a7e4ca8963314317ef18887192d138c2e15c016672a99e07a5b2e71dc26da35b` |
 
-- 构建：`make -B -j1 OUTPUT_DIR=/tmp/alt1-probe-log DEFINES="-DALT1_PROBE -DFILE_LOGGING"`。
+- 构建：`make -B -j1 OUTPUT_DIR=research/usb-ds-iso/private/tmp-import-20261029/builds/alt1-probe-log DEFINES="-DALT1_PROBE -DFILE_LOGGING"`。
 - 只替换 `atmosphere/contents/00FF0000A53BB666/exefs.nsp`；`boot2.flag`、`toolbox.json` 不变。
 - **不需要 IPS**。如果卡上还有旧的 usb IPS，必须移到回滚目录；否则 loader 可能在启动时打
   usb:ds，污染这次 alt1 结果。

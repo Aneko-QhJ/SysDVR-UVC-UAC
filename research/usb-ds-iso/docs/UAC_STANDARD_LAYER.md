@@ -36,7 +36,7 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| 设备构建 `make -j4 OUTPUT_DIR=/tmp/sysdvr-uac-build` | 通过（`uac_standard.c`、`uvc_device.c`） |
+| 设备构建 `make -j4 OUTPUT_DIR=research/usb-ds-iso/private/tmp-import-20261029/builds/sysdvr-uac-build` | 通过（`uac_standard.c`、`uvc_device.c`） |
 | host `clang -std=c11 -Wall -Wextra -Werror -DUAC_STANDALONE` | 通过 |
 | `tests/test_uac_standard.c` | 描述符/lint/状态机全部断言通过 |
 | `make -C research/usb-ds-iso check` | 6 个文件，全绿 |

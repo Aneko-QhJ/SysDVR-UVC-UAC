@@ -76,7 +76,7 @@ def source_facts():
             "#define UAC_CHANNELS            2", "#define UAC_SUBFRAME_SIZE       2"],
         "source/capture.h": ["#define AbufSz 0x1000"],
         "source/capture.c": ["frame->DataSize = dataSize;"],
-        "source/uvc/uvc_device.c": ["DEAD CODE, kept for reference only.",
+        "source/uvc/uvc_device.c": ["if (!g_uacCtx.initialized || !g_uacCtx.streaming) {",
             "isoProbeByte((uint16_t)(setup->wValue + packet), i);",
             "size_t chunkSize = remaining >= isoPacketSize ? isoPacketSize : remaining;",
             "memset(g_audioEndpointBuffer, 0, isoPacketSize);",

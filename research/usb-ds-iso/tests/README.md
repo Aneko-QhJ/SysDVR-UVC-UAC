@@ -15,12 +15,13 @@
   - 历史模块要求 Python 3.10+；系统 `python3` 3.9 会额外失败。
 - 因此 `check-all` 目前是**历史审计**，不是每轮门禁。修复前，非零结果不能直接当作
   当前改动的回归。
-- 全量失败时，runner 会把完整输出写到 `/tmp/dsh-research-tests-<pid>.log`。
+- 全量失败时，runner 会把完整输出写到 `private/logs/dsh-research-tests-<pid>.log`。
 
 ## 修复顺序（下一步）
 
 1. 可选依赖：测试文件在 import 失败时 `skipTest`，而不是 error。
-2. 私有 fixture：缺目录/缺字段时显式 skip，并给出恢复命令（见 [../STORAGE.md](../STORAGE.md)）。
+2. 私有 fixture：缺目录/缺字段时明确报告依赖缺失。仅现存 ZIP 可提供恢复命令；
+   已精简的历史输入标为不再支持，不把跳过当作验证通过（见 [../STORAGE.md](../STORAGE.md)）。
 3. Python 版本：统一用 3.13；Makefile 已优先选择 `python3.13`/`python3.12`。
 4. 清零后，把 `check-all` 升级为门禁；在此之前只用 `make check` 和按主题 `--filter`。
 
@@ -31,7 +32,9 @@
 
 ```sh
 cd tests
-ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python   -m unittest test_mailbox_multiplex -v
+ISO_PATCH_PACKAGES=../private/tmp-import-20261029/builds/a23-burst \
+  ../private/tmp-import-20261029/deps/dsh-unicorn/bin/python \
+  -m unittest test_mailbox_multiplex -v
 ```
 
 它不在 quick 套件；没有 unicorn/包时 skip。当前默认 `python3.13` 没有 unicorn，

@@ -8,7 +8,6 @@ import argparse
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,7 +105,8 @@ def main():
 
     if failures:
         print(f"\n{len(failures)} failure group(s):")
-        log = Path(tempfile.gettempdir()) / f"dsh-research-tests-{os.getpid()}.log"
+        log = ROOT / "private" / "logs" / f"dsh-research-tests-{os.getpid()}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
         chunks = []
         for name, result in failures:
             print(f"\n--- {name} (exit {result.returncode}) ---")

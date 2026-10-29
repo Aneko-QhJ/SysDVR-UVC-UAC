@@ -25,6 +25,12 @@ def snapshot(first_slot=9):
 
 
 class CadenceTests(unittest.TestCase):
+    def test_current_source_facts_remain_readable_after_comment_changes(self):
+        facts = {record['path']: record for record in cadence.source_facts()}
+        device = facts['source/uvc/uvc_device.c']
+        self.assertTrue(device['anchors']['if (!g_uacCtx.initialized || !g_uacCtx.streaming) {'])
+        self.assertEqual(len(device['sha256']), 64)
+
     def test_rate_and_time_are_distinct(self):
         diagnostic = cadence.packet_budget(192, 125)
         self.assertEqual(diagnostic["pcm_rate_multiple"], 8)

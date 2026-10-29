@@ -94,7 +94,7 @@ Illegal instruction，尚未执行候选；沙箱外最小NOP通过后，最终�
 python3 research/usb-ds-iso/tools/build_a23_short24_candidate.py \
   --output /private/tmp/a23-short24-build
 
-PYTHONPATH=/private/tmp/a23-short24-python /opt/homebrew/bin/python3.13 \
+PYTHONPATH=research/usb-ds-iso/private/tmp-import-20261029/deps/a23-short24-python /opt/homebrew/bin/python3.13 \
   research/usb-ds-iso/tools/audit_a23_short24_candidate.py \
   --build /private/tmp/a23-short24-build --output /private/tmp/a23-short24-audit
 ```
