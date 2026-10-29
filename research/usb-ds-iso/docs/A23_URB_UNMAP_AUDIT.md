@@ -105,6 +105,8 @@ serial5 的 `diagnostics_hex` 只有 magic、endpoint、producer、consumer、co
 结果：consumer=5、最后完成 URB 的 size=3072、IOVA=0x80030000，
 `last_entry_present`；最后一条没有走 size=0 分支。本轮只到 5 URB，
 没有尝试第 6 次 map，因此仍不能判定更早条目/free tree 是否泄漏。
+v5 全条目版本已离线构建（`11d5e9eb…`，8 组 IOVA/size，680/684B，未部署），
+下一步只需一次 5-URB 单飞来确认各条目。
 若要统计每次完成的返回值，需要在 `2c690` 的 `4c70` 调用点加只读记录，属于
 runtime patch 的下一步，不应和现有 A23 注入混在同一轮变量里。
 

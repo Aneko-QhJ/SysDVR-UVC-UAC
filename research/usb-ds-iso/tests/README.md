@@ -47,5 +47,5 @@ ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python   -m unittest test
 - `test_urb_accounting.py` — URB 表/5 页 IOVA 记账模型；不访问硬件。
 
 - `test_a23_urb_trace_decode.py` — 解码 A23 trace report：v3 的
-  endpoint/producer/consumer/count，以及 v4 的 consumer/最后 URB IOVA/size
-  与 `unmap_gate` 判定。
+  endpoint/producer/consumer/count，v4 的 consumer/最后 URB IOVA/size
+  与 `unmap_gate` 判定，以及 v5 的 8 组条目统计。

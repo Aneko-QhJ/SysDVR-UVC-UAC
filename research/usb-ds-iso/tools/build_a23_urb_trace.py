@@ -81,7 +81,8 @@ def prepare_source(dest, header, stream_header):
     source = source.replace("#define ISO_STREAM_BUFFERS 3", "#define ISO_STREAM_BUFFERS 640")
     old_magic = """        if (diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic) || diag.magic == ISO_PROBE_REPORT_MARKER ||"""
     new_magic = """        if (diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic) ||
-            diag.magic == ISO_PROBE_URB_TRACE_MAGIC || diag.magic == ISO_PROBE_REPORT_MARKER ||"""
+            diag.magic == ISO_PROBE_URB_TRACE_MAGIC ||
+            diag.magic == ISO_PROBE_URB_ENTRIES_MAGIC || diag.magic == ISO_PROBE_REPORT_MARKER ||"""
     if old_magic not in source:
         raise ValueError("safe stream diagnostics gate missing")
     source = source.replace(old_magic, new_magic, 1)
@@ -125,6 +126,8 @@ def main():
     parser.add_argument("--nso", type=Path, default=ROOT / "private/module/exefs/main")
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
     parser.add_argument("--skip-nsp", action="store_true", help="build payload/IPS only")
+    parser.add_argument("--layout", choices=("last", "entries"), default="last",
+                        help="v4 last completed URB (default) or v5 all 8 entries")
     args = parser.parse_args()
     out = args.output.resolve()
     if out.exists():
@@ -133,7 +136,23 @@ def main():
     patch_dir = out / "patch"
     patch_dir.mkdir()
     nso = validate_module(args.nso.read_bytes())
-    asm = ROOT / "patches/iso_burst_urb_trace.S"
+    layout = {
+        "last": {
+            "asm": ROOT / "patches/iso_burst_urb_trace.S",
+            "schema": "A23-URB-trace-v4-1",
+            "trace_layout": "urb-v4",
+            "magic": "ISO8",
+            "fields": {"consumer": 8, "last_iova": 12, "last_size": 16},
+        },
+        "entries": {
+            "asm": ROOT / "patches/iso_burst_urb_entries.S",
+            "schema": "A23-URB-entries-v5-1",
+            "trace_layout": "urb-v5",
+            "magic": "ISO9",
+            "fields": {"entries": 8, "stride": 8, "count": 8, "entry_iova": 0, "entry_size": 4},
+        },
+    }[args.layout]
+    asm = layout["asm"]
 
     # build() validates the module, assembles the override at 0x68d54,
     # writes the cave/branch/descriptor IPS and its manifest.
@@ -163,14 +182,10 @@ def main():
     ]))
     manifest["patch_sha256"] = sha(ips_path)
     manifest.update(
-        schema="A23-URB-trace-v4-1",
-        trace_layout="urb-v4",
-        diagnostics_magic="ISO8",
-        trace_fields={
-            "consumer": 8,
-            "last_iova": 12,
-            "last_size": 16,
-        },
+        schema=layout["schema"],
+        trace_layout=layout["trace_layout"],
+        diagnostics_magic=layout["magic"],
+        trace_fields=layout["fields"],
         injection_bytes=len(payload),
         injection_limit=684,
         injection_free=684 - len(payload),
@@ -187,7 +202,7 @@ def main():
     stream_stub_header(payload, stream_header)
 
     result = {
-        "schema": "A23-URB-trace-v4-build-1",
+        "schema": layout["schema"].replace("-1", "-build-1"),
         "payload_sha256": hashlib.sha256(payload).hexdigest(),
         "injection_bytes": len(payload),
         "injection_limit": 684,

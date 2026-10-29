@@ -160,6 +160,11 @@
   所以不复现也不排除复用。r2–r4 分别修 magic gate/alt1/NOP；卡已恢复
   `52069a44…`。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
   下一步是 v5 全条目摘要或 6-URB 复现，需新授权。
+- **v5 全条目 trace 已离线构建（10-29）**：magic `0x394f5349`（ISO9），
+  diagnostics +8 起写 8 组 `{IOVA 低32, size}`；680/684B。NSP
+  `11d5e9eb…`，payload `049c47c4…`，IPS `275bd67c…`，30 条 edits。
+  **未部署**；用于确认 `0x80030000` 属于哪个条目、5 个完成是否各有不同 IOVA，
+  只需一次 5-URB 单飞授权。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

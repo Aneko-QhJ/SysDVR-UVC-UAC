@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Decode the A23 endpoint trace carried in the ISO report diagnostics.
 
-Two layouts are accepted:
+Three layouts are accepted:
 
 v3 (magic 0x314f5349):
     +0   magic
@@ -16,9 +16,14 @@ v4 (magic 0x384f5349, "ISO8"):
     +12  last completed URB IOVA  (u32)
     +16  last completed URB size  (u32)
 
+v5 (magic 0x394f5349, "ISO9"):
+    +0   magic
+    +8   eight pairs of {IOVA low32 (u32), size (u32)}
+
 The v4 last entry is ``(consumer - 1) & 7``.  A zero size means
 ``FUN_0002c690`` skipped the unmap; a zero IOVA means it looked up the wrong
-address.  Both leave the endpoint producer/consumer/count consistent.
+address.  Both leave the endpoint producer/consumer/count consistent.  v5
+exposes every entry so a leak in an earlier slot is visible.
 
 `iso-probe --status` prints the 112 diagnostic bytes as diagnostics_hex.
 """
@@ -28,6 +33,7 @@ import sys
 
 MAGIC_V3 = 0x314F5349
 MAGIC_V4 = 0x384F5349
+MAGIC_V5 = 0x394F5349
 
 
 def decode(data):
@@ -54,6 +60,26 @@ def decode(data):
             "last_iova": last_iova,
             "last_size": last_size,
             "unmap_gate": gate,
+        }
+    if magic == MAGIC_V5:
+        entries = []
+        for index in range(8):
+            off = 8 + index * 8
+            entries.append({
+                "index": index,
+                "iova": int.from_bytes(data[off:off + 4], "little"),
+                "size": int.from_bytes(data[off + 4:off + 8], "little"),
+            })
+        nonzero = [entry for entry in entries if entry["size"] != 0]
+        zero_iova = [entry["index"] for entry in nonzero if entry["iova"] == 0]
+        return {
+            "layout": "urb-v5",
+            "magic": f"0x{magic:08x}",
+            "entries": entries,
+            "nonzero_sizes": len(nonzero),
+            "distinct_iovas": len({entry["iova"] for entry in nonzero}),
+            "zero_iova_indices": zero_iova,
+            "last_nonzero": nonzero[-1]["index"] if nonzero else None,
         }
     if magic not in (0, MAGIC_V3):
         raise ValueError(f"unknown trace magic: 0x{magic:08x}")

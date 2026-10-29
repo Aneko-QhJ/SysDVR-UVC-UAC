@@ -48,6 +48,32 @@ class TraceDecodeTest(unittest.TestCase):
         self.assertEqual(result["last_index"], 5)
         self.assertEqual(result["unmap_gate"], "size_zero")
 
+    def test_v5_all_entries(self):
+        data = bytearray(112)
+        data[0:4] = (0x394F5349).to_bytes(4, "little")
+        for index in range(5):
+            off = 8 + index * 8
+            data[off:off + 4] = (0x80030000 + index * 0x10000).to_bytes(4, "little")
+            data[off + 4:off + 8] = (3072).to_bytes(4, "little")
+        result = decode(bytes(data))
+        self.assertEqual(result["layout"], "urb-v5")
+        self.assertEqual(result["nonzero_sizes"], 5)
+        self.assertEqual(result["distinct_iovas"], 5)
+        self.assertEqual(result["last_nonzero"], 4)
+        self.assertEqual(result["zero_iova_indices"], [])
+        self.assertEqual(result["entries"][0]["iova"], 0x80030000)
+        self.assertEqual(result["entries"][4]["size"], 3072)
+        self.assertEqual(result["entries"][5]["size"], 0)
+
+    def test_v5_zero_iova_is_visible(self):
+        data = bytearray(112)
+        data[0:4] = (0x394F5349).to_bytes(4, "little")
+        data[8:12] = (0).to_bytes(4, "little")
+        data[12:16] = (3072).to_bytes(4, "little")
+        result = decode(bytes(data))
+        self.assertEqual(result["zero_iova_indices"], [0])
+        self.assertEqual(result["nonzero_sizes"], 1)
+
     def test_unknown_magic(self):
         data = bytearray(112)
         data[0:4] = (0xDEADBEEF).to_bytes(4, "little")

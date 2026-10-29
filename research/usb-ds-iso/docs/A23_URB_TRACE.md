@@ -214,3 +214,26 @@ endpoint/producer/count；consumer 与 status 的 sequence/state 足以定位轮
 - 不记录 `4c70` 的返回值；要证明 miss，需要在 `2c690` 的调用点加只读计数，属于
   另一轮 runtime patch。
 - 后续实机需要新的明确授权，且不应与 A23 长流或 per-URB 两阶段混在同一轮。
+
+## v5 全条目 trace（2026-10-29，离线构建）
+
+v4 只读最后一条，无法判断 `0x80030000` 是 index4 还是更早条目的地址。v5 把
+**8 个 URB 条目**全部写进 diagnostics：
+
+| 相对 diagnostics | 内容 |
+| --- | --- |
+| `+0` | magic `0x394f5349`（`ISO9`） |
+| `+8 + i*8` | 条目 i 的 `[URB+0x10]` IOVA 低 32 位 |
+| `+12 + i*8` | 条目 i 的 `[URB+0x20]` requested size |
+
+- 汇编：[patches/iso_burst_urb_entries.S](../patches/iso_burst_urb_entries.S)；
+  注入 **680/684B**，余 4B。
+- 不写 consumer；解码器从 size 非零条目推导 `nonzero_sizes`、`distinct_iovas`、
+  `last_nonzero`、`zero_iova_indices`。
+- 构建：`tools/build_a23_urb_trace.py --layout entries`；候选
+  NSP `11d5e9eb2627c29204c041a5a83ff1ed5fbe29eb97c9b3100cee8d6875699c5b`，
+  payload `049c47c4…`，IPS `275bd67c…`，目录
+  `private/analysis/A23-urb-entries-v5-20261029-r2/`。
+- **未部署**。预期在 5 URB 后看到 5 个非零 size、5 个不同 IOVA；
+  若 index4 是 `0x80030000`，即可确认该地址属于第 5 个条目，而不是表错位；
+  若条目 IOVA 不是 5 个不同值或某个 size 为 0，则直接定位到对应条目。
