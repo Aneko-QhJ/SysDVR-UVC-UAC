@@ -115,17 +115,18 @@
   才启用。卡已恢复安全 `52069a44…`；per-URB 候选不可部署。见
   [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
 - **serial640 也崩（08:10）**：host 80 包后，usb `User Break`、fatal `0x4A2`，
-  栈同 busy-map leak（`+0x2c584` DMA map）。one-in-flight 不能解决 A23 完成/URB
-  释放缺失。**serial640 不是稳定基线**；A23 只能在约 5 个 URB 内工作。
-- 当前唯一稳定的是 base A23 3-URB 短 burst（`52069a44…`）；持续流需要修
-  A23 完成/URB 释放或写新 producer，不能再靠 in-flight/buffer/mailbox 调整。
-- **URB/IOVA 记账模型（离线）**：`tests/test_urb_accounting.py` 证明——unmap 正常时
-  5 页可复用；unmap 缺失或地址错误才精确得到“5 个完成后第 6 次 map 失败”；8 项 URB
-  表解释不了 5。host 已收到 5 个完成，说明 `complete_original` 被调用了，问题在
-  **unmap 没释放**（条目/地址/domain/free-list），不是完成没发生。见
+  栈同 busy-map leak（`+0x2c584` DMA map）。当时的结论是 one-in-flight 不能解决
+  A23 完成/URB 释放缺失，**serial640 不是稳定基线**、A23 约 5 个 URB 到顶；
+  这个“5 URB 墙”已被 2026-10-29 的 v5 320 包推翻，见下。
+- 2026-10-28 的当时结论是“唯一稳定的是 base A23 3-URB 短 burst，A23 约 5 个
+  URB 到顶”。2026-10-29 的 v5 320 包已推翻这个硬限制（8 post、两页复用、无
+  fatal），见下；serial640 的旧崩溃仍需复测解释，不能再直接当作当前 build 的
+  稳定边界。
+- **URB/IOVA 记账模型（离线，历史容量边界）**：`tests/test_urb_accounting.py`
+  证明——unmap 正常时 5 页可复用；unmap 缺失或地址错误才会得到“5 个完成后第 6 次
+  map 失败”；8 项 URB 表解释不了 5。它仍是有用的边界模型，但 v5 实机已经显示
+  unmap/复用连续成立，不能再拿它断言“5 页墙”。见
   [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md)。
-  下一步：usb:ds 侧记账 trace（`+0/+4/+8`、`[URB+0x10]/[+0x20]`、domain、unmap
-  返回值），trace 出来前不再部署 A23 长流。
 - **A23 endpoint trace 已构建（离线）**：[patches/iso_burst_trace.S](../patches/iso_burst_trace.S)
   把 report 诊断换成 endpoint 指针 + producer/consumer/count（680/684B）；
   `iso-stream-trace3.nsp`（`9e8fc035…`）用 safe stream 源码 + trace payload 构建，
@@ -183,8 +184,8 @@
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。
 - 离线分析 `entry+4/+8`/8 项 URB 表/A23 完成释放，设计新的 producer；
-  当前 A23 诊断 producer 不支持 10s 连续流，UAC 标准宿主还不能接。汇总见
-  [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。
+  A23 诊断 producer 尚未验证 10s 连续流（v5 只到 8 post/320 包），UAC 标准宿主
+  还不能接。汇总见 [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md)。
 
 ## 工程状态（2026-10-27）
 
@@ -196,24 +197,29 @@
 
 ## 开放问题（按优先级）
 
-1. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-2. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
+1. **A23 持续流复测**：v5 320 包已到 8 post、两页复用、无 fatal；先在
+   `caffeinate` + 明确 one-in-flight 下复测 serial640 的旧条件（640/10000 包），
+   解释当时的 5 URB 崩溃，再定 10s 连续流是否可达。需要新的明确授权。
+2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
+3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
    打通；连续 PCM 的 3-URB 方案已被硬件否决（usb assert）。剩下单 URB 长传输/低 lead、
    标准宿主枚举、时钟/反馈与跨块样本连续性。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
-3. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
+4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
-4. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
+5. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
    （14 包）是否同源；目前没有被证明同源。
 
 ## 下一步（未授权）
 
-- 离线：修正版打包 + 新 recipe 入口 + 包/入口审计；alt1 安装探针或读 `usb:ds`
-  descriptor walk。仓库里没有 usb NSO（Build-ID `AD8D36F2…`）；若要读 descriptor
-  walk，需要该 dump 或对应 Ghidra 工程。UAC 标准层 P0 已完成，不再重复描述符 lint。
-- 实机：另定范围与授权；alt1 探针必须用无 `ISO_PROBE` 的 build（AC+AS 占满 4 个接口）；
-  或先做路径修正版短包。两者不要混在同一轮变量里。
+- 离线：为 A23 持续流复测准备明确的 one-in-flight 证据（源码/构建/日志三处），
+  做 640 包 host 脚本 + `caffeinate` scope；同时复核 serial640 当时的构建和
+  in-flight 数，先解释旧崩溃再谈 10s。
+- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计；alt1 安装探针或读 `usb:ds`
+  descriptor walk（Ghidra 工程已在 `private/analysis/A23-iova-free-list-audit-20261029-r1/`）。
+- 实机：另定范围与授权；A23 长流、alt1 探针、路径修正版不要混在同一轮变量里。
 
 ## 不证明
 
-持续 PCM、UAC 互操作、时钟同步、缓冲复用、SDK 排空、旧超时根因、未来无事件。
+10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作、时钟同步、SDK 排空、
+旧超时根因、未来无事件。

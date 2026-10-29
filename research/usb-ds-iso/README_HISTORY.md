@@ -1,6 +1,6 @@
 # USB 等时传输实验
 
-> **历史时间线（2026-10-09 → 2026-10-27）。** 当前状态见 [docs/CURRENT.md](docs/CURRENT.md)，
+> **历史时间线（2026-10-09 → 2026-10-29）。** 当前状态见 [docs/CURRENT.md](docs/CURRENT.md)，
 > 入口见 [START_HERE.md](START_HERE.md)。本文只追加，不覆盖。
 
 当前工作以 [研究规则](docs/RESEARCH_RULES.md)、[当前状态](docs/STATUS.md) 和
@@ -1323,3 +1323,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 [首次SDK burst实机诊断](docs/IOUSBHOST_FIRST_BURST_TEST.md)：控制16.395ms返回Timeout，ISO停止后Aborted，有效包0；证据保存后资源关闭，exit1，无重试。入口finished类型已离线修正，12项native/221项回归通过；remaining0，下一步回收完整设备日志。
 
 [首次SDK burst读卡复核](docs/IOUSBHOST_FIRST_BURST_CARD_REVIEW.md)：6041byte日志确认burst setup到达接口0/1广播记录，无ISO提交/终结记录；四文件及21报告未变化，SD已安全推出，remaining0。下一步电脑审查接口2处理和EP0应答路径。
+
+2026-10-29 A23 URB trace 回合：完成 v4（最后完成 URB 的 IOVA/size）和 v5（8 个条目全部 IOVA/size）的离线构建与实机。v4 r5 在 5 个 URB 后读到 `last_iova=0x80030000`、`last_size=3072`，没有触发 size=0 跳过；v5 160 包为 4 post，两页交替；v5 320 包 + `caffeinate` 为 `posts=8 completes=7 errors=0`，**无 usb fatal**，8 个条目仍只在 `0x80030000`/`0x80040000` 两页间交替。由此推翻本 build 的“5 URB/5 页”硬限制；serial640 的旧 5 URB 崩溃需按当时 in-flight/主机状态或构建差异重新解释。尚未证明 10s 连续 PCM、完整 ring 复用或标准 UAC。证据：`private/runs/A-urb-entries-v5-320-20261029/`、`private/analysis/A23-urb-trace-round-20261029/`；卡最终恢复安全 `52069a44…`。
