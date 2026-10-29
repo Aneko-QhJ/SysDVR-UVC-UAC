@@ -176,3 +176,29 @@ cat /proc/asound/cards > u0-asound-cards.txt
 - U0c 主机脚本会先跑 `usb-config-dump`，再抓 ioreg/audio/log。
 - 判别：配置里若已有 AC/AS 和 `0x84` alt1，问题在 host 类驱动/复合配置；
   若缺 AC/AS，问题在设备 append/配置描述符。
+
+### U0c 配置描述符结果（2026-10-29 18:25）
+
+- 主机 `ioreg` 仍只看到 `SysDVR-UVC Capture` USB 设备；
+- `usb-config-dump` 无法打开设备（`0xe00002d8`，host 侧 open 失败）；
+- macOS 内核日志给出关键错误：
+
+  ```
+  SysDVR-UVC Capture: IOUSBHostDevice::getDescriptorGated:
+    type 0x02 index 0 length 9: completed with 0xe00002cd ...
+  ```
+
+  `0xE00002CD` 是 `kIOReturnNotReadable`：**host 读不到配置描述符**。
+- 同一 `usb-config-dump` 对 safe build 能读出 `wTotalLength=185`、3 接口、
+  vendor alt1 EP83；因此工具和 USB 链路正常。
+- 设备日志仍是 `UAC initialized: AC=2 AS=3 EP=0x84`，无 `USB host connected`。
+
+结论：问题在设备/usb:ds 侧无法提供新的 UAC 复合配置描述符，不是 macOS
+音频类驱动绑定。下一步做隔离构建，按信息量排序：
+
+1. **UAC-only**（跳过 UVC VC/VS，只注册 AC/AS）：配置只有 ~97B；
+   能读 → 组合/长度/第二 IAD 问题；不能读 → UAC append 本身问题。
+2. **去掉 UAC IAD**：验证 usb:ds 是否不接受第二个 IAD。
+3. **只保留 AS alt0（不注册 alt1 端点）**：验证 alt1 端点/描述符。
+
+在这三个分支之前，不再重复部署同一个 U0b。
