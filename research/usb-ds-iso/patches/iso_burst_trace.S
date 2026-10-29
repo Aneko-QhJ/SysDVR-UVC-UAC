@@ -170,21 +170,18 @@ error:
 done:
     ret
 iso_report:
-    ldr x8, [x19, #0x60]
-    add x8, x8, #0x22, lsl #12
-    add x8, x8, #0x1000
-    add x8, x8, #0xcf8
-    ldr x8, [x8]
-    cbz x8, report_done
+    ldrb w8, [x19, #0x70]
+    cmp w8, #0x83
+    b.ne report_done
     mov w9, #0x5349
     movk w9, #0x314f, lsl #16
     str w9, [x20, #16]
-    str x8, [x20, #24]
-    ldr w9, [x8, #0]
+    str x19, [x20, #24]
+    ldr w9, [x19, #0]
     str w9, [x20, #32]
-    ldr w9, [x8, #4]
+    ldr w9, [x19, #4]
     str w9, [x20, #36]
-    ldr w9, [x8, #8]
+    ldr w9, [x19, #8]
     str w9, [x20, #40]
 report_done:
     add x0, x19, #0x10

@@ -43,9 +43,12 @@ git show 77e7480:source/uvc/uvc_device.c > source/uvc/uvc_device.c
 make OUTPUT_DIR=... DEFINES="-DISO_PROBE -DISO_RUNTIME_PATCH ... -DFILE_LOGGING"
 ```
 
-- `iso-stream-trace3-v2.nsp`
-  SHA256 `c237f25056ac9473fce83de506c3b5f8ec6d9ac8e3e9e7db3eaaf28e002ecc93`；
-- 第一版 `9e8fc035…` 没有写 diagnostics magic，status 读到全 0，作废；
+- `iso-stream-trace3-v3.nsp`
+  SHA256 `6fe2ec156ef01033ff217a2d18cd54f82c3050760a2881531b4f485f1dcd3b88`；
+- v1 `9e8fc035…` 没有 diagnostics magic，status 全 0；
+- v2 `c237f250…` 用 manager+0x14c8+0x830 查 endpoint，但 x19 本身就是 endpoint
+  对象；查错后 magic 也没写，status 仍全 0；
+- v3 直接读 `x19`：endpoint=x19，`+0/+4/+8` 为 producer/consumer/count；668/684B；
 - 已归档 `private/deployments/20261027-alt1-probe/builds/`；
 - **未部署**。
 
