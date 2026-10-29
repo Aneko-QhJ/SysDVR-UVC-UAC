@@ -1,8 +1,9 @@
-# UAC 标准宿主 10s PCM 验证入口（2026-10-29 准备）
+# UAC 标准宿主 10s PCM 验证入口（2026-10-29）
 
 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE
 捕获 SysDVR-UVC 的 UAC AS alt1，连续 10s，无 xrun、无截断、无重连。
-本页只定义入口、检查清单和当前设备侧缺口；**没有启用 UAC、没有实机**。
+本页定义入口、检查清单与设备侧缺口，并记录 U0–UAC-only 的实机结果；
+UAC 在默认构建中仍禁用。
 
 ## 分阶段（U0 → U4）
 
@@ -14,21 +15,23 @@
 | U3 | 短 PCM | 1s 捕获，采样率/声道/位深正确，无 xrun |
 | U4 | 10s PCM | 10s 捕获，0 xrun、无截断、跨块样本连续、无重连 |
 
-当前只准备 U0–U4 的 host 入口；设备侧 U0 还没有 build。
+U0–U4 的 host 入口已备；设备侧 U0 已构建并实机四轮（U0/U0b/U0c/UAC-only），
+均未通过，见下文。
 
 ## 当前设备侧缺口
 
 | 缺口 | 现状 |
 | --- | --- |
-| `_setupAudioInterfaces5x` | 已实现但 **未调用**，UAC 仍禁用 |
-| AC/AS SetupEvent | `_processRequests` 未轮询 AC/AS，控制请求不会到达 `UacStandardHandle` |
+| `_setupAudioInterfaces5x` | 已实现；默认构建**未调用**，仅 `UAC_HOST_PROBE` 下调用 |
+| AC/AS SetupEvent | `UAC_HOST_PROBE` 下已轮询（U0 加入）；默认构建不轮询 |
 | AS 端点 `0x84` | 只注册，未接 ISO producer；A23 hook 只匹配 `0x83` |
 | PCM 发送器 | `UacDeviceSendAudio` 是逐 192B post + 等完成，不是 16ms URB/3 条在飞 |
 | 接口预算 | UVC 2 + AC/AS 2 = 4；UAC build 不能带 `ISO_PROBE` |
 | alt1 安装 | 需要 NOP patch；全局 NOP 只用于实验 |
 
-因此 UAC 标准宿主 10s 不能直接复用当前 A23 诊断 build；下一项设备工作应是
-**UAC 枚举探针**（U0），确认 AC/AS/alt1 能被标准宿主看到，再谈 PCM。
+因此 UAC 标准宿主 10s 不能直接复用当前 A23 诊断 build。U0 四轮实机已证明
+枚举路径本身有问题；下一项设备工作是**离线审计 usb:ds 配置路径**，而不是再换
+UAC 变体（见文末 UAC-only 结果与记录缺口）。
 
 ## Host 入口
 
@@ -73,13 +76,13 @@ research/usb-ds-iso/tools/uac_host_10s.sh \
 
 ## 下一步（离线）
 
-1. 给 `_setupAudioInterfaces5x` 加 `UAC_HOST_PROBE` 编译开关，只做 U0（枚举 +
-   AC/AS 控制），不启动 PCM 线程；
-2. 在 `_processRequests` 轮询 AC/AS SetupEvent；
-3. 用 QEMU/真实 Linux 主机做 U0；通过后再设计 AS `0x84` 的 ISO producer；
+1. 审计 usb:ds 的 `AppendConfigurationData`/配置状态、接口数/描述符长度约束，
+   解释“复合能枚举但 config 读失败、纯 AC/AS 无设备”；
+2. 机制清楚后，才设计最小的 AC/AS 读配置验证（需要新的实机授权）；
+3. 通过后再接 AS `0x84` 的 ISO producer；
 4. 最后才是 U2–U4 的 10s PCM。
 
-在这些完成前，UAC 仍保持禁用。
+在这些完成前，UAC 仍保持禁用；不再部署 UAC 变体。
 
 ## U0 枚举候选（2026-10-29 离线构建）
 
@@ -233,3 +236,13 @@ cat /proc/asound/cards > u0-asound-cards.txt
 1. 复合 UVC+UAC 还能枚举设备，但 config descriptor 读失败；
 2. 纯 AC/AS 连设备都不出现。
 在这两个现象有同一个可解释机制前，不再上 UAC 变体。
+
+## 记录缺口（2026-10-29）
+
+- U0/U0b/U0c/UAC-only 四轮只有卡上的部署/恢复记录
+  （`private/card-cycles/20261029-urbtrace-v4-deploy/`）和运行目录；没有像 A23
+  short24 那样的 authorization 票据，相关 `scope.json` 仍写
+  `hardware_authorized: false`。按 [RESEARCH_RULES.md](RESEARCH_RULES.md) 这是
+  记录缺口；这四轮不构成后续实机授权。
+- `UAC-u0b-20261029`、`UAC-only-20261029` 运行目录没有 `SHA256SUMS`；
+  UAC-only 的“主机枚举不到设备”目前只有用户观察，没有主机侧 dump。

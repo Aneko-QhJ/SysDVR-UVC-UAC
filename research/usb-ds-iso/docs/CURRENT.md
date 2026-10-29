@@ -1,15 +1,17 @@
-# 当前状态（2026-10-29 18:05，Asia/Shanghai）
+# 当前状态（2026-10-29 22:35，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 本轮只做 usb:ds 的离线静态审计，没有新的 USB/SD/实机操作。
+> 最后一次实机是 2026-10-29 18:40 的 UAC-only 轮；本轮为文档校正，没有 USB/SD/实机操作。
 
 ## 一句话
 
-视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在，
-未打包/未部署。标准 UAC 层（alt1、类请求、时钟）尚未开始。
+视频可用；音频不可用。UAC 标准层离线已完成，但标准宿主枚举四轮均未通过
+（U0/U0b/U0c/UAC-only），UAC-only 已标 dangerous；下一次实机前先离线审计
+usb:ds 配置路径。最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；
+路径修正版已存在，未打包/未部署。
 
-## 最近实机（2026-10-27）
+## 最近一次短包实机（2026-10-27）
 
 | 项 | 结果 |
 | --- | --- |
@@ -31,8 +33,9 @@
 - 未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md)。
   - 描述符构建器 + lint + alt0/alt1/类请求状态机；`make check` 覆盖。
-  - 设备构建通过；UAC 仍禁用，`_setupAudioInterfaces5x` 仍未调用。
-  - 未验证 `usb:ds` 的 alt1 端点安装；这是下一个问题。
+  - 设备构建通过；UAC 默认仍禁用，`_setupAudioInterfaces5x` 在默认构建未调用。
+  - alt1 端点安装已由 runtime NOP patch 证明（vendor `0x83`）；UAC 的 AS `0x84`
+    alt1 仍未被标准宿主验证。
   - 接口预算：usb:ds/libnx 最多 4 个接口；UVC 2 + UAC 2 = 4，因此 UAC 不能与
     `ISO_PROBE` 的 vendor 接口同 build；`_setupAudioInterfaces5x` 已加拒绝。
 
@@ -42,6 +45,9 @@
   `next_hardware_authorized=false`。
 - SD 最后已安全弹出；当前设备现场状态不推定仍就绪。
 - 旧票据、actual465、消费 namespace 保持；不恢复旧次数。
+- UAC 四轮实机（2026-10-29 18:13–18:40）只留下部署/恢复记录，没有书面 authorization
+  票据，相关 scope 仍写 `hardware_authorized: false`；按 RESEARCH_RULES 属于记录缺口，
+  不构成后续实机授权。见 [UAC_HOST_10S.md](UAC_HOST_10S.md) 末尾的记录缺口。
 
 ## ALT1 探针（bulk alt1 已通过）
 
@@ -238,11 +244,12 @@
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
-   打通；3-URB 方案曾在旧运行中崩，v5 单飞 10s 已通，但 3-URB 尚未复测。
-   Linux 10s host 入口/检查器已准备（[UAC_HOST_10S.md](UAC_HOST_10S.md)），但 UAC
-   仍禁用：`_setupAudioInterfaces5x` 未调用、AC/AS SetupEvent 未轮询、AS `0x84`
-   无 ISO producer。下一步先做 UAC 枚举探针（U0）。
-   接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
+   打通（vendor `0x83`，不是 UAC `0x84`）。U0/U0b/U0c 与 UAC-only 四轮实机均未通过：
+   复合配置能枚举但 config GET 返回 `0xE00002CD`，UAC-only 连设备都不出现；UAC-only
+   已标 dangerous。**下一步不是再换 UAC 变体**，而是离线审计 usb:ds 的
+   `AppendConfigurationData`/配置状态与接口数/描述符长度约束；机制清楚前不再部署
+   UAC 变体。接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
+   Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
 5. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
@@ -250,10 +257,13 @@
 
 ## 下一步（未授权）
 
-- 离线：准备标准宿主（Linux `snd-usb-audio`）的 10s PCM 入口、跨块样本连续性
-  和时钟/反馈检查；A23 诊断 producer 已证明 10s 单飞可跑，但还不是连续 PCM。
-- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计；读 `usb:ds` descriptor
-  walk 可用 `private/analysis/A23-iova-free-list-audit-20261029-r1/` 的 Ghidra 工程。
+- 离线（UAC 当前优先）：审计 usb:ds 的 `AppendConfigurationData`/配置状态、接口数/
+  描述符长度约束，解释“复合能枚举但 config 读失败、纯 AC/AS 无设备”；可用
+  `private/analysis/A23-iova-free-list-audit-20261029-r1/` 的 Ghidra 工程读
+  descriptor walk。在该机制清楚前不再部署 UAC 变体。
+- 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
+  模型已备，但接真实数据要等 UAC 枚举通过。
+- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
 - 实机：另定范围与授权；标准 UAC、alt1 探针、路径修正版不要混在同一轮变量里。
 
 ## 不证明

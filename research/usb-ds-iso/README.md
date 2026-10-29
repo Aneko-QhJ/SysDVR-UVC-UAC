@@ -9,11 +9,14 @@
 
 ## 现在做什么
 
-- 最近一次实机（2026-10-27）：短包 16×24B 的主机观察通过；设备 `capture`/`EXE3`
+- 最近一次实机（2026-10-29 18:40）：UAC-only 隔离构建下主机完全枚举不到 USB
+  设备，构建已标 dangerous，卡已恢复 `52069a44…`；停止 UAC 变体试验。
+- 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
-  alt1 数据路径已被首次探针否定，UAC 仍禁用。
+  alt1 bulk/ISO 一次性 burst 已由 runtime NOP patch 打通（vendor `0x83`，不是
+  UAC `0x84`），UAC 仍禁用。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
