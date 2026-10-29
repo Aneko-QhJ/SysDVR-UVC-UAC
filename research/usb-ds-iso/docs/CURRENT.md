@@ -114,8 +114,11 @@
   **per-URB 不能作为 boot-time 全局 hook 直接部署**，需要 dormant guard 或 init 后
   才启用。卡已恢复安全 `52069a44…`；per-URB 候选不可部署。见
   [A23_PER_URB_ASSEMBLY.md](A23_PER_URB_ASSEMBLY.md)。
-- 当前稳定基线回到 base A23 3-URB（`52069a44…`）和已构建的 serial640
-  （`c129dce7…`，one-in-flight，33%）；连续 PCM 仍被 per-URB init 问题挡住。
+- **serial640 也崩（08:10）**：host 80 包后，usb `User Break`、fatal `0x4A2`，
+  栈同 busy-map leak（`+0x2c584` DMA map）。one-in-flight 不能解决 A23 完成/URB
+  释放缺失。**serial640 不是稳定基线**；A23 只能在约 5 个 URB 内工作。
+- 当前唯一稳定的是 base A23 3-URB 短 burst（`52069a44…`）；持续流需要修
+  A23 完成/URB 释放或写新 producer，不能再靠 in-flight/buffer/mailbox 调整。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

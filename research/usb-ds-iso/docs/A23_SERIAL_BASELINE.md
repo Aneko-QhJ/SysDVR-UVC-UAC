@@ -43,3 +43,14 @@
 
 1. 需要实机时先跑 serial640，确认 208 轮串行不崩；
 2. 之后再做 per-URB mailbox 的汇编压缩；两者都通过才谈 UAC 连续流。
+
+## 实机结果：serial640 也在 5 个 URB 后崩（2026-10-29 08:10）
+
+- host：80 valid / 9920 zero；
+- usb：`User Break`，fatal `0x4A2`；PC `base+0x1927c`；栈
+  `+0x2c584`（DMA map）→ `+0x2a3f4` → `+0x2a30c` → `+0x2d49c`；
+- 和 640 池/复用相同的 **busy-map leak** 路径；
+- 设备日志只到 b0/b1/b2（只记前三次），之后无 stop。
+
+结论：one-in-flight 不能解决 A23 完成/URB 释放缺失；5 个 URB 后仍进入 busy-map
+泄漏并崩。serial640 **不是稳定基线**。
