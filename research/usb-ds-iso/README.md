@@ -49,7 +49,9 @@
   旧 5 URB 崩溃未复现。见
   [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
   [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
-- 下一步是标准宿主下的 10s 连续 PCM，以及修正版配套包/入口、alt1 安装探针。
+- 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)），
+  但 UAC 仍禁用；下一步先做 UAC 枚举探针（U0），再谈 10s 连续 PCM。
+- 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录
 

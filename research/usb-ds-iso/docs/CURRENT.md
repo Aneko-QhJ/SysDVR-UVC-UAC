@@ -176,11 +176,12 @@
   8 条目仍两页交替。**原始 serial640 的 5 URB 崩溃未复现**；主机休眠/USB
   调度或当时运行状态成为首要解释，不再是固有 5 页墙。见
   [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
-- **serial640 复测已准备（10-29，未授权）**：候选仍是 v5 `11d5e9eb…`，
-  host 改回 10000 包并加 `caffeinate`，保持 640 缓冲 + `posts == completes`
-  单飞；只准备 scope，未部署/未开机。判别：稳定 ~200 post → 旧崩不是固有
-  5 页墙；仍在 ~5 post 崩 → 设备侧边界。见
-  [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
+- **UAC 标准宿主 10s 入口已准备（10-29，未启用）**：新增 Linux
+  `tools/uac_host_10s.sh`（`arecord` 10s + `dmesg`/`lsusb`/`/proc/asound` 采集）
+  和 `tools/check_uac_wav.py`（格式/时长/静音/不连续统计），并有 U0–U4 检查清单。
+  **UAC 仍禁用**：`_setupAudioInterfaces5x` 未调用、AC/AS SetupEvent 未轮询、
+  AS `0x84` 没有 ISO producer、逐包发送器未改；下一步先做 UAC 枚举探针（U0）。
+  见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
@@ -201,7 +202,7 @@
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
-- `make check` 绿：10 个文件，约 2 秒。
+- `make check` 绿：11 个文件，约 2 秒。
 - `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
   [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
 
@@ -212,8 +213,10 @@
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
-   打通；连续 PCM 的 3-URB 方案已被硬件否决（usb assert）。剩下单 URB 长传输/低 lead、
-   标准宿主枚举、时钟/反馈与跨块样本连续性。
+   打通；3-URB 方案曾在旧运行中崩，v5 单飞 10s 已通，但 3-URB 尚未复测。
+   Linux 10s host 入口/检查器已准备（[UAC_HOST_10S.md](UAC_HOST_10S.md)），但 UAC
+   仍禁用：`_setupAudioInterfaces5x` 未调用、AC/AS SetupEvent 未轮询、AS `0x84`
+   无 ISO producer。下一步先做 UAC 枚举探针（U0）。
    接口预算 4 已确认：UAC 与 `ISO_PROBE` 不能同 build，探针须用 AC+AS 或专用 build。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。

@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 428 个 Python 工具。
+共 429 个 Python 工具。
 
 ## 当前使用
 
@@ -36,6 +36,7 @@
 | `package` | 2 |
 | `sequence` | 2 |
 | `summarize` | 2 |
+| `check` | 1 |
 | `decode` | 1 |
 | `experiment.py` | 1 |
 | `extract` | 1 |
@@ -431,6 +432,12 @@
 | [build_no_td_receiver.py](build_no_td_receiver.py) | Build an isolated, fresh-idle-only A23 no-TD receiver; never accesses USB. |
 | [build_patch.py](build_patch.py) | Build fail-closed, Build-ID-specific A/B/C IPS32 experiment packages. |
 | [build_serial_clock_receiver.py](build_serial_clock_receiver.py) | Build and validate the bounded matched-backend serial receiver without USB. |
+
+## check（1）
+
+| 工具 | 说明 |
+| --- | --- |
+| [check_uac_wav.py](check_uac_wav.py) | Validate a 10 s UAC capture WAV for the standard-host experiment. |
 
 ## collect（18）
 
