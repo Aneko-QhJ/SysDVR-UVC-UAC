@@ -21,7 +21,7 @@
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 3K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
 | [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 2K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
-| [CURRENT.md](CURRENT.md) | 2026-10-29 | 12K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-29 | 13K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md) | 2026-10-28 | 3K | 从反编译和反汇编看，Normal producer 的顺序是： |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
@@ -251,7 +251,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-29 | 12K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-29 | 13K | 当前状态（2026-10-27 19:20，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-09 | 4K | 实验分支目录与本地产物 — `research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |

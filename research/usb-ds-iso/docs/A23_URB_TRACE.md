@@ -17,12 +17,16 @@
 
 [patches/iso_burst_trace.S](../patches/iso_burst_trace.S) 在 A23 `iso_report` 的位置写入：
 
-| report 偏移 | 内容 |
+| diagnostics 偏移 | 内容 |
 | --- | --- |
-| `+16` | endpoint 对象指针（u64） |
-| `+24` | producer（u32） |
-| `+28` | consumer（u32） |
-| `+32` | in-flight count（u32） |
+| `+0` | `ISO_PROBE_DIAG_MAGIC`（0x314f5349） |
+| `+8` | endpoint 对象指针（u64） |
+| `+16` | producer（u32） |
+| `+20` | consumer（u32） |
+| `+24` | in-flight count（u32） |
+
+`_pollIsoProbe` 只在 diagnostics magic 匹配时复制；没有 magic 时 trace 会被丢弃（第一版
+trace3 就是这样读到全 0）。
 
 - 汇编 **680B / 684B**，余 4B；`iso_report` 仍在 `0x68fb4`；
 - 不包含 per-URB selector，也不包含两阶段 START delta；
@@ -39,8 +43,9 @@ git show 77e7480:source/uvc/uvc_device.c > source/uvc/uvc_device.c
 make OUTPUT_DIR=... DEFINES="-DISO_PROBE -DISO_RUNTIME_PATCH ... -DFILE_LOGGING"
 ```
 
-- `iso-stream-trace3.nsp`
-  SHA256 `9e8fc035795a1e3a10a4257a3daa9bb7c2798ad791c9d6487f64bae868626240`；
+- `iso-stream-trace3-v2.nsp`
+  SHA256 `c237f25056ac9473fce83de506c3b5f8ec6d9ac8e3e9e7db3eaaf28e002ecc93`；
+- 第一版 `9e8fc035…` 没有写 diagnostics magic，status 读到全 0，作废；
 - 已归档 `private/deployments/20261027-alt1-probe/builds/`；
 - **未部署**。
 

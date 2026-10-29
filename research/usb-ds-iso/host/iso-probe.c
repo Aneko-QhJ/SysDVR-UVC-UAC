@@ -145,6 +145,7 @@ int main(int argc, char **argv) {
     unsigned packets = 512;
     unsigned trigger_delay_ms = 10;
     bool cancel_only = false, frame_only = false, receive_only = false, empty_window = false;
+    bool status_only = false;
     const char *outpath = NULL;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--repeat") && i + 1 < argc) {
@@ -169,14 +170,15 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--frames")) frame_only = true;
         else if (!strcmp(argv[i], "--receive-only")) receive_only = true;
         else if (!strcmp(argv[i], "--empty-window")) { receive_only = true; empty_window = true; }
+        else if (!strcmp(argv[i], "--status")) status_only = true;
         else {
-            fprintf(stderr, "Usage: %s --log run.jsonl [--repeat 100 | --cancel | --frames | --receive-only | --empty-window] [--packets 64..512] [--burst] [--alt1] [--trigger-delay-ms 1..500]\n", argv[0]);
+            fprintf(stderr, "Usage: %s --log run.jsonl [--repeat 100 | --cancel | --frames | --receive-only | --empty-window | --status] [--packets 64..512] [--burst] [--alt1] [--trigger-delay-ms 1..500]\n", argv[0]);
             return 2;
         }
     }
-    if ((unsigned)cancel_only + (unsigned)frame_only + (unsigned)receive_only > 1 ||
-        ((cancel_only || frame_only || receive_only) && repeats != 1)) return 2;
-    if (burst_mode && (cancel_only || frame_only || receive_only)) return 2;
+    if ((unsigned)cancel_only + (unsigned)frame_only + (unsigned)receive_only +
+        (unsigned)status_only > 1 || ((cancel_only || frame_only || receive_only) && repeats != 1)) return 2;
+    if (burst_mode && (cancel_only || frame_only || receive_only || status_only)) return 2;
     if (!outpath) { fprintf(stderr, "An explicit --log path is required\n"); return 2; }
     logpath = outpath;
     logfile = fopen(outpath, "wx");
@@ -210,7 +212,12 @@ int main(int argc, char **argv) {
         for (int j = 0; j < config->interface[i].num_altsetting; ++j) {
             const struct libusb_interface_descriptor *d = &config->interface[i].altsetting[j];
             if (d->bInterfaceClass != 0xff || d->bInterfaceSubClass != 0x49 ||
-                d->bInterfaceProtocol != 1 || d->bAlternateSetting != (alt1_mode ? 1 : 0)) continue;
+                d->bInterfaceProtocol != 1) continue;
+            if (status_only) {
+                if (d->bInterfaceNumber == 2) iface = 2;
+                continue;
+            }
+            if (d->bAlternateSetting != (alt1_mode ? 1 : 0)) continue;
             if (iface != -1 || d->bInterfaceNumber != 2 || d->bNumEndpoints != 1) {
                 fprintf(stderr, "Ambiguous/unexpected experiment interface\n"); goto cleanup;
             }
@@ -243,6 +250,11 @@ int main(int argc, char **argv) {
     rc = libusb_claim_interface(device, iface);
     if (rc) goto fail;
     claimed = true;
+    if (status_only) {
+        IsoProbeStatus state;
+        result = status(device, iface, &state) ? 1 : 0;
+        goto cleanup;
+    }
     if (alt1_mode) {
         rc = libusb_set_interface_alt_setting(device, iface, 1);
         if (rc) goto fail;

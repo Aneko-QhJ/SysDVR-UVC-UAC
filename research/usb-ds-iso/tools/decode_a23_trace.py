@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 
-TRACE_OFFSET = 16
+TRACE_OFFSET = 8
 
 
 def decode(data):
@@ -23,10 +23,10 @@ def decode(data):
     if len(data) < TRACE_OFFSET + 20:
         raise ValueError(f"trace buffer too short: {len(data)}")
     return {
-        "endpoint": int.from_bytes(data[16:24], "little"),
-        "producer": int.from_bytes(data[24:28], "little"),
-        "consumer": int.from_bytes(data[28:32], "little"),
-        "count": int.from_bytes(data[32:36], "little"),
+        "endpoint": int.from_bytes(data[8:16], "little"),
+        "producer": int.from_bytes(data[16:20], "little"),
+        "consumer": int.from_bytes(data[20:24], "little"),
+        "count": int.from_bytes(data[24:28], "little"),
     }
 
 

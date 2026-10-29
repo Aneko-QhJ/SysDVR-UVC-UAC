@@ -35,8 +35,8 @@
   serial640 也在 5 个 URB 后走同一 busy-map leak 崩溃；离线记账模型
   [A23_URB_ACCOUNTING_MODEL.md](docs/A23_URB_ACCOUNTING_MODEL.md) 表明 5 是 IOVA
   容量、不是 8 项表，完成被调用但 unmap 没释放；endpoint trace 已构建
-  （[A23_URB_TRACE.md](docs/A23_URB_TRACE.md)，NSP `9e8fc035…`），下一步实机验证
-  3 URB 和 serial 5 的计数。
+  （[A23_URB_TRACE.md](docs/A23_URB_TRACE.md)，v2 NSP `c237f250…`），下一步实机
+  验证 3 URB 和 serial 5 的计数。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

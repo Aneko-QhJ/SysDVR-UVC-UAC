@@ -131,8 +131,11 @@
   `iso-stream-trace3.nsp`（`9e8fc035…`）用 safe stream 源码 + trace payload 构建，
   `iso-probe --status` 的 `diagnostics_hex` 由
   [tools/decode_a23_trace.py](../tools/decode_a23_trace.py) 解码。未部署。
-  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：trace3 验证 3 URB，再做
-  serial trace（5 个 URB 后停）。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。trace3 第一次实机：stream 48/208 正常，
+  但 `iso-probe --status` 读到 diagnostics 全 0——trace 没有写 `ISO_PROBE_DIAG_MAGIC`，
+  `_pollIsoProbe` 的 magic 检查丢弃了它。v2 (`c237f250…`) 已在 diagnostics +0 写
+  magic，+8 endpoint、+16 producer、+20 consumer、+24 count；`iso-probe --status`
+  模式和解码器已更新。下一步：部署 v2 读 3 URB，再做 serial trace（5 个 URB 后停）。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
