@@ -22,7 +22,10 @@ iso-stream: iso-stream.c
 usb-config-dump: usb-config-dump.c
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+uac-control: uac-control.c
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
+
 clean:
-	rm -f iso-probe alt1-probe iso-stream usb-config-dump
+	rm -f iso-probe alt1-probe iso-stream usb-config-dump uac-control
 
 .PHONY: clean

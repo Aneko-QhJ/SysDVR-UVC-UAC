@@ -27,10 +27,6 @@ from build_uac_descriptor_payload import (
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
 WORK = ROOT / "private/analysis/UAC-descriptor-patch-20261029"
-DEFINES = (
-    "-DUAC_HOST_PROBE -DUAC_DESCRIPTOR_PATCH -DFILE_LOGGING "
-    f"-I{WORK}"
-)
 
 
 def sha256(path):
@@ -44,6 +40,11 @@ def main():
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
 
+    args.work = args.work.resolve()
+    defines = (
+        "-DUAC_HOST_PROBE -DUAC_DESCRIPTOR_PATCH -DFILE_LOGGING "
+        f"-I{args.work}"
+    )
     data = args.elf.read_bytes()
     _raw, sections = load_elf_sections(args.elf)
     validate(data, sections)
@@ -60,7 +61,7 @@ def main():
         "make", "-B", f"-j{args.jobs}", "TARGET=exefs",
         f"BUILD={objects.relative_to(REPO)}",
         f"OUTPUT_DIR={outputs.relative_to(REPO)}",
-        f"DEFINES={DEFINES}",
+        f"DEFINES={defines}",
     ]
     print(" ".join(cmd))
     result = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
@@ -79,7 +80,7 @@ def main():
     record = {
         "schema": "UAC-descriptor-probe-build-1",
         "at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "defines": DEFINES,
+        "defines": defines,
         "build_command": " ".join(cmd),
         "elf": {
             "path": str(args.elf),

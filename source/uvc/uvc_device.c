@@ -2055,6 +2055,11 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
             return;
         }
         result = UacStandardHandle(&g_uacStd, &packet, payload, transferred);
+#ifdef UAC_HOST_PROBE
+        LOG("UAC setup type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
+            packet.bmRequestType, packet.bRequest, packet.wValue, packet.wIndex,
+            packet.wLength, result.action, g_uacStd.sample_rate);
+#endif
         if (result.action == UAC_ACT_STALL) {
             usbDsInterface_StallCtrl(iface);
             return;
@@ -2064,6 +2069,11 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
     }
 
     result = UacStandardHandle(&g_uacStd, &packet, NULL, 0);
+#ifdef UAC_HOST_PROBE
+    LOG("UAC setup type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
+        packet.bmRequestType, packet.bRequest, packet.wValue, packet.wIndex,
+        packet.wLength, result.action, g_uacStd.sample_rate);
+#endif
     switch (result.action) {
     case UAC_ACT_WRITE:
         _ctrlWrite(iface, result.data, result.data_len);
