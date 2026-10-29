@@ -17,6 +17,9 @@
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 bulk/ISO 一次性 burst 已由 runtime NOP patch 打通（vendor `0x83`，不是
   UAC `0x84`），UAC 仍禁用。
+- UAC 配置路径审计完成：[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)：
+  复合 HS 257B/SS 269B 撞上 usb:ds 的 u8 长度截断；UAC-only 跳过了设备描述符
+  设置。下一步 descriptor-only 补丁与 257B 仿真，实机另需授权。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
@@ -59,8 +62,9 @@
   `0xE00002CD`（`kIOReturnNotReadable`），即设备/usb:ds 无法提供新的 UAC
   复合配置；safe build 的 config 可读（185B/3 接口）。**UAC-only 隔离构建
   实机后主机完全枚举不到 USB 设备**（`7ffdf733…`），已标 dangerous，卡恢复
-  `52069a44…`。停止 UAC 变体试验；下一步离线审计 usb:ds 的
-  `AppendConfigurationData`/配置状态。UAC 默认仍禁用，10s PCM 未就绪。
+  `52069a44…`。停止 UAC 变体试验；配置路径审计已完成
+  （[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)），下一步
+  descriptor-only 补丁与 257B 仿真。UAC 默认仍禁用，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录
