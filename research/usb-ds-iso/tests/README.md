@@ -2,7 +2,7 @@
 
 | 目标 | 命令 | 规模 | 当前状态 |
 | --- | --- | --- | --- |
-| 快速 | `make check` | 7 个文件 | 绿，约 3 秒；每轮门禁 |
+| 快速 | `make check` | 10 个文件 | 绿，约 2 秒；每轮门禁 |
 | 单文件隔离 | `make check-file` | 183 个文件 | 用于定位崩溃/导入错误，较慢 |
 | 全量 | `make check-all` | 183 个文件 / 1074+ tests | 约 8 分钟；**当前不是绿的** |
 
@@ -46,4 +46,6 @@ ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python   -m unittest test
 
 - `test_urb_accounting.py` — URB 表/5 页 IOVA 记账模型；不访问硬件。
 
-- `test_a23_urb_trace_decode.py` — 解码 A23 trace report 的 endpoint/producer/consumer/count。
+- `test_a23_urb_trace_decode.py` — 解码 A23 trace report：v3 的
+  endpoint/producer/consumer/count，以及 v4 的 consumer/最后 URB IOVA/size
+  与 `unmap_gate` 判定。

@@ -151,6 +151,12 @@
   这个不对称暂标可疑，但不能单独解释 5。下一步 trace 必须读
   `[URB+0x10]/[+0x20]` 或记录 `4c70` miss 计数；在此之前不再上硬件。见
   [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
+- **v4 URB 字段 trace 已离线构建（10-29）**：magic `0x384f5349`（ISO8），
+  diagnostics 写 consumer、最后完成 URB 的 `+0x10` IOVA、`+0x20` size；
+  680/684B，余 4B。NSP `a3eb8aa9…`，safe `77e7480` + 640 单飞 + README 记录
+  的 `_applyIsoStreamPatch` 空操作。**未部署**；实机需新授权，预期用
+  `last_size=0` / `last_iova=0` 区分两条静默分支。见
+  [A23_URB_TRACE.md](A23_URB_TRACE.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
@@ -171,7 +177,7 @@
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
-- `make check` 绿：7 个文件，约 3 秒。
+- `make check` 绿：10 个文件，约 2 秒。
 - `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
   [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
 

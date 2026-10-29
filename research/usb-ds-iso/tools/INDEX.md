@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 427 个 Python 工具。
+共 428 个 Python 工具。
 
 ## 当前使用
 
@@ -26,7 +26,7 @@
 | `audit` | 137 |
 | `a23_*` | 110 |
 | `analyze` | 59 |
-| `build` | 58 |
+| `build` | 59 |
 | `collect` | 18 |
 | `prepare` | 10 |
 | `context65` | 7 |
@@ -368,7 +368,7 @@
 | [audit_lifecycle_card_workflow.py](audit_lifecycle_card_workflow.py) | Exercise temporary cards and seal copied evidence; never instantiate MacCard. |
 | [audit_path_span_readiness.py](audit_path_span_readiness.py) | Exercise temporary cards and seal copied evidence; never instantiate MacCard. |
 
-## build（58）
+## build（59）
 
 | 工具 | 说明 |
 | --- | --- |
@@ -417,6 +417,7 @@
 | [build_a23_trace_candidate.py](build_a23_trace_candidate.py) | Generate isolated A23 handler copies, replay them, and link full ELF only. |
 | [build_a23_trace_sink.py](build_a23_trace_sink.py) | Offline extension of sealed A23 handler candidate: one-shot sink and stop window. |
 | [build_a23_two_epoch_entry.py](build_a23_two_epoch_entry.py) | Build a file-only inspector and dormant two-epoch entry; acquisition unavailable. |
+| [build_a23_urb_trace.py](build_a23_urb_trace.py) | Build an offline A23 URB-field trace (v4) sysmodule. |
 | [build_a23_verified_entry.py](build_a23_verified_entry.py) | Build a file-only verified entry, retaining all dormant SDK components. |
 | [build_a23_wait_path_candidate.py](build_a23_wait_path_candidate.py) | Fixed REL1 path candidate and SDK handle-wait machine audit; no device access. |
 | [build_a23_waiting_receiver.py](build_a23_waiting_receiver.py) | Build a dormant receiver and return a zero-use record; never issue or launch. |

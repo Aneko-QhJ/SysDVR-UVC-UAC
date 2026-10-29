@@ -22,6 +22,7 @@ QUICK = [
     "test_a23_q2_generation_model.py",
     "test_urb_accounting.py",
     "test_a23_urb_trace_decode.py",
+    "test_a23_urb_trace_build.py",
 ]
 
 

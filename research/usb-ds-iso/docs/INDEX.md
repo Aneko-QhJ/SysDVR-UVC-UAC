@@ -20,7 +20,7 @@
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 4K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
-| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 5K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
+| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 8K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
 | [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 6K | serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
 | [CURRENT.md](CURRENT.md) | 2026-10-29 | 14K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
@@ -237,7 +237,7 @@
 | [A23_TWO_EPOCH_SDK_DRIVER.md](A23_TWO_EPOCH_SDK_DRIVER.md) | 2026-10-19 | 7K | 两轮SDK执行驱动与联合回执（2026-10-18） — 后续：[独立等待入口、文件构建绑定及最终检查点](A23_TWO_EPOCH_SDK_ENTRY.md)已完成离线验证；生产许可与现场执行模式未实现。以下保留驱动阶段结果。 |
 | [A23_TWO_EPOCH_SDK_ENTRY.md](A23_TWO_EPOCH_SDK_ENTRY.md) | 2026-10-19 | 8K | 两轮SDK等待入口、构建绑定与最终检查点（2026-10-19） — 后续：[最新69基线与32序号一次流程模型](A23_TWO_EPOCH_BASELINE69_WORKFLOW.md)已完成只读采用和隔离文件验证；生产共享账本及permit尚未接入。以下保留入口阶段结果。 |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 4K | A23 URB/IOVA 记账模型（2026-10-29） — serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
-| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 5K | A23 endpoint 记账 trace（2026-10-29） — 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
+| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 8K | A23 endpoint 记账 trace（2026-10-29） — 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
 | [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 6K | A23 完成路径的 unmap 静态审计（2026-10-29） — serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
 | [A23_V3_RUNTIME.md](A23_V3_RUNTIME.md) | 2026-10-15 | 8K | A23 V3线程运行路径、日志与身份核对（2026-10-15） — 本轮审查封存V3 `window-30s`最终ELF、生成源码及已安装SDK头文件。确认工作线程 |
 | [A23_V3_STACK_PROFILES.md](A23_V3_STACK_PROFILES.md) | 2026-10-15 | 8K | A23 V3实际日志、文件名与等待路径栈剖面（2026-10-15） — 已对新接收器绑定的同一份V3 window-30s ELF重新核验实际日志入口及相关SDK指令。 |

@@ -20,6 +20,9 @@
 #define ISO_PROBE_FRAME_SAMPLES 8
 #define ISO_PROBE_PACKET_SIZE 192
 #define ISO_PROBE_DIAG_MAGIC 0x314f5349u
+/* A23 URB-field trace v4: magic, consumer, last URB IOVA, last URB size.
+ * It replaces the v3 endpoint/producer/consumer/count layout. */
+#define ISO_PROBE_URB_TRACE_MAGIC 0x384f5349u
 #define ISO_PROBE_REPORT_MARKER 0xd1u
 #define ISO_PROBE_ENTER_MARKER 0xd2u
 #define ISO_PROBE_STATUS_MAGIC 0x31505349u

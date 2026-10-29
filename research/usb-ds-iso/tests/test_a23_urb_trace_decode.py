@@ -24,6 +24,36 @@ class TraceDecodeTest(unittest.TestCase):
         obj = json.loads(line)
         self.assertEqual(decode(obj["diagnostics_hex"])["producer"], 3)
 
+    def test_v4_last_entry_present(self):
+        data = bytearray(112)
+        data[0:4] = (0x384F5349).to_bytes(4, "little")
+        data[8:12] = (5).to_bytes(4, "little")
+        data[12:16] = (0x12345000).to_bytes(4, "little")
+        data[16:20] = (3072).to_bytes(4, "little")
+        result = decode(bytes(data))
+        self.assertEqual(result["layout"], "urb-v4")
+        self.assertEqual(result["consumer"], 5)
+        self.assertEqual(result["last_index"], 4)
+        self.assertEqual(result["last_iova"], 0x12345000)
+        self.assertEqual(result["last_size"], 3072)
+        self.assertEqual(result["unmap_gate"], "last_entry_present")
+
+    def test_v4_zero_size_is_the_unmap_skip(self):
+        data = bytearray(112)
+        data[0:4] = (0x384F5349).to_bytes(4, "little")
+        data[8:12] = (6).to_bytes(4, "little")
+        data[12:16] = (0x12345000).to_bytes(4, "little")
+        data[16:20] = (0).to_bytes(4, "little")
+        result = decode(bytes(data))
+        self.assertEqual(result["last_index"], 5)
+        self.assertEqual(result["unmap_gate"], "size_zero")
+
+    def test_unknown_magic(self):
+        data = bytearray(112)
+        data[0:4] = (0xDEADBEEF).to_bytes(4, "little")
+        with self.assertRaises(ValueError):
+            decode(bytes(data))
+
     def test_short_buffer(self):
         with self.assertRaises(ValueError):
             decode(bytes(20))

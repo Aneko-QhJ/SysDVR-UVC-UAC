@@ -100,6 +100,8 @@ serial5 的 `diagnostics_hex` 只有 magic、endpoint、producer、consumer、co
 
 最小可行版本可以只读 status 时刻 8 个 URB 条目的 `+0x10/+0x20`，或记录
 `consumer-1` 条目的这两个字段；这能先分辨“size 为 0”与“IOVA 不匹配”。
+该最小版本已实现为 v4 trace：
+[A23_URB_TRACE.md](A23_URB_TRACE.md)（680/684B，NSP `a3eb8aa9…`，未部署）。
 若要统计每次完成的返回值，需要在 `2c690` 的 `4c70` 调用点加只读记录，属于
 runtime patch 的下一步，不应和现有 A23 注入混在同一轮变量里。
 

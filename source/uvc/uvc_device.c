@@ -314,7 +314,8 @@ static void _pollIsoProbe(void)
     if (report.report_count <= 1) {
         IsoProbeDiagnostics diag;
         memcpy(&diag, &report.report[1], sizeof(diag));
-        if (diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic) || diag.magic == ISO_PROBE_REPORT_MARKER ||
+        if (diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic) ||
+            diag.magic == ISO_PROBE_URB_TRACE_MAGIC || diag.magic == ISO_PROBE_REPORT_MARKER ||
             diag.magic == ISO_PROBE_ENTER_MARKER)
             memcpy(&g_isoStatus.diagnostics, &diag, sizeof(diag));
         if ((diag.magic == ISO_PROBE_DIAG_MAGIC || isoProbeIsBurstDiagnostics(diag.magic)) &&
