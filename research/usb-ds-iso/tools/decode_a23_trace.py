@@ -39,10 +39,17 @@ def main(argv=None):
     else:
         text = sys.stdin.read()
     text = text.strip()
-    try:
-        obj = json.loads(text)
-        hexstr = obj.get("diagnostics_hex") or obj.get("diagnostics") or text
-    except json.JSONDecodeError:
+    hexstr = None
+    for line in text.splitlines():
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            hexstr = obj.get("diagnostics_hex") or obj.get("diagnostics")
+            if hexstr:
+                break
+    if not hexstr:
         hexstr = text
     result = decode(hexstr)
     print(json.dumps(result, sort_keys=True))

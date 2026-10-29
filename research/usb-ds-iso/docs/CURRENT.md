@@ -137,7 +137,10 @@
   manager+0x14c8+0x830 查 endpoint，status 还是全 0；v3 (`6fe2ec15…`) 直接用 x19
   作为 endpoint 对象，读 `+0/+4/+8`，668/684B。`iso-probe --status` 和
   `--report` 模式已加；`--report` 的 GET_REPORT 是 PIPE，A23 trace 走 NSP status。
-  下一步：部署 v3 读 3 URB，再做 serial trace（5 个 URB 后停）。
+  **v3 实机读到了 3 URB 计数**：magic `0x314f5349`、endpoint `0x172f79560`、
+  producer=3、consumer=3、count=0——3 个 URB 的 complete/consumer/count 正常。
+  下一步：serial one-in-flight 640（host 160 包=5 URB 后停）读 5 的计数，区分
+  “count 没递减”和“count 正常但 IOVA 没复用”。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

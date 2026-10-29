@@ -84,3 +84,27 @@ tools/decode_a23_trace.py <iso-probe.log>
 1. 用 trace3 验证报告/解码链路；
 2. 构建 serial640 trace，host 在 5 个 URB 后停，读 trace；
 3. 根据 count/consumer 选择修 complete 下标、修 unmap/free，或写新 producer。
+
+## 第一次有效 trace：3 URB（2026-10-29 08:38）
+
+- host：48 valid / 208 zero；
+- status diagnostics 非零：
+
+```
+49534f31 00000000 6095f77201000000 03000000 03000000 00000000 ...
+```
+
+- magic `0x314f5349`；endpoint `0x172f79560`；
+- **producer=3，consumer=3，count=0**。
+
+说明 3 个 URB 的 complete 路径、consumer 前进、count 递减都正常；3 URB 不是
+“完成没发生”。5 的问题要等 serial one-in-flight trace。
+
+## 下一步：serial one-in-flight 5 URB
+
+- `ISO_STREAM_BUFFERS=640`，只在 `posts == completes` 时发下一个；
+- host 只跑 **160 包（5 URB）** 就 alt0，避免第 6 次 map；
+- 读 status：
+  - count=0/consumer=5 → 表释放了，IOVA/free-list 没复用；
+  - count=5/consumer=5 → count 没递减；
+  - producer/consumer 异常 → 下标漂移。
