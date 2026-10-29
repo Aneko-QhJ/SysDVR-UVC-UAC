@@ -25,7 +25,10 @@ usb-config-dump: usb-config-dump.c
 uac-control: uac-control.c
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+uac-burst: uac-burst.c
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
+
 clean:
-	rm -f iso-probe alt1-probe iso-stream usb-config-dump uac-control
+	rm -f iso-probe alt1-probe iso-stream usb-config-dump uac-control uac-burst
 
 .PHONY: clean

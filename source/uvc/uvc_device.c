@@ -8,7 +8,8 @@
 #ifdef ISO_PROBE
 #include "iso_probe_protocol.h"
 #endif
-#if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH)
+#if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH) || \
+    defined(UAC_U2_BASE_PATCH)
 #include "iso_runtime_patch.h"
 #endif
 #ifdef ISO_RUNTIME_PATCH
@@ -17,6 +18,9 @@
 #endif
 #ifdef UAC_DESCRIPTOR_PATCH
 #include "uac_descriptor_payload.h"
+#endif
+#ifdef UAC_U2_BASE_PATCH
+#include "uac_u2_base_payload.h"
 #endif
 
 // USB class codes not defined in libnx
@@ -49,7 +53,8 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 
 static UvcDeviceContext g_uvcCtx;
 
-#if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH)
+#if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH) || \
+    defined(UAC_U2_BASE_PATCH)
 typedef struct { Handle debug; u64 base; Result last_result; } IsoPatchContext;
 static int _isoPatchRead(void *context, uint32_t offset, void *bytes, size_t size)
 {
@@ -65,30 +70,30 @@ static int _isoPatchWrite(void *context, uint32_t offset, void *bytes, size_t si
 }
 #endif
 
-#ifdef UAC_DESCRIPTOR_PATCH
-/* Apply only the 18 configuration-length edits to usb:ds.  The payload has no
-   ISO cave/hook entries, so a UAC build does not need the ISO producer.  Fail
-   closed: a build that requires the u16 fix must not enable the device with a
-   u8-truncated configuration. */
-static bool _applyUacDescriptorPatch(void)
+#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH)
+/* Apply a bounded usb:ds runtime payload.  Fail closed: a build that requires
+   a patch must not enable the device with an unpatched module. */
+static bool _applyUacPatch(const IsoRuntimeEdit *edits, size_t edit_count,
+                           const unsigned char *build_id, const char *tag)
 {
     static bool applied;
     if (applied) return true;
     Result rc = pmdmntInitialize();
     if (R_FAILED(rc)) {
-        LOG("UAC patch pm:dmnt init rc=0x%x\n", rc);
+        LOG("UAC %s patch pm:dmnt init rc=0x%x\n", tag, rc);
         return false;
     }
     u64 pid = 0;
     rc = pmdmntGetProcessId(&pid, 0x0100000000000006ULL);
     pmdmntExit();
     if (R_FAILED(rc) || pid == 0) {
-        LOG("UAC patch usb pid rc=0x%x pid=%llu\n", rc, (unsigned long long)pid);
+        LOG("UAC %s patch usb pid rc=0x%x pid=%llu\n", tag, rc,
+            (unsigned long long)pid);
         return false;
     }
     rc = ldrDmntInitialize();
     if (R_FAILED(rc)) {
-        LOG("UAC patch ldr:dmnt init rc=0x%x\n", rc);
+        LOG("UAC %s patch ldr:dmnt init rc=0x%x\n", tag, rc);
         return false;
     }
     LoaderModuleInfo modules[4] = {0};
@@ -96,27 +101,26 @@ static bool _applyUacDescriptorPatch(void)
     rc = ldrDmntGetProcessModuleInfo(pid, modules, 4, &count);
     ldrDmntExit();
     if (R_FAILED(rc) || count != 1 || modules[0].size != 0x369000 ||
-        memcmp(modules[0].build_id, uacRuntimeBuildId, sizeof(uacRuntimeBuildId))) {
-        LOG("UAC patch target mismatch rc=0x%x count=%d size=%llx\n",
+        memcmp(modules[0].build_id, build_id, 32)) {
+        LOG("UAC %s patch target mismatch rc=0x%x count=%d size=%llx\n", tag,
             rc, count, (unsigned long long)(count > 0 ? modules[0].size : 0));
         return false;
     }
     Handle debug = INVALID_HANDLE;
     rc = svcDebugActiveProcess(&debug, pid);
     if (R_FAILED(rc)) {
-        LOG("UAC patch attach rc=0x%x\n", rc);
+        LOG("UAC %s patch attach rc=0x%x\n", tag, rc);
         return false;
     }
     IsoPatchContext context = {debug, modules[0].base_address, 0};
     size_t failed = 0;
-    int result = isoApplyRuntimePatch(uacRuntimeEdits,
-        sizeof(uacRuntimeEdits) / sizeof(uacRuntimeEdits[0]),
+    int result = isoApplyRuntimePatch(edits, edit_count,
         _isoPatchRead, _isoPatchWrite, &context, &failed);
-    LOG("UAC descriptor patch result=%d record=%u last-rc=0x%x\n",
-        result, (unsigned)failed, context.last_result);
+    LOG("UAC %s patch result=%d record=%u last-rc=0x%x\n",
+        tag, result, (unsigned)failed, context.last_result);
     if (result == -4) {
         /* Do not resume a target whose original code cannot be restored. */
-        LOG("UAC descriptor patch rollback unverified; usb remains paused\n");
+        LOG("UAC %s patch rollback unverified; usb remains paused\n", tag);
         for (;;) svcSleepThread(1000000000ULL);
     }
     svcCloseHandle(debug);
@@ -124,6 +128,25 @@ static bool _applyUacDescriptorPatch(void)
     return applied;
 }
 #endif
+
+#ifdef UAC_DESCRIPTOR_PATCH
+static bool _applyUacDescriptorPatch(void)
+{
+    return _applyUacPatch(uacRuntimeEdits,
+        sizeof(uacRuntimeEdits) / sizeof(uacRuntimeEdits[0]),
+        uacRuntimeBuildId, "descriptor");
+}
+#endif
+
+#ifdef UAC_U2_BASE_PATCH
+static bool _applyUacU2BasePatch(void)
+{
+    return _applyUacPatch(uacU2BaseEdits,
+        sizeof(uacU2BaseEdits) / sizeof(uacU2BaseEdits[0]),
+        uacU2BaseBuildId, "u2-base");
+}
+#endif
+
 
 #ifdef ISO_PROBE
 static UsbDsInterface* g_isoInterface;
@@ -1195,9 +1218,18 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
     mutexInit(&g_uacCtx.audioMutex);
 
     if (hosversionAtLeast(5, 0, 0)) {
-#ifdef UAC_DESCRIPTOR_PATCH
-        if (!_applyUacDescriptorPatch()) {
-            LOG("UAC descriptor patch failed; refusing to enable the device\n");
+#if defined(UAC_DESCRIPTOR_PATCH) && defined(UAC_U2_BASE_PATCH)
+#error "define only one UAC usb patch payload"
+#endif
+#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH)
+        bool patch_ok;
+#ifdef UAC_U2_BASE_PATCH
+        patch_ok = _applyUacU2BasePatch();
+#else
+        patch_ok = _applyUacDescriptorPatch();
+#endif
+        if (!patch_ok) {
+            LOG("UAC patch failed; refusing to enable the device\n");
             rc = MAKERESULT(Module_Libnx, LibnxError_BadInput);
             goto cleanup;
         }

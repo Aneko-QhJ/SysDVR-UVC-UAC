@@ -332,8 +332,8 @@ PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
    13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   下一步 U2：8 条 alt0-filter NOP + AS `0x84` 的一次有界 ISO burst，
-   验证端点安装与数据路径；再谈 PCM。
+   U2 基础已备：26 条 payload（18 描述符 + 8 NOP）与 host `uac-burst`；
+   producer 迁移到 EP 0x84/MPS192 尚未实现。完成后才做一次有界 ISO burst。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -343,9 +343,9 @@ PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 下一步（未授权）
 
-- 离线（UAC 下一步）：准备 U2 的 8 条 NOP + descriptor 补丁合并 payload，
-  以及一次 AS `0x84` ISO burst 的有界入口；NOP 是全局的，需先评估对其他
-  接口的影响。实机另定范围。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
+- 离线（UAC 下一步）：U2 基础已备——26 条 payload（18 描述符 + 8 NOP，
+  NSP `abdaff61…`，87461B）与 host `uac-burst` 入口；producer 尚未迁移
+  （A23 硬编码 EP 0x83/MPS256）。见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。

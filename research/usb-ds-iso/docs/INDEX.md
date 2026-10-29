@@ -22,6 +22,7 @@
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 12K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 3K | 26 条基础 payload：18 条描述符 + 8 条 alt0-filter NOP。 |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-29 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-29 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
@@ -31,9 +32,8 @@
 | [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-29 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 6K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
 | [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 13K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
-| [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 7K | serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
 
-## 全部文档（267）
+## 全部文档（268）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -304,3 +304,4 @@
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U1 控制请求验证准备（2026-10-30，离线） — U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 3K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备，2026-10-30） — 26 条基础 payload：18 条描述符 + 8 条 alt0-filter NOP。 |
