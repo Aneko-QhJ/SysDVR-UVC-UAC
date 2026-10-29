@@ -139,9 +139,12 @@
   `--report` 模式已加；`--report` 的 GET_REPORT 是 PIPE，A23 trace 走 NSP status。
   **v3 实机读到了 3 URB 计数**：magic `0x314f5349`、endpoint `0x172f79560`、
   producer=3、consumer=3、count=0——3 个 URB 的 complete/consumer/count 正常。
-  **serial5 trace NSP 已构建**（`ef40adb9…`）：safe 源码 + 640 buffers + one-in-flight，
-  host 160 包（5 URB）后 alt0，再读 status。未部署。
-  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：一次实机读 5 的计数。
+  **serial5 实机结果**：设备 stop 日志 `posts=5 completes=4 errors=0 attempts=5`；
+  stop 后 endpoint `producer=5/consumer=5/count=0`；host 48/112（one-in-flight 下
+  只有 3 个 URB 的数据到达 host）。**URB 表是干净的**；第 6 次 map 失败是 5 页
+  IOVA unmap 没复用，不是表/count。卡已恢复安全 `52069a44…`。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：离线审计
+  `FUN_00004c70`/domain free-list/`[URB+0x10]/[+0x20]`；trace 出来前不再上硬件。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

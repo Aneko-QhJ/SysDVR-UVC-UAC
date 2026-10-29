@@ -129,3 +129,14 @@ tools/decode_a23_trace.py <iso-probe.log>
 
 注意：one-in-flight 下第 6 个应晚于第 5 个完成，host 160 包后立刻 alt0；若实测已
 崩，说明 6th 仍被下发，需要先停线程再读。
+
+## serial5 实机结果（2026-10-29）
+
+- host：48 valid / 112 zero（160 包窗口）；
+- 设备 stop 日志：`posts=5 completes=4 errors=0 attempts=5`；
+- stop 后 status trace：endpoint `0x3e6f5b1e0`，**producer=5，consumer=5，count=0**；
+- 无新 crash report（最新仍为 08:10 的 serial640）。
+
+结论：**5 个 URB 后 URB 表干净**；第 6 次 map 失败不是表/count 问题，而是 5 页
+IOVA 在 unmap 后没有复用。one-in-flight 下只有 3 个 URB 的数据到了 host，这是
+另一个 timing/data 问题，与 IOVA 结论分开。

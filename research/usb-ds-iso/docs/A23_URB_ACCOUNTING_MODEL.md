@@ -74,3 +74,13 @@ serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。
 - **新 producer**：每 URB 明确 ID、完成、unmap，不依赖 A23 单 mailbox。
 
 在 trace 出来之前，不再部署 A23 长流。
+
+## 实机验证（2026-10-29）
+
+- 3 URB：producer=3，consumer=3，count=0；
+- 5 URB（serial one-in-flight）：producer=5，consumer=5，count=0；
+- 5 URB 后无 crash，第 6 个未下发。
+
+两次都落在“表干净、count 归零”的分支，而不是“count 没递减”。因此 5 页 IOVA
+的 map 失败来自 **unmap 没有真正释放/复用**，`FUN_00004c70`/domain free-list 是
+下一个审计点。
