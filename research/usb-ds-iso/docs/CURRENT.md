@@ -1,4 +1,4 @@
-# 当前状态（2026-10-29 16:40，Asia/Shanghai）
+# 当前状态（2026-10-29 17:30，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -151,12 +151,15 @@
   这个不对称暂标可疑，但不能单独解释 5。下一步 trace 必须读
   `[URB+0x10]/[+0x20]` 或记录 `4c70` miss 计数；在此之前不再上硬件。见
   [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
-- **v4 URB 字段 trace 已离线构建（10-29）**：magic `0x384f5349`（ISO8），
-  diagnostics 写 consumer、最后完成 URB 的 `+0x10` IOVA、`+0x20` size；
-  680/684B，余 4B。NSP `a3eb8aa9…`，safe `77e7480` + 640 单飞 + README 记录
-  的 `_applyIsoStreamPatch` 空操作。**未部署**；实机需新授权，预期用
-  `last_size=0` / `last_iova=0` 区分两条静默分支。见
-  [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+- **v4 URB 字段 trace 已实机一次（10-29 17:28）**：magic `0x384f5349`（ISO8），
+  diagnostics 写 consumer、最后完成 URB 的 `+0x10` IOVA、`+0x20` size。
+  r5 NSP `b0cbe1ed…`，30 条 runtime edits（22 + 8 alt1 NOP），680/684B。
+  host 48/160；设备 `posts=5 completes=4 errors=0`；status `consumer=5`、
+  `last_iova=0x80030000`、`last_size=3072` → `last_entry_present`。
+  **最后一条没有走 size=0 跳过**；本轮只到 5 URB，未尝试第 6 次 map，
+  所以不复现也不排除复用。r2–r4 分别修 magic gate/alt1/NOP；卡已恢复
+  `52069a44…`。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+  下一步是 v5 全条目摘要或 6-URB 复现，需新授权。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

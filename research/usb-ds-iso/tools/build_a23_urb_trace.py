@@ -17,7 +17,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from build_patch import BUILD_ID, SHA256, build, validate_module
+from build_patch import BUILD_ID, SHA256, build, ips32, read_mapped, validate_module
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
@@ -112,7 +112,7 @@ def build_nsp(work, source_root, output_dir):
         ),
         "INCLUDES=include",
         "DEFINES=-DISO_PROBE -DISO_PROBE_STREAM -DISO_RUNTIME_PATCH -DFILE_LOGGING "
-        "-DISO_PROBE_MPS=256 -DISO_PROBE_INTERVAL=4",
+        "-DISO_PROBE_ALT1 -DISO_PROBE_MPS=256 -DISO_PROBE_INTERVAL=4",
     ]
     with (work / "build.log").open("w") as log:
         subprocess.run(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, check=True)
@@ -146,6 +146,22 @@ def main():
     payload = bytes.fromhex(cave_edit["after"])
     if len(payload) > 684:
         raise ValueError(f"payload {len(payload)} exceeds the 684-byte cave")
+    # The A23 alt1 endpoint needs the eight FUN_000295d0 alt0-filter NOPs.
+    nop_before = bytes.fromhex("09ffff35")
+    nop_after = bytes.fromhex("1f2003d5")
+    for address in (0x29694, 0x29AD4, 0x29BA4, 0x29C88, 0x29D54, 0x29E38, 0x29F04, 0x29FE8):
+        if read_mapped(nso, address, len(nop_before)) != nop_before:
+            raise ValueError(f"alt1 NOP original mismatch at {address:#x}")
+        manifest["edits"].append({
+            "address": hex(address), "before": nop_before.hex(), "after": nop_after.hex(),
+            "reason": "install alt1 endpoint: NOP alt0 filter",
+        })
+    manifest["edits"].sort(key=lambda edit: int(edit["address"], 16))
+    ips_path = patch_dir / "atmosphere/exefs_patches/SysDVR-ISO" / (BUILD_ID + ".ips")
+    ips_path.write_bytes(ips32([
+        (int(edit["address"], 16), bytes.fromhex(edit["after"])) for edit in manifest["edits"]
+    ]))
+    manifest["patch_sha256"] = sha(ips_path)
     manifest.update(
         schema="A23-URB-trace-v4-1",
         trace_layout="urb-v4",
@@ -180,6 +196,9 @@ def main():
         "source_commit": SAFE_STREAM_COMMIT,
         "stream_buffers": 640,
         "one_in_flight": True,
+        "runtime_edits": len(manifest["edits"]),
+        "defines": "-DISO_PROBE -DISO_PROBE_STREAM -DISO_RUNTIME_PATCH -DFILE_LOGGING "
+        "-DISO_PROBE_ALT1 -DISO_PROBE_MPS=256 -DISO_PROBE_INTERVAL=4",
         "nsp": None,
         "hardware_verified": False,
         "packaged": False,

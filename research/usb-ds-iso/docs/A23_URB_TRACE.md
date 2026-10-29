@@ -148,7 +148,7 @@ IOVA 在 unmap 后没有复用。one-in-flight 下只有 3 个 URB 的数据到�
 两种情况都只泄漏、不崩溃。下一次 trace 必须读 `[URB+0x10]/[+0x20]` 或记录
 `4c70` miss 计数。见 [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
 
-## v4 URB 字段 trace（2026-10-29，离线构建）
+## v4 URB 字段 trace（2026-10-29，构建与一次实机）
 
 v3 的 `+0/+4/+8` 只能证明表归零，不能证明 unmap 发生。v4 直接把
 **最后一个完成 URB** 的两个字段写进 diagnostics：
@@ -169,13 +169,16 @@ endpoint/producer/count；consumer 与 status 的 sequence/state 足以定位轮
   用 safe `77e7480` 的 stream 源码、`ISO_STREAM_BUFFERS=640`、
   `posts == completes` 单飞门，以及同一 manifest 生成的
   `iso_runtime_payload.h`；START delta 用 before==after 的空操作，避免两阶段变量。
-- 离线产物（未部署）：
-  - NSP SHA256 `a3eb8aa9f73c40270bf01d270bb67964756eae58eb28370acd45d18911665da0`；
-  - IPS SHA256 `dc72fd8f…`；payload SHA256 `51c79a8f…`；
-  - 目录 `private/analysis/A23-urb-trace-v4-20261029-r3/`。
-  - r2（`f6b3e2fb…`）的 `_pollIsoProbe` 条件未包含新 magic，status 会丢弃 v4
-    diagnostics；r3 已补 gate，只把 r3 作为候选。构建器会同时把 magic 条件写进
-    safe 源码副本，避免再次出现“payload 对、读取端丢”的情况。
+- 候选演进（只保留 r5）：
+  - r2 `f6b3e2fb…`：`_pollIsoProbe` 未包含新 magic，status 丢弃 v4；
+  - r3 `a3eb8aa9…`：magic 已通，但构建漏了 `-DISO_PROBE_ALT1`，
+    `config_length=176`，host 在 START 前停止；
+  - r4 `99dd7385…`：alt1 已通（`config_length=185`），但漏了 8 个
+    alt1 endpoint-filter NOP，`post rc=0x2628c`、`posts=0`；
+  - **r5** `b0cbe1edafe18f968732adbf5a4e895cbfe53816fa007b99795ca685b89c3933`：
+    30 条 runtime edits（22 + 8 NOP），89072B，payload `51c79a8f…`，
+    IPS `2ccdba67…`；目录 `private/analysis/A23-urb-trace-v4-20261029-r5/`。
+- 构建器现在同时写入 alt1 定义、8 个 NOP、magic 条件和单飞门；r2–r4 不再使用。
 
 ### 读取与判定
 
@@ -189,10 +192,25 @@ endpoint/producer/count；consumer 与 status 的 sequence/state 足以定位轮
 | 非 0 | 0 | unmap 分支被调用，但地址为 0；`4c70` 应 miss 并返回 `0x19a8c` |
 | 非 0 | 非 0 | 最后一条 URB 字段正常；若 IOVA 仍不复用，问题在更早条目或 free tree |
 
-### 限制
+### r5 实机结果（2026-10-29 17:28）
 
-- 只读**最后一条**完成的 URB；若泄漏发生在更早条目，v4 会显示正常。下一步可做
+- host：`iso-stream --transfers 1 --packets 160` → `transfers=1 packets=48 bad=0 zero=112`；
+- preflight/post status：`config_length=185`、magic `0x384f5349`；
+- 设备日志：`ISO runtime patch result=0 record=29`，`posts=5 completes=4 errors=0 late=3 attempts=5`；
+- status trace：`consumer=5`、`last_index=4`、`last_iova=0x80030000`、
+  `last_size=3072`、`unmap_gate=last_entry_present`；
+- 结论：**最后一条完成没有触发 size=0 跳过**，v4 读取链路和 NOP 安装均成立。
+  本轮只到 5 个 URB，没有尝试第 6 次 map，因此既没有复现也没有排除页复用；
+  若仍有泄漏，位置只能在更早条目、地址正确性或 free tree。
+- 证据：`private/runs/A-urb-trace-v4-r5-20261029/`（stream/status/run.json/device-log-r5.txt）；
+  卡已恢复安全 `52069a44…` 并安全推出。
+
+### 限制与下一步
+
+- 只读**最后一条**完成的 URB；若泄漏发生在更早条目，v4 会显示正常。下一步做
   “8 条目 size 非零计数 + IOVA 低位和”的 v5，代价是更大的循环代码。
+- 另一个分支是 6 URB 窗口（192 包）复现第 6 次 map 失败；但设备可能崩，status
+  不一定可读，需先在离线模型里确认窗口和停止条件。
 - 不记录 `4c70` 的返回值；要证明 miss，需要在 `2c690` 的调用点加只读计数，属于
   另一轮 runtime patch。
-- 未部署；实机需要新的明确授权，且不应与 A23 长流或 per-URB 两阶段混在同一轮。
+- 后续实机需要新的明确授权，且不应与 A23 长流或 per-URB 两阶段混在同一轮。

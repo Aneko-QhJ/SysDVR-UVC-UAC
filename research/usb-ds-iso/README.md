@@ -38,9 +38,10 @@
   （[A23_URB_TRACE.md](docs/A23_URB_TRACE.md)）；3 URB 读到 3/3/0，serial5 读到
   5/5/0，URB 表干净。**`4c70` 静态审计**（[A23_URB_UNMAP_AUDIT.md](docs/A23_URB_UNMAP_AUDIT.md)）
   发现 `2c690` 不检查 `4c70` 的 miss 返回值：`[URB+0x20]==0` 或
-  `[URB+0x10]` 不匹配都会静默泄漏，`+0/+4/+8` 仍归零；**v4 URB 字段 trace**
-  已离线构建（680/684B，NSP `a3eb8aa9…`，未部署），读 consumer 与最后完成
-  URB 的 `+0x10/+0x20`。见 [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
+  `[URB+0x10]` 不匹配都会静默泄漏，`+0/+4/+8` 仍归零。**v4 URB 字段 trace**
+  已实机一次（r5 `b0cbe1ed…`，30 edits）：consumer=5、最后 URB size=3072、
+  IOVA=0x80030000，最后一条没有走 size=0 跳过；只到 5 URB，未复现第 6 次 map。
+  见 [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录
