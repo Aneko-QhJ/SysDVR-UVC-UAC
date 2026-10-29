@@ -121,9 +121,10 @@
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
   `iso-stream-twostage-reuse.nsp`（`631dac7f…`，10000 包）已归档未部署；卡安全
   `52069a44…`。见 [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md)。
-  **boot-only 已过；START 时 host 已排队 ISO URB，delta 后 usb 崩（0xf601/x13=0）。**
-  host 已改为先 START 再提交首个 ISO read，待复测；若仍崩，per-urb 代码本身需要真实
-  request/event trace。卡安全 `52069a44…`。
+  **boot-only 已过；START-before-submit 仍崩**：delta result=0 后立即
+  `post 0xf601`，同一 Data Abort `advance` x13=0。说明不是 host 时序，而是
+  per-URB enter/event 对真实上下文不成立。**停止 per-URB 部署**，卡恢复安全
+  `52069a44…`；下一步先抓 base A23 的真实 x1/x8/x10/ring-slot/event trace。
 - 下一步：离线设计 **per-URB mailbox** 或 one-in-flight 基线；3-mailbox 最小布局
   0x60 可放进 ring 尾部，但 cave 684B 已满，主要风险是代码空间。见
   [A23_PER_URB_MAILBOX_DESIGN.md](A23_PER_URB_MAILBOX_DESIGN.md)。

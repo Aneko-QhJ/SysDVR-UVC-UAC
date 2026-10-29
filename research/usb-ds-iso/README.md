@@ -31,7 +31,8 @@
   崩，不能作为 boot-time 全局 hook）；已设计两阶段 patch：
   [A23_PER_URB_TWO_STAGE.md](docs/A23_PER_URB_TWO_STAGE.md)，boot 用 base A23，
   START 时再换 per-URB；两阶段 NSP `e33b7237…` / `631dac7f…` 已构建。boot-only 通过；
-  首次 START 因 host 已排队 ISO URB 而崩，host 已改为 START-before-submit，待复测。
+  boot-only 通过；START-before-submit 仍在 delta 后立即崩，per-URB 代码对真实上下文
+  不成立，已停止部署；下一步抓 base A23 的真实 request/event trace。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

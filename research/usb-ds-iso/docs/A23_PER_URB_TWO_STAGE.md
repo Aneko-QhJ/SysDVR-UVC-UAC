@@ -108,3 +108,26 @@ ISO stream try b=0 / post rc=0xf601
 
 1. START-before-submit + 256 包：delta 后 3 个 URB 各自完成；
 2. 若仍崩，说明 per-urb 代码本身对真实 request/event 不成立，需要真实 x1/x8/x10 trace。
+
+## 第二次实机：START-before-submit 仍崩（2026-10-29 07:56 后）
+
+- boot-only 仍通过，设备枚举；
+- host 改为先 START、再提交第一个 ISO read；
+- 设备日志仍是：
+
+```
+STREAM delta result=0 record=1
+ISO stream try b=0 / post rc=0xf601
+```
+
+- 同一 Data Abort 0xc，X10=0/X13=0，PC `advance`、LR event hook。
+- 这次 host 还没有提交 ISO，说明 **不是 host 时序**：per-URB 的 enter/event selector
+  对真实 request/event 上下文不成立。
+
+## 结论（停止 per-URB 部署）
+
+- 两阶段拆分本身有效：boot base 通过 init；delta 也能应用；
+- 但 per-URB 代码在真实上下文里立即崩，不能再靠调时序/报告 hook 解决；
+- 停止 per-URB 部署，回到 base A23 3-URB 和 serial640；
+- 下一步必须先拿 **base A23 的真实 x1/x8/x10/ring-slot/event trace**，确认 per-URB
+  mailbox 索引和事件归属，再重写 selector；不能继续用 Unicorn 的对齐 fixture 外推。
