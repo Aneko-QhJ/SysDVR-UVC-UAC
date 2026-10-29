@@ -13,9 +13,9 @@
   可读，macOS 绑定 `AppleUSBAudio`，出现 `SysDVR-UVC Capture` 2ch/48k 输入；
   未测 PCM。卡已恢复 `52069a44…`。
 - UAC-only 隔离构建（`7ffdf733…`）仍标 dangerous，不再部署。
-- U1a 首次失败、r2 部分通过：接口 recipient 的 CUR/MIN/MAX/RES=48000；
-  endpoint 请求失败是主机工具 recipient 写错（0xA1/0x21 vs 0xA2/0x22）。
-  工具与设备归属判断已修，r3 NSP `c1e91c11…`（86994B）已构建未部署；见
+- U1a **通过**（r7，13/13）：`GET_INTERFACE=0`，接口与 endpoint 的
+  CUR/MIN/MAX/RES=48000，LEN=3，`SET_CUR(48000)` ACK 并回读。
+  NSP `01c6ff26…`（87321B）已实机一次并恢复 `52069a44…`；见
   [UAC_U1_CONTROL.md](docs/UAC_U1_CONTROL.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
@@ -69,7 +69,7 @@
   `UAC descriptor patch result=0 record=17`。此前 U0/U0b/U0c 失败于
   `GET_DESCRIPTOR(config)` 0xE00002CD；UAC-only（`7ffdf733…`）因跳过设备
   描述符而不可见，均已定位。UAC 默认仍禁用；未选 alt1、无 ISO producer，
-  10s PCM 未就绪。U1a 首次失败、r2 部分通过，r3 未部署。
+  10s PCM 未就绪。U1a 已通过（13/13）。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录

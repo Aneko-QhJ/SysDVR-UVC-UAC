@@ -1,19 +1,31 @@
-# 当前状态（2026-10-30 01:30，Asia/Shanghai）
+# 当前状态（2026-10-30 01:50，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 01:00 的 U0d；部署、主机枚举、读卡确认补丁和
-> 恢复安全构建均已完成。U1a 首次失败、r2 部分通过；根因已修复，r3 已构建未部署。
+> 最后一次实机是 2026-10-30 01:46 的 U1a-r7；U1a 通过，卡已恢复 `52069a44…`
+> 并安全弹出。
 
 ## 一句话
 
-视频可用；UAC 枚举可用，数据路径仍不可用。U0 已通过（U0d）：257B/4 接口的
-复合配置可读，macOS 绑定 AppleUSBAudio 并出现 `SysDVR-UVC Capture` 2ch/48k
-输入；AS alt1 尚未被选择，仍无 ISO producer，PCM 未测试。UAC 默认仍禁用
-（仅 `UAC_HOST_PROBE`）。U1a 首次失败（`wValue` 判断）、r2 部分通过
-（接口 recipient 通过，endpoint 请求是工具 recipient 写错）；r3 已构建未部署。
-卡已恢复安全 `52069a44…` 并安全弹出。最近一次短包实机
-（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
+视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
+257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
+`SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13：GET_INTERFACE、
+两种 recipient 的 CUR/MIN/MAX/RES/LEN、SET_CUR 48000）。AS alt1 尚未被选择，
+仍无 ISO producer，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+卡已恢复安全 `52069a44…` 并安全弹出。最近一次短包实机（2026-10-27）主机侧
+通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
+
+## 最近一次 U1a 实机（2026-10-30，通过）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | U1a-r7 `01c6ff26…`（87321B，`UAC_HOST_PROBE + UAC_DESCRIPTOR_PATCH`） |
+| 部署 | 一次 boot，无重试；卡记录 `private/card-cycles/20261030-u1a-r7` |
+| 主机 | 13/13：`GET_INTERFACE=0`；接口/endpoint 的 CUR/MIN/MAX/RES=48000；LEN=3；`SET_CUR` 成功并回读 48000 |
+| 设备 | `UAC setup[2] type=22 ... action=1`；AS 重复投递 `0x25c8c` 但未 STALL；后续 GET 正常 |
+| 判定 | **U1a 通过**；未选 alt1、无 PCM |
+| 证据 | `private/runs/UAC-u1a-r7-20261030` |
+| 收尾 | 已恢复 `52069a44…` 并安全弹出 |
 
 ## 最近一次 UAC 实机（2026-10-30，U0 通过）
 
@@ -75,6 +87,9 @@
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U1a 的 r4–r7 在用户“如果还要部署，无需另外授权”下连续执行；每次一次 boot，
+  r7 通过后已恢复 `52069a44…` 并安全弹出。r1–r3 的日志与恢复记录保留在
+  `private/runs/UAC-u1a*`。
 
 ## ALT1 探针（bulk alt1 已通过）
 
@@ -245,6 +260,11 @@
     dmnt 应用 18 条编辑，校验 BuildID/size，失败即拒绝启用；四种配置（默认/
     UAC probe/UAC-only/probe+patch）均构建通过。补丁 NSP `48c872f1…`
     （86780B）随后在 U0d 部署一次。详见审计文档第 7 节。
+  - **U1a 通过（10-30 01:46，r7）**：NSP `01c6ff26…`（87321B）一次 boot；
+    13/13 控制请求通过；设备日志 `UAC setup[2] type=22 ... action=1`，AS 的
+    重复投递 `0x25c8c` 但未 STALL；后续 GET 正常。修复链：wValue 0x0100、
+    setup 归属、UVC endpoint 过滤、4KB 对齐 CtrlOut、重复投递不 STALL。
+    卡已恢复 `52069a44…` 并安全弹出。
   - **U1a-r2 部分通过（10-30 01:24）**：接口 recipient 的
     CUR/MIN/MAX/RES=48000、LEN=3；endpoint recipient 全被忽略，原因是主机
     工具的 `bmRequestType` 用了 interface recipient（`0xA1/0x21`）却把
@@ -306,12 +326,10 @@
    无 fatal）；下一步在标准宿主（Linux `snd-usb-audio`）接连续 PCM，验证
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
-3. **标准 UAC 层**：U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，
-   `SysDVR-UVC Capture` 2ch/48k 输入）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   下一步是 U1a：AC/AS 控制请求（`GET_INTERFACE`、48k GET/SET）在标准宿主下
-   ACK；首次失败、r2 部分通过均已定位修复，r3 NSP `c1e91c11…`（86994B，
-   未部署）已备。U1b 的 `SET_INTERFACE(1)` 单独授权；之后设计 AS `0x84` 的
-   ISO producer 与 U2/U3 PCM。
+3. **标准 UAC 层**：U0 与 U1a 均已通过（257B/4 接口、音频设备；
+   13/13 控制请求，`SET_CUR` ACK）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+   下一步 U1b：先离线评估 `SET_INTERFACE(1)` 与 AS alt1 端点安装（可能需要
+   alt0-only filter 的 NOP）；然后 AS `0x84` 的 ISO producer 与 U2/U3 PCM。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -321,11 +339,9 @@
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步，需新的明确授权）：U1a-r3 用修正 recipient 的
-  `host/uac-control` 重测 `GET_INTERFACE`、`GET_CUR/MIN/MAX/RES/LEN`、
-  `SET_CUR(48000)`；NSP `c1e91c11…`（86994B，未部署）。U1b 的 `SET_INTERFACE(1)` 单独授权；U2 才接
-  一次 AS `0x84` burst。U0 已通过，不再重复 U0。见
-  [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
+- 实机（UAC 下一步）：U1b 的 `SET_INTERFACE(1)` 与 alt1 端点安装需先离线评估
+  alt0 filter/NOP 影响，再定有界范围；U2 才接一次 AS `0x84` burst。U0/U1a
+  已通过，不再重复。见 [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
@@ -334,4 +350,4 @@
 ## 不证明
 
 10s 持续 PCM、完整 ring/长期缓冲复用、UAC 互操作、UAC 数据路径/alt1 选择、
-U1a 控制平面（r3 未测）、时钟同步、SDK 排空、旧超时根因、未来无事件。
+U1b 的 alt1 选择与数据路径、时钟同步、SDK 排空、旧超时根因、未来无事件。

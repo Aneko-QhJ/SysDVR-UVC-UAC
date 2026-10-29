@@ -3,7 +3,7 @@
 > 目标：在标准宿主上验证 AC/AS 控制平面（U1a）：`GET_INTERFACE`、
 > SAMPLING_FREQ 的 `GET_CUR/MIN/MAX/RES/LEN` 与 `SET_CUR(48000)`。
 > **不碰 alt1 数据路径**；`SET_INTERFACE(1)` 归 U1b，单独授权。
-> 首次与 r2 已实机（分别失败/部分通过，见下）；r3 已构建未部署。
+> r7 已实机通过（13/13，2026-10-30 01:46）；U1b 未开始。
 
 ## 现状与边界
 
@@ -12,8 +12,8 @@
 - UAC 仍只在 `UAC_HOST_PROBE` 下启用；默认构建禁用。
 - `UacStandardHandle` 已实现 U1a 的请求；`_handleUacSetup` 在
   `UAC_HOST_PROBE` 下轮询 AC/AS SetupEvent。
-- U1b 的 `SET_INTERFACE(1)` 仍可能受 usb:ds 的 alt1 端点安装限制影响，
-  不能与 U1a 混在同一轮。
+- U1a 已通过（r7）；U1b 的 `SET_INTERFACE(1)` 仍可能受 usb:ds 的 alt1 端点
+  安装限制影响，不能与 U1a 混在同一轮。
 
 ## 设备构建（U1a）
 
@@ -21,14 +21,15 @@
   - 86883 B，SHA256 `2f7b5f57…`
 - r2（已实机部分通过）：`private/analysis/UAC-u1a-r2-20261030/build/outputs/exefs.nsp`
   - 87102 B，SHA256 `40b55391…`
-- r3（**未部署**）：`private/analysis/UAC-u1a-r3-20261030/build/outputs/exefs.nsp`
-  - 86994 B，SHA256 `c1e91c1124dc802cffc45f8d6412f5769788ecbf9b05092e0084a9b90c89e69e`
-- 两者 defines 相同：`-DUAC_HOST_PROBE -DUAC_DESCRIPTOR_PATCH -DFILE_LOGGING`
+- r3–r6（迭代，均未通过）：`c1e91c11…`、`1a77894b…`、`a7c1d9dc…`、`ed52fee0…`。
+- r7（**通过，已实机**）：`private/analysis/UAC-u1a-r7-20261030/build/outputs/exefs.nsp`
+  - 87321 B，SHA256 `01c6ff262f286ddbb27442c4cf907926d9fbdcc23873ac913ec3725178671bec`
+- 全部 defines 相同：`-DUAC_HOST_PROBE -DUAC_DESCRIPTOR_PATCH -DFILE_LOGGING`
   - 复用 18 条 descriptor-only payload，无 ISO cave/hook。
 - 新增请求日志（`UAC_HOST_PROBE`）：
 
   ```text
-  UAC setup type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u
+  UAC setup[%u] type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u
   ```
 
   `action`：0 STALL、1 ACK、2 WRITE、3 START、4 STOP。
@@ -90,6 +91,21 @@ research/usb-ds-iso/host/uac-control --set-rate
     只由 AS 应答，AC/AS 接口只由对应接口应答。
 - r3 NSP `c1e91c11…`（86994B）已构建未部署；重测需新的授权。
 
+## U1a 通过（2026-10-30 01:46，r7）
+
+- 部署 `01c6ff26…` 一次 boot；`uac-control --set-rate` **13/13** 通过：
+  `GET_INTERFACE=0`；接口 3 与 EP `0x84` 的 CUR/MIN/MAX/RES 均为 `80 BB 00`；
+  `GET_LEN=3`；`SET_CUR(48000)` 成功并回读 48000。
+- 设备日志：`UAC setup[2] type=22 ... action=1`（AC 读取数据阶段并 ACK）；
+  AS 的重复投递 `rc=0x25c8c` 失败但未 STALL；随后 GET 正常。
+- 关键修复链：
+  1. `wValue` 低字节 `0x0100`（兼容 `0x0101`）；
+  2. UAC setup 按接口/endpoint 归属，不误应答其他接口；
+  3. UVC VC/VS 不再 STALL 非自己的 endpoint 请求；
+  4. SET_CUR 数据阶段改用 4KB 对齐的 `g_uacControlBuffer`；
+  5. 重复投递的数据阶段失败不 STALL，避免污染控制管道。
+- 收尾：恢复 `52069a44…` 并安全弹出。
+
 ## U1a 判定
 
 | 请求 | 期望 |
@@ -108,8 +124,9 @@ research/usb-ds-iso/host/uac-control --set-rate
 - usb fatal、断连、设备日志缺失；
 - 失败即停，读卡并恢复 `52069a44…`；不自动重试。
 
-## U1b（未准备、未授权）
+## U1b（未准备）
 
 - `--alt=1` 会让 AS 选择 alt1；UAC alt1 端点安装可能仍受 alt0-only 端点
   filter 影响（vendor alt1 需要 NOP patch）。需要单独的离线评估和有界实机，
   不与 U1a 混。
+- 用户已表示后续部署无需另行授权，但 U1b 仍应先完成离线评估并给出有界范围。

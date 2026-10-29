@@ -2035,9 +2035,14 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 static bool _uacOwnsSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 {
     const u8 recipient = setup->bmRequestType & 0x1F;
-    if (recipient == 0x02)  // endpoint: only the AS interface owns EP 0x84
-        return iface == g_uacCtx.asInterface &&
+    if (recipient == 0x02) {  // endpoint: EP 0x84
+        if (!(setup->bmRequestType & 0x80))  // OUT (SET_CUR): AC or AS
+            return (iface == g_uacCtx.acInterface ||
+                    iface == g_uacCtx.asInterface) &&
+                   (setup->wIndex & 0xFF) == g_uacStd.ep_address;
+        return iface == g_uacCtx.asInterface &&  // IN (GET_*): AS
                (setup->wIndex & 0xFF) == g_uacStd.ep_address;
+    }
     if (recipient == 0x01) {  // interface: only the addressed interface replies
         if (setup->wIndex == g_uacStd.ac_interface)
             return iface == g_uacCtx.acInterface;
@@ -2051,8 +2056,9 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 {
     if (!_uacOwnsSetup(iface, setup)) {
 #ifdef UAC_HOST_PROBE
-        LOG("UAC setup ignored: type=%02x req=%02x idx=%04x\n",
-            setup->bmRequestType, setup->bRequest, setup->wIndex);
+        LOG("UAC setup ignored[%u]: type=%02x req=%02x idx=%04x\n",
+            iface->interface_index, setup->bmRequestType, setup->bRequest,
+            setup->wIndex);
 #endif
         return;
     }
@@ -2071,18 +2077,24 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         ((recipient == 0x02 && (setup->wIndex & 0xFF) == g_uacStd.ep_address) ||
          (recipient == 0x01 && setup->wIndex == g_uacStd.as_interface));
     if (set_cur) {
-        u8 payload[3];
+        u8* payload = g_uacControlBuffer;  // must be 4KB-aligned for usb:ds DMA
         u32 transferred = 0;
-        Result rc = _ctrlOutXfer(iface, payload, sizeof(payload), &transferred);
-        if (R_FAILED(rc) || transferred != sizeof(payload)) {
-            usbDsInterface_StallCtrl(iface);
+        Result rc = _ctrlOutXfer(iface, payload, 3, &transferred);
+        if (R_FAILED(rc) || transferred != 3) {
+#ifdef UAC_HOST_PROBE
+            LOG("UAC SET_CUR data stage failed rc=0x%x transferred=%u iface=%u\n",
+                rc, transferred, iface->interface_index);
+#endif
+            /* usb:ds may deliver the setup to both AC and AS; the other side
+               may still consume the data stage, so do not poison the pipe. */
             return;
         }
         result = UacStandardHandle(&g_uacStd, &packet, payload, transferred);
 #ifdef UAC_HOST_PROBE
-        LOG("UAC setup type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
-            packet.bmRequestType, packet.bRequest, packet.wValue, packet.wIndex,
-            packet.wLength, result.action, g_uacStd.sample_rate);
+        LOG("UAC setup[%u] type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
+            iface->interface_index, packet.bmRequestType, packet.bRequest,
+            packet.wValue, packet.wIndex, packet.wLength, result.action,
+            g_uacStd.sample_rate);
 #endif
         if (result.action == UAC_ACT_STALL) {
             usbDsInterface_StallCtrl(iface);
@@ -2094,9 +2106,10 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 
     result = UacStandardHandle(&g_uacStd, &packet, NULL, 0);
 #ifdef UAC_HOST_PROBE
-    LOG("UAC setup type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
-        packet.bmRequestType, packet.bRequest, packet.wValue, packet.wIndex,
-        packet.wLength, result.action, g_uacStd.sample_rate);
+    LOG("UAC setup[%u] type=%02x req=%02x val=%04x idx=%04x len=%u action=%d rate=%u\n",
+        iface->interface_index, packet.bmRequestType, packet.bRequest,
+        packet.wValue, packet.wIndex, packet.wLength, result.action,
+        g_uacStd.sample_rate);
 #endif
     switch (result.action) {
     case UAC_ACT_WRITE:
@@ -2149,11 +2162,25 @@ static void _handleSetupPacket(UsbDsInterface* iface)
         return;
     }
 
+    u8 type = setup.bmRequestType & 0x60;       // 0x00 standard, 0x20 class
+    // usb:ds broadcasts class requests to every interface; only the owner of
+    // the addressed endpoint may answer.  Stalling here would race the UAC
+    // handler and intermittently kill endpoint-recipient control transfers.
+    if ((setup.bmRequestType & 0x1F) == 0x02) {
+        u8 endpoint = setup.wIndex & 0xFF;
+        bool owns = iface == g_uvcCtx.streamingInterface &&
+                    endpoint == g_videoEndpointDesc.bEndpointAddress;
+        if (!owns) {
+            LOG("EP0[%u]: endpoint 0x%02x not ours, ignoring\n",
+                iface->interface_index, endpoint);
+            return;
+        }
+    }
+
     LOG("EP0[%u]: reqType=0x%02x req=0x%02x wVal=0x%04x wIdx=0x%04x wLen=%u\n",
         iface->interface_index, setup.bmRequestType, setup.bRequest,
         setup.wValue, setup.wIndex, setup.wLength);
 
-    u8 type = setup.bmRequestType & 0x60;       // 0x00 standard, 0x20 class
     u8 recipient = setup.bmRequestType & 0x1F;  // 0x01 = interface
 
     // Only answer requests addressed to this interface. If usb:ds ever
