@@ -202,3 +202,17 @@ cat /proc/asound/cards > u0-asound-cards.txt
 3. **只保留 AS alt0（不注册 alt1 端点）**：验证 alt1 端点/描述符。
 
 在这三个分支之前，不再重复部署同一个 U0b。
+
+## UAC-only 隔离候选（2026-10-29 18:29 构建）
+
+- NSP：`private/analysis/UAC-only-probe-20261029/outputs/exefs.nsp`
+  SHA256 `7ffdf7338aa3b92a326f6b21dfe8c8849dc1a5993ee48833af0035a88bce7329`
+  （81293B）；
+- 构建：`-DUAC_HOST_PROBE -DUAC_ONLY -DFILE_LOGGING`，无 UVC VC/VS，
+  仅 AC/AS（接口 0/1），配置约 97B；
+- 目的：如果这个纯 AC/AS 配置能被 `usb-config-dump` 读出，说明问题在
+  UVC+UAC 组合/长度/第二 IAD；如果仍不可读，说明 UAC append 本身或
+  usb:ds 不接受该配置。
+- **未部署、未开机**。
+
+后续如果 UAC-only 可读，再做“去 UAC IAD”和“AS alt0-only”两个变体。

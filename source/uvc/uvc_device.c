@@ -1130,6 +1130,7 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
     mutexInit(&g_uacCtx.audioMutex);
 
     if (hosversionAtLeast(5, 0, 0)) {
+#if !(defined(UAC_HOST_PROBE) && defined(UAC_ONLY))
         rc = _setupDescriptors5x(config);
         if (R_FAILED(rc)) {
             LOG("_setupDescriptors5x failed: 0x%x\n", rc);
@@ -1141,6 +1142,12 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
             LOG("_setupInterfaces5x failed: 0x%x\n", rc);
             goto cleanup;
         }
+#else
+        // UAC-only isolation build: no UVC interfaces, so a 97-byte AC+AS
+        // configuration can be used to test usb:ds independently.
+        (void)_setupDescriptors5x;
+        (void)_setupInterfaces5x;
+#endif
 
 #ifdef UAC_HOST_PROBE
 #if defined(ISO_PROBE) || defined(ALT1_PROBE)
