@@ -80,3 +80,47 @@ research/usb-ds-iso/tools/uac_host_10s.sh \
 4. 最后才是 U2–U4 的 10s PCM。
 
 在这些完成前，UAC 仍保持禁用。
+
+## U0 枚举候选（2026-10-29 离线构建）
+
+- NSP：`private/analysis/UAC-host-probe-20261029/outputs/exefs.nsp`
+  SHA256 `3c3bf1458f29a592497c369452eed6269cfcc743eb5ebb056a4b7ef6b06670fc`
+  （83942B）；
+- 构建：
+
+  ```sh
+  make -B -j4 TARGET=exefs \
+    BUILD=research/usb-ds-iso/private/analysis/UAC-host-probe-20261029/objects \
+    OUTPUT_DIR=research/usb-ds-iso/private/analysis/UAC-host-probe-20261029/outputs \
+    DEFINES="-DUAC_HOST_PROBE -DFILE_LOGGING"
+  ```
+
+- 行为：`_setupAudioInterfaces5x` 在 VC/VS 之后调用一次；AC/AS SetupEvent
+  在 `UvcDeviceProcessRequests` 和 `waitMulti` 中轮询；音频线程保持 idle
+  （`UacDeviceIsStreaming()` 在 `UAC_HOST_PROBE` 下返回 false）；不发送 PCM。
+- 不包含 `ISO_PROBE`/runtime patch/NOP；AS `0x84` alt1 的安装能力本轮不验证，
+  它属于 U1/U2。
+- **未部署、未开机**。U0 只需标准宿主看到 AC/AS 和音频卡；如果 init 在
+  `_setupAudioInterfaces5x` 失败，设备日志会给出错误码，读卡后恢复安全版本。
+
+### U0 host 检查
+
+macOS（当前 Mac 即可，不做 PCM）：
+
+```sh
+system_profiler SPUSBDataType -json > u0-usb.json
+ioreg -p IOUSB -l -w0 > u0-iorg.txt
+system_profiler SPAudioDataType -json > u0-audio.json
+```
+
+Linux：
+
+```sh
+lsusb -v -d 1209:ca57 > u0-lsusb.txt
+dmesg | tail -n 200 > u0-dmesg.txt
+arecord -l > u0-arecord-list.txt
+cat /proc/asound/cards > u0-asound-cards.txt
+```
+
+通过：AC/AS 接口和音频 capture card 出现，dmesg 无 UAC/ISO 错误。
+失败：无 AC/AS、init 错误、crash；不重试，读卡并恢复 `52069a44…`。

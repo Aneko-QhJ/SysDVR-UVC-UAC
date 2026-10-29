@@ -1139,9 +1139,23 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
             goto cleanup;
         }
 
+#ifdef UAC_HOST_PROBE
+#if defined(ISO_PROBE) || defined(ALT1_PROBE)
+#error UAC_HOST_PROBE cannot be combined with ISO_PROBE/ALT1_PROBE
+#endif
+        // Enumeration/control-only UAC build: AC+AS take the two remaining
+        // interface slots. The audio thread stays idle because
+        // UacDeviceIsStreaming() is false under UAC_HOST_PROBE.
+        rc = _setupAudioInterfaces5x();
+        if (R_FAILED(rc)) {
+            LOG("_setupAudioInterfaces5x failed: 0x%x\n", rc);
+            goto cleanup;
+        }
+#else
         // UAC remains disabled until device ISO and alt-setting support are
         // verified. ISO_PROBE tests a separate vendor alt0 interface first.
         (void)_setupAudioInterfaces5x;  // suppress unused warning
+#endif
 
 #ifdef ISO_PROBE
 #ifdef ALT1_PROBE
@@ -2153,6 +2167,13 @@ void UvcDeviceProcessRequests(void)
                 waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),
                 waiterForEvent(&g_alt1Interface->SetupEvent))))
             break;
+#elif defined(UAC_HOST_PROBE)
+        if (R_FAILED(waitMulti(&idx, 20E+6,
+                waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
+                waiterForEvent(&g_uvcCtx.streamingInterface->SetupEvent),
+                waiterForEvent(&g_uacCtx.acInterface->SetupEvent),
+                waiterForEvent(&g_uacCtx.asInterface->SetupEvent))))
+            break;
 #else
         if (R_FAILED(waitMulti(&idx, 20E+6,  // 20ms
                 waiterForEvent(&g_uvcCtx.controlInterface->SetupEvent),
@@ -2168,6 +2189,10 @@ void UvcDeviceProcessRequests(void)
 #ifdef ALT1_PROBE
         serviced |= _serviceSetup(g_alt1Interface);
 #endif
+#ifdef UAC_HOST_PROBE
+        serviced |= _serviceSetup(g_uacCtx.acInterface);
+        serviced |= _serviceSetup(g_uacCtx.asInterface);
+#endif
     }
 }
 
@@ -2177,7 +2202,13 @@ void UvcDeviceProcessRequests(void)
 
 bool UacDeviceIsStreaming(void)
 {
+#ifdef UAC_HOST_PROBE
+    // U0 is enumeration/control only; do not let the audio thread post data
+    // on an AS endpoint that has no ISO producer yet.
+    return false;
+#else
     return g_uacCtx.initialized && g_uacCtx.streaming;
+#endif
 }
 
 bool UacDeviceSendAudio(const void* data, size_t size, u64 timestamp)

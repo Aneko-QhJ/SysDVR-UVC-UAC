@@ -49,8 +49,9 @@
   旧 5 URB 崩溃未复现。见
   [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
   [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
-- 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)），
-  但 UAC 仍禁用；下一步先做 UAC 枚举探针（U0），再谈 10s 连续 PCM。
+- 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)）。
+  **U0 枚举 NSP 已离线构建**（`3c3bf145…`，`UAC_HOST_PROBE`，无 ISO_PROBE/runtime
+  patch，未部署）；UAC 默认仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录

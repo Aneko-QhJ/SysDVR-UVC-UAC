@@ -176,12 +176,13 @@
   8 条目仍两页交替。**原始 serial640 的 5 URB 崩溃未复现**；主机休眠/USB
   调度或当时运行状态成为首要解释，不再是固有 5 页墙。见
   [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
-- **UAC 标准宿主 10s 入口已准备（10-29，未启用）**：新增 Linux
-  `tools/uac_host_10s.sh`（`arecord` 10s + `dmesg`/`lsusb`/`/proc/asound` 采集）
-  和 `tools/check_uac_wav.py`（格式/时长/静音/不连续统计），并有 U0–U4 检查清单。
-  **UAC 仍禁用**：`_setupAudioInterfaces5x` 未调用、AC/AS SetupEvent 未轮询、
-  AS `0x84` 没有 ISO producer、逐包发送器未改；下一步先做 UAC 枚举探针（U0）。
-  见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
+- **UAC 标准宿主入口与 U0 枚举候选已准备（10-29，未部署）**：新增 Linux
+  `tools/uac_host_10s.sh`、`tools/check_uac_wav.py` 和 U0–U4 检查清单。
+  **U0 NSP 已离线构建**：`UAC_HOST_PROBE` 调用 `_setupAudioInterfaces5x`、
+  轮询 AC/AS SetupEvent、音频线程 idle；NSP `3c3bf145…`（83942B），
+  无 ISO_PROBE/runtime patch。**UAC 默认生产路径仍禁用**；AS `0x84` 仍无
+  ISO producer，逐包发送器未改，10s PCM 未就绪。下一步是一次 U0 枚举实机
+  （标准宿主，不抓 PCM）。见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
