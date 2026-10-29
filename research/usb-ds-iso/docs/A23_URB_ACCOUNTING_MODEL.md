@@ -84,3 +84,11 @@ serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。
 两次都落在“表干净、count 归零”的分支，而不是“count 没递减”。因此 5 页 IOVA
 的 map 失败来自 **unmap 没有真正释放/复用**，`FUN_00004c70`/domain free-list 是
 下一个审计点。
+
+## 静态审计补充（2026-10-29）
+
+usb:ds 反编译确认：正常完成会经 `4c70 -> 40e0` 把块插回 free tree，但
+`2c690` 在 `[URB+0x20]==0` 时跳过 unmap，并不检查 `4c70` 的 miss 返回值。
+模型里的“unmap 缺失/地址错误”因此对应两条真实静默分支；仅凭
+producer/consumer/count 不能区分。见
+[A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。

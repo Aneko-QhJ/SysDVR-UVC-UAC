@@ -88,7 +88,7 @@ class Endpoint:
         entry = self.entries[self.consumer]
         if entry is None:
             return False
-        if unmap:
+        if unmap and entry["size"] != 0:
             addr = entry["iova"] if free_address is None else free_address
             if not self.domain.free_page(addr):
                 # The unmap is skipped or targets the wrong address; the
@@ -136,6 +136,30 @@ def test_wrong_unmap_address_stops_at_five():
     assert len(domain.allocations) == 5
 
 
+def test_zero_size_completion_skips_the_unmap():
+    """FUN_0002c690 only unmaps when [URB+0x20] (size) is nonzero.
+
+    A stale/incorrect completion can therefore advance consumer/count while
+    leaving the page allocated; the table looks clean after five rounds.
+    """
+    domain = Domain(FIVE_PAGES)
+    endpoint = Endpoint(domain)
+    for _ in range(FIVE_PAGES):
+        assert endpoint.submit()
+    # Every completion sees a zero size, so all five unmaps are skipped.
+    for entry in endpoint.entries[:FIVE_PAGES]:
+        entry["size"] = 0
+    for _ in range(FIVE_PAGES):
+        assert endpoint.complete()
+    assert endpoint.consumer == FIVE_PAGES
+    assert endpoint.count == 0
+    assert endpoint.completes == FIVE_PAGES
+    assert len(domain.allocations) == FIVE_PAGES
+    assert len(domain.free) == 0
+    assert not endpoint.submit()
+    assert endpoint.map_failures == 1
+
+
 def test_eight_entry_table_cannot_explain_five():
     domain, endpoint = serial(6, unmap=False, pages=8)
     # Eight pages let six URBs through even with no unmap.
@@ -173,6 +197,9 @@ class UrbAccountingTest(unittest.TestCase):
 
     def test_wrong_unmap_address(self):
         test_wrong_unmap_address_stops_at_five()
+
+    def test_zero_size_completion(self):
+        test_zero_size_completion_skips_the_unmap()
 
     def test_table_cannot_explain_five(self):
         test_eight_entry_table_cannot_explain_five()

@@ -36,8 +36,10 @@
   [A23_URB_ACCOUNTING_MODEL.md](docs/A23_URB_ACCOUNTING_MODEL.md) 表明 5 是 IOVA
   容量、不是 8 项表，完成被调用但 unmap 没释放；endpoint trace 已构建
   （[A23_URB_TRACE.md](docs/A23_URB_TRACE.md)）；3 URB 读到 3/3/0，serial5 读到
-  5/5/0，URB 表干净；第 6 次 map 失败归因到 5 页 IOVA unmap 没复用，下一步审计
-  `FUN_00004c70`/domain free-list。
+  5/5/0，URB 表干净。**`4c70` 静态审计**（[A23_URB_UNMAP_AUDIT.md](docs/A23_URB_UNMAP_AUDIT.md)）
+  发现 `2c690` 不检查 `4c70` 的 miss 返回值：`[URB+0x20]==0` 或
+  `[URB+0x10]` 不匹配都会静默泄漏，`+0/+4/+8` 仍归零；下一次 trace 要读这两个
+  URB 字段或记录 unmap miss。
 - 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
 
 ## 目录

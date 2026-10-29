@@ -1,8 +1,8 @@
-# 当前状态（2026-10-27 19:20，Asia/Shanghai）
+# 当前状态（2026-10-29 16:40，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 本轮只更新文档与流程，没有新的 USB/SD/实机操作。
+> 本轮只做 usb:ds 的离线静态审计，没有新的 USB/SD/实机操作。
 
 ## 一句话
 
@@ -141,10 +141,16 @@
   producer=3、consumer=3、count=0——3 个 URB 的 complete/consumer/count 正常。
   **serial5 实机结果**：设备 stop 日志 `posts=5 completes=4 errors=0 attempts=5`；
   stop 后 endpoint `producer=5/consumer=5/count=0`；host 48/112（one-in-flight 下
-  只有 3 个 URB 的数据到达 host）。**URB 表是干净的**；第 6 次 map 失败是 5 页
-  IOVA unmap 没复用，不是表/count。卡已恢复安全 `52069a44…`。
-  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：离线审计
-  `FUN_00004c70`/domain free-list/`[URB+0x10]/[+0x20]`；trace 出来前不再上硬件。
+  只有 3 个 URB 的数据到达 host）。**URB 表是干净的**；serial640 的第 6 次 map
+  仍失败，说明不是表/count。卡已恢复安全 `52069a44…`。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+- **完成 unmap 静态审计（10-29）**：`2c690` 只在 `[URB+0x20] != 0` 时调用
+  `4c70(domain, [URB+0x10])`，且**不检查** `4c70` 的返回值；`4c70` 地址 miss
+  返回 `0x19a8c`、不 assert。所以“size 为 0”和“IOVA 不匹配”都会静默泄漏，
+  而 `+0/+4/+8` 仍归零。`40e0` 以基址作 free-tree key、分配按 size 阈值搜索，
+  这个不对称暂标可疑，但不能单独解释 5。下一步 trace 必须读
+  `[URB+0x10]/[+0x20]` 或记录 `4c70` miss 计数；在此之前不再上硬件。见
+  [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

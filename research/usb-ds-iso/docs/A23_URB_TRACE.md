@@ -140,3 +140,10 @@ tools/decode_a23_trace.py <iso-probe.log>
 结论：**5 个 URB 后 URB 表干净**；第 6 次 map 失败不是表/count 问题，而是 5 页
 IOVA 在 unmap 后没有复用。one-in-flight 下只有 3 个 URB 的数据到了 host，这是
 另一个 timing/data 问题，与 IOVA 结论分开。
+
+## 审计后（2026-10-29）
+
+静态审计确认：`+0/+4/+8` 归零不能证明 unmap 成功。`FUN_0002c690` 在
+`[URB+0x20]==0` 时跳过 unmap，且不检查 `FUN_00004c70` 的 `0x19a8c` miss；
+两种情况都只泄漏、不崩溃。下一次 trace 必须读 `[URB+0x10]/[+0x20]` 或记录
+`4c70` miss 计数。见 [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
