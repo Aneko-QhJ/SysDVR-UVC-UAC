@@ -1,4 +1,4 @@
-# 当前状态（2026-10-29 22:55，Asia/Shanghai）
+# 当前状态（2026-10-30 00:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -10,8 +10,9 @@
 视频可用；音频不可用。UAC 标准层离线已完成，标准宿主枚举四轮均未通过
 （U0/U0b/U0c/UAC-only）；配置路径审计已解释两个现象：复合配置 257B 撞上
 usb:ds 的 u8 长度截断，UAC-only 则跳过了设备描述符设置。descriptor-only
-payload 与 HS/SS 仿真已完成，下一步接入 UAC build。最近一次短包实机
-（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
+payload、HS/SS 仿真与 build 接入（`UAC_DESCRIPTOR_PATCH`，NSP `48c872f1…`，
+未部署）已完成；下一步实机另需授权。最近一次短包实机（2026-10-27）主机侧通过、
+设备侧保存失败；路径修正版已存在，未打包/未部署。
 
 ## 最近一次短包实机（2026-10-27）
 
@@ -42,8 +43,9 @@ payload 与 HS/SS 仿真已完成，下一步接入 UAC build。最近一次短�
     `ISO_PROBE` 的 vendor 接口同 build；`_setupAudioInterfaces5x` 已加拒绝。
 - UAC 配置路径审计已完成：[UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)。
   复合 HS 257B/SS 269B 被 usb:ds 的 u8 长度截断；UAC-only 只 97B，但跳过了
-  设备描述符设置。descriptor-only payload（18 条）与 Unicorn 仿真已完成：
-  未修补 HS `wTotalLength=1`、SS=13，修补后 257/269。该审计没有硬件操作。
+  设备描述符设置。descriptor-only payload（18 条）、Unicorn 仿真与 build 接入
+  已完成：未修补 HS `wTotalLength=1`、SS=13，修补后 257/269；补丁 NSP
+  `48c872f1…`（86780B，未部署）。该审计没有硬件操作。
 
 ## 授权与边界
 
@@ -220,6 +222,10 @@ payload 与 HS/SS 仿真已完成，下一步接入 UAC build。最近一次短�
   - **descriptor-only payload 已生成并仿真**：18 条编辑（无 ISO cave/hook），
     payload SHA256 `cbed1b66…`；Unicorn 执行组装器/getter，未修补 HS 1/SS 13，
     修补后 257/269，`getter(9)=9`。详见审计文档第 6 节。
+  - **build 接入完成（10-30）**：`UAC_DESCRIPTOR_PATCH` 在 `usbDsEnable()` 前由
+    dmnt 应用 18 条编辑，校验 BuildID/size，失败即拒绝启用；四种配置（默认/
+    UAC probe/UAC-only/probe+patch）均构建通过。补丁 NSP `48c872f1…`
+    （86780B）**未部署、未上卡**。详见审计文档第 7 节。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
@@ -269,7 +275,7 @@ payload 与 HS/SS 仿真已完成，下一步接入 UAC build。最近一次短�
    已标 dangerous。**配置路径审计已完成**（[UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)）：
    复合 HS 257B/SS 269B 撞上 usb:ds 未修补的 u8 长度截断（`wTotalLength` 变 1/13）；
    UAC-only 的 97B 不触发截断，但构建跳过了 `_setupDescriptors5x`，没有设备描述符。
-   descriptor-only payload 与仿真已完成；下一步接入 UAC build，实机另需授权。
+   build 接入已完成（NSP `48c872f1…`，未部署）；下一步实机另需授权。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -279,10 +285,10 @@ payload 与 HS/SS 仿真已完成，下一步接入 UAC build。最近一次短�
 
 ## 下一步（未授权）
 
-- 离线（UAC 当前优先）：把 18 条 descriptor-only 编辑接入 UAC build
-  （`UAC_DESCRIPTOR_PATCH`，在 `usbDsEnable()` 之前应用，保留 BuildID/size
-  校验）；payload 与 HS/SS 仿真已完成，见
-  [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)。实机另需授权。
+- 实机（UAC 当前优先，需新的明确授权）：用 `UAC_DESCRIPTOR_PATCH` 复合 NSP
+  （`48c872f1…`，未部署）做一次 U0 枚举：`usb-config-dump` 期望 4 接口/257B，
+  `SPAudioDataType` 或 `arecord -l` 出现音频设备；本轮不做 PCM。离线部分见
+  [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md)。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 UAC 枚举通过。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。

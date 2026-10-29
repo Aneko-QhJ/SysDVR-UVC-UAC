@@ -32,8 +32,8 @@
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。
 - 当前工作：UAC 配置路径审计完成（复合 257B 撞 usb:ds 的 u8 长度截断；
-  UAC-only 缺设备描述符）；descriptor-only payload 与 HS/SS 仿真已完成，
-  下一步接入 build。
+  UAC-only 缺设备描述符）；payload/仿真与 `UAC_DESCRIPTOR_PATCH` build 接入
+  已完成（NSP `48c872f1…`，未部署）；实机另需授权。
   路径修正版打包/入口另行安排。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 

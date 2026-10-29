@@ -19,8 +19,8 @@
   UAC `0x84`），UAC 仍禁用。
 - UAC 配置路径审计完成：[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)：
   复合 HS 257B/SS 269B 撞上 usb:ds 的 u8 长度截断；UAC-only 跳过了设备描述符
-  设置。descriptor-only payload 与 HS/SS 仿真已完成；下一步接入 UAC build，
-  实机另需授权。
+  设置。payload、HS/SS 仿真与 `UAC_DESCRIPTOR_PATCH` build 接入已完成
+  （NSP `48c872f1…`，未部署）；实机另需授权。
 - ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
   bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
   3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
@@ -65,7 +65,7 @@
   实机后主机完全枚举不到 USB 设备**（`7ffdf733…`），已标 dangerous，卡恢复
   `52069a44…`。停止 UAC 变体试验；配置路径审计已完成
   （[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)），
-  descriptor-only payload 与 HS/SS 仿真已完成，下一步接入 UAC build。
+  payload、仿真与 build 接入已完成（NSP `48c872f1…`，未部署）。
   UAC 默认仍禁用，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 

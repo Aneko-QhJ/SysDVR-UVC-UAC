@@ -1,8 +1,8 @@
-# UAC 配置描述符路径审计（2026-10-29，离线）
+# UAC 配置描述符路径审计（2026-10-29/30，离线）
 
 > 目标：解释 U0/U0b/U0c 的复合配置 `GET_DESCRIPTOR(config)` 失败
 > （`0xE00002CD`）和 UAC-only 的“主机无设备”。本轮做静态审计、descriptor-only
-> payload 生成与指令级仿真，**没有 USB/SD/实机操作**。
+> payload 生成、指令级仿真与 build 接入，**没有 USB/SD/实机操作**。
 
 ## 结论
 
@@ -204,12 +204,40 @@ before 字节与 ELF 一致；`tests/test_uac_config_assembly.py`（需 unicorn�
 payload 只改 usb 模块代码，不改本应用；下一步需要把它接到 UAC build 的启动路径
 （`usbDsEnable()` 之前）。
 
-## 7. 限制与未证明
+## 7. UAC build 接入（2026-10-30）
+
+`UAC_DESCRIPTOR_PATCH` 把 payload 接到应用启动路径：
+
+- `uvc_device.c` 在 `UAC_DESCRIPTOR_PATCH` 下包含 `uac_descriptor_payload.h`；
+- `UvcDeviceInitialize` 的 5.0+ 分支最前面调用 `_applyUacDescriptorPatch()`，
+  早于 `usbDsEnable()`；失败时 `goto cleanup` 并返回 `LibnxError_BadInput`，
+  不会以未修补的 257B 配置启动（fail closed）；
+- applier 复用 `isoApplyRuntimePatch` 与 `_logIsoTarget` 的 dmnt 流程：校验
+  usb 模块 `count==1`、`size==0x369000`、`build_id==uacRuntimeBuildId`，暂停
+  usb、应用 18 条编辑、失败回滚；`-4`（回滚未验证）保持 usb 暂停；
+- payload 不含 ISO cave/hook，`ISO_RUNTIME_PATCH` 仍未定义。
+
+构建矩阵（`make -B`，全部离线通过）：
+
+| 配置 | 结果 |
+| --- | --- |
+| 默认（无 flag） | 通过 |
+| `UAC_HOST_PROBE` | 通过 |
+| `UAC_HOST_PROBE + UAC_ONLY` | 通过 |
+| `UAC_HOST_PROBE + UAC_DESCRIPTOR_PATCH` | 通过；NSP 86780B，SHA256 `48c872f1…` |
+| A23 `ISO_PROBE_STREAM + ISO_RUNTIME_PATCH`（回归） | 通过（用归档的 ISO payload 头编译） |
+
+复现：`python3 research/usb-ds-iso/tools/build_uac_descriptor_probe.py`；记录
+`private/analysis/UAC-descriptor-patch-20261029/build-result.json`。该 NSP
+**未部署、未上卡、未实机**；按记录卡上仍是安全 `52069a44…`，本轮没有接触硬件。
+
+## 8. 限制与未证明
 
 - `0xE00002CD` 的 host 侧映射是按“配置头长度 1 字节”推断的，未在主机
   侧逐包验证。
 - 257B + 补丁尚未实机；本审计不对硬件行为作保证。
 - 仿真短路了 mutex/cleanup，只覆盖组装器与 getter，不是 EP0/主机栈的端到端测试。
+- NSP 未部署；dmnt 附加/恢复与 fail-closed 只在 A23 上验证过，UAC 变体未实机。
 - usb:ds 对“从未设置设备描述符”的默认对象状态没有完整追踪。
 - runtime edits 只对 BuildID `AD8D36F2…` / size `0x369000` 的 usb 模块有效；
   其他固件版本需要重新定位。
@@ -217,15 +245,14 @@ payload 只改 usb 模块代码，不改本应用；下一步需要把它接到 
   SHA256 写成 `…309688e8…`，实际文件与 Ghidra 程序都是 `…3019688e…`；
   本审计以实际文件为准，旧 README 的摘要待单独校正。
 
-## 8. 下一步（离线优先）
+## 9. 下一步（离线优先）
 
 1. **已完成**：descriptor-only 的 18 条 payload（`uac_descriptor_payload.h`）。
 2. **已完成**：HS 257B / SS 269B 的组装与 getter 仿真（1/13 → 257/269）。
-3. 接入 UAC build：新增 `UAC_DESCRIPTOR_PATCH`，在 `usbDsEnable()` 之前应用
-   `uacRuntimeEdits`；保留 BuildID/size 校验，不要带 ISO cave/hook。若保留
-   UAC-only 隔离实验，同时把 `_setupDescriptors5x(config)` 移到它也会执行的
-   路径，只跳过 `_setupInterfaces5x`。
-4. 之后才是实机（需要新的明确授权）：复合 UAC + descriptor-only 补丁，
+3. **已完成**：UAC build 接入（`UAC_DESCRIPTOR_PATCH`），四种配置均构建通过；
+   产物 NSP `48c872f1…`（未部署）。若保留 UAC-only 隔离实验，仍需把
+   `_setupDescriptors5x(config)` 移到它也会执行的路径。
+4. 实机（需要新的明确授权）：复合 UAC + descriptor-only 补丁，
    一次 boot，`usb-config-dump` 期望 4 接口/257B，`SPAudioDataType` 或
    `arecord -l` 出现音频设备；本轮不做 PCM。
 
@@ -242,3 +269,5 @@ payload 只改 usb 模块代码，不改本应用；下一步需要把它接到 
   —— 18 条 descriptor-only 编辑。
 - [emulation.json](../private/analysis/UAC-descriptor-patch-20261029/emulation.json)
   —— Unicorn 组装器/getter 结果。
+- [build-result.json](../private/analysis/UAC-descriptor-patch-20261029/build-result.json)
+  —— `UAC_DESCRIPTOR_PATCH` NSP 的构建参数与哈希。
