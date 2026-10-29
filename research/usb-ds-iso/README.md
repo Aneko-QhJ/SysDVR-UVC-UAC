@@ -50,9 +50,10 @@
   [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
   [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
 - 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)）。
-  **U0 枚举 NSP 已实机一次**（`3c3bf145…`）：设备 `UAC initialized: AC=2
-  AS=3 EP=0x84`，但 macOS 只看到 USB 设备、没有音频设备/无 host-connected
-  记录，**U0 未通过**；下一步换 Linux 或更丰富的 macOS 接口/日志复测。
+  **U0 已实机一次未通过**（`3c3bf145…`）：设备 `UAC initialized: AC=2 AS=3
+  EP=0x84`，但 macOS 只看到 USB 设备、没有音频设备/无 host-connected 记录。
+  **U0b 已离线修正**：IAD subclass 改为 0，AC+AS 全部 append/register 后再
+  enable；NSP `bdae4cd6…`，未部署。下一步用更丰富的 macOS/Linux 记录复测。
   UAC 默认仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 

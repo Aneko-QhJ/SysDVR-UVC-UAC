@@ -1081,18 +1081,21 @@ static Result _setupAudioInterfaces5x(void)
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
     }
 
+    // Append both functions before enabling either interface.  Enabling AC
+    // before the AS descriptors/endpoint exist can leave the host with an
+    // incomplete audio function (observed as a USB device with no audio card
+    // on macOS in U0).
     R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
         UsbDeviceSpeed_High, g_uacAcDescriptors, acLen));
     R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.acInterface,
         UsbDeviceSpeed_Super, g_uacAcDescriptors, acLen));
-    R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_uacCtx.acInterface));
-
     R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
         UsbDeviceSpeed_High, g_uacAsHsDescriptors, hsLen));
     R_RET_ON_FAIL(usbDsInterface_AppendConfigurationData(g_uacCtx.asInterface,
         UsbDeviceSpeed_Super, g_uacAsSsDescriptors, ssLen));
     R_RET_ON_FAIL(usbDsInterface_RegisterEndpoint(g_uacCtx.asInterface,
         &g_uacCtx.audioEndpointIn, epAddress));
+    R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_uacCtx.acInterface));
     R_RET_ON_FAIL(usbDsInterface_EnableInterface(g_uacCtx.asInterface));
 
     UacStandardInit(&g_uacStd, acIfaceNum, asIfaceNum, epAddress);

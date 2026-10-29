@@ -140,3 +140,23 @@ cat /proc/asound/cards > u0-asound-cards.txt
   `AppleUSBHost`/`AppleUSBAudio` 错误，或直接换 Linux `lsusb -v`/`dmesg`。
 - 证据：`private/runs/UAC-u0-20261029/`（`device-log-u0.txt` `645f12d7…`、
   `iorg.txt`、`audio.txt`、`run.json`）；卡已恢复 `52069a44…`。
+
+## U0b 离线修正（2026-10-29 18:18）
+
+针对 U0 的“USB 设备出现但无音频设备/无 host-connected”做了两处离线修正：
+
+1. **Audio IAD `bFunctionSubClass` 从 1 改为 0**。IAD 的 `bFunctionSubClass`
+   应表示 audio function（0），不是 AC 接口的 subclass（1）；lint 同步修正，
+   测试新增 `ac[4]==1 && ac[5]==0` 断言。
+2. **先 append/register 全部 AC+AS 描述符和 AS 端点，再 enable AC/AS**。
+   旧顺序先 `EnableInterface(AC)`，再 append AS 描述符/注册端点，可能让 host
+   看到不完整的 audio function。
+
+- 候选 NSP：`private/analysis/UAC-host-probe-20261029-r2/outputs/exefs.nsp`
+  SHA256 `bdae4cd606ec11e26ec81c680e410309461e57b6f4bab73353118b71256d5759`
+  （83929B）；
+- 仍无 ISO producer/PCM，仍是 U0 枚举候选；
+- 下一次主机会抓 `ioreg -r -c IOUSBHostInterface`、`IOUSBHostPipe`、
+  `system_profiler SPUSBDataType` 文本和 `log show` 的 USB/audio 记录，
+  以区分“host 未配置”与“audio driver 未绑定”；
+- **未部署、未开机**。

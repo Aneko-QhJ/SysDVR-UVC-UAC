@@ -178,13 +178,14 @@
   [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
 - **UAC 标准宿主入口与 U0 已实机一次（10-29，未通过）**：Linux
   `tools/uac_host_10s.sh`、`tools/check_uac_wav.py`、U0–U4 检查清单已备。
-  U0 NSP `3c3bf145…`（`UAC_HOST_PROBE`，83942B）已构建并实机一次：
+  U0 NSP `3c3bf145…`（`UAC_HOST_PROBE`，83942B）已实机一次：
   设备日志 `UAC initialized: AC=2 AS=3 EP=0x84`，但 macOS 只看到 USB 设备，
-  没有音频设备，也没有 `USB host connected`/EP0 记录 → **U0 未通过**，
-  主机未配置/绑定该复合配置。下一步用更丰富的 macOS 记录
-  （`ioreg -c IOUSBHostInterface`、`log show`）或 Linux `lsusb -v`/`dmesg`
-  复测；UAC 默认生产路径仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
-  见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
+  没有音频设备，也没有 `USB host connected`/EP0 记录 → **U0 未通过**。
+  **U0b 已离线修正**：IAD `bFunctionSubClass` 改为 0（测试新增断言），并把
+  AC+AS 的全部 append/register 放到 enable 之前；NSP `bdae4cd6…`（83929B），
+  **未部署**。下一步用更丰富的 macOS `ioreg`/`log show` 或 Linux
+  `lsusb -v`/`dmesg` 复测 U0b；UAC 默认生产路径仍禁用，AS `0x84` 仍无
+  ISO producer，10s PCM 未就绪。见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

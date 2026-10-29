@@ -232,7 +232,7 @@ size_t UacBuildAcConfiguration(uint8_t ac_interface, uint8_t as_interface,
     put8(&b, ac_interface);
     put8(&b, 2);
     put8(&b, USB_CLASS_AUDIO);
-    put8(&b, UAC_SC_AUDIOCONTROL);
+    put8(&b, 0); /* IAD bFunctionSubClass: audio function, not AC subclass */
     put8(&b, UAC_PC_PROTOCOL_UNDEFINED);
     put8(&b, 0);
 
@@ -369,7 +369,7 @@ bool UacLintConfiguration(const uint8_t *ac, size_t ac_len,
     if (ac[0] != 8 || ac[1] != USB_DT_INTERFACE_ASSOCIATION) return fail(err, err_cap, "IAD header");
     if (ac[2] != ac[10]) return fail(err, err_cap, "IAD first interface");
     if (ac[3] != 2) return fail(err, err_cap, "IAD count");
-    if (ac[4] != USB_CLASS_AUDIO || ac[5] != UAC_SC_AUDIOCONTROL || ac[6] != 0) {
+    if (ac[4] != USB_CLASS_AUDIO || ac[5] != 0 || ac[6] != 0) {
         return fail(err, err_cap, "IAD class");
     }
 

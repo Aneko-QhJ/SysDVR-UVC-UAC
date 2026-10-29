@@ -38,6 +38,7 @@ static void test_descriptors(void)
     CHECK(ss_len == UAC_AS_SS_CONFIGURATION_SIZE);
     CHECK(ac[2] == 3 && ac[10] == 3 && ac[25] == 4);
     CHECK(ac[13] == 1 && ac[14] == 1);
+    CHECK(ac[4] == 1 && ac[5] == 0); /* audio IAD: class 1, subclass 0 */
     CHECK(hs[2] == 4 && hs[11] == 4 && hs[38] == 0x84);
     CHECK(hs[40] == 192 && hs[41] == 0 && hs[42] == 4);
     CHECK(ss[51] == 0x30 && ss[54] == 192 && ss[55] == 0);
