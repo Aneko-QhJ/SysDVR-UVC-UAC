@@ -126,6 +126,13 @@
   [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md)。
   下一步：usb:ds 侧记账 trace（`+0/+4/+8`、`[URB+0x10]/[+0x20]`、domain、unmap
   返回值），trace 出来前不再部署 A23 长流。
+- **A23 endpoint trace 已构建（离线）**：[patches/iso_burst_trace.S](../patches/iso_burst_trace.S)
+  把 report 诊断换成 endpoint 指针 + producer/consumer/count（680/684B）；
+  `iso-stream-trace3.nsp`（`9e8fc035…`）用 safe stream 源码 + trace payload 构建，
+  `iso-probe --status` 的 `diagnostics_hex` 由
+  [tools/decode_a23_trace.py](../tools/decode_a23_trace.py) 解码。未部署。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：trace3 验证 3 URB，再做
+  serial trace（5 个 URB 后停）。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

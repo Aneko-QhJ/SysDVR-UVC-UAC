@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 426 个 Python 工具。
+共 427 个 Python 工具。
 
 ## 当前使用
 
@@ -36,6 +36,7 @@
 | `package` | 2 |
 | `sequence` | 2 |
 | `summarize` | 2 |
+| `decode` | 1 |
 | `experiment.py` | 1 |
 | `extract` | 1 |
 | `gen` | 1 |
@@ -464,6 +465,12 @@
 | [context65_once_reservation.py](context65_once_reservation.py) | Exclusive durable65 burn with an immutable invocation commitment. No USB. |
 | [context65_recovery.py](context65_recovery.py) | Explicit read-only recovery. Import and job preparation never access a card. |
 | [context65_workflow.py](context65_workflow.py) | File-only workflow binding for the immutable context65 receiver. |
+
+## decode（1）
+
+| 工具 | 说明 |
+| --- | --- |
+| [decode_a23_trace.py](decode_a23_trace.py) | Decode the A23 endpoint trace carried in the ISO report diagnostics. |
 
 ## experiment.py（1）
 

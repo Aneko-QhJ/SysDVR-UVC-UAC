@@ -45,3 +45,5 @@ ISO_PATCH_PACKAGES=/tmp/a23-burst /tmp/dsh-unicorn/bin/python   -m unittest test
 - 新增测试放 `tests/test_*.py`，并与被测工具同名，便于 `--filter`。
 
 - `test_urb_accounting.py` — URB 表/5 页 IOVA 记账模型；不访问硬件。
+
+- `test_a23_urb_trace_decode.py` — 解码 A23 trace report 的 endpoint/producer/consumer/count。
