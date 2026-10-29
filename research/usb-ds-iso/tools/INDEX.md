@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 429 个 Python 工具。
+共 431 个 Python 工具。
 
 ## 当前使用
 
@@ -25,8 +25,8 @@
 | --- | --- |
 | `audit` | 137 |
 | `a23_*` | 110 |
+| `build` | 60 |
 | `analyze` | 59 |
-| `build` | 59 |
 | `collect` | 18 |
 | `prepare` | 10 |
 | `context65` | 7 |
@@ -38,6 +38,7 @@
 | `summarize` | 2 |
 | `check` | 1 |
 | `decode` | 1 |
+| `emulate` | 1 |
 | `experiment.py` | 1 |
 | `extract` | 1 |
 | `gen` | 1 |
@@ -369,7 +370,7 @@
 | [audit_lifecycle_card_workflow.py](audit_lifecycle_card_workflow.py) | Exercise temporary cards and seal copied evidence; never instantiate MacCard. |
 | [audit_path_span_readiness.py](audit_path_span_readiness.py) | Exercise temporary cards and seal copied evidence; never instantiate MacCard. |
 
-## build（59）
+## build（60）
 
 | 工具 | 说明 |
 | --- | --- |
@@ -432,6 +433,7 @@
 | [build_no_td_receiver.py](build_no_td_receiver.py) | Build an isolated, fresh-idle-only A23 no-TD receiver; never accesses USB. |
 | [build_patch.py](build_patch.py) | Build fail-closed, Build-ID-specific A/B/C IPS32 experiment packages. |
 | [build_serial_clock_receiver.py](build_serial_clock_receiver.py) | Build and validate the bounded matched-backend serial receiver without USB. |
+| [build_uac_descriptor_payload.py](build_uac_descriptor_payload.py) | Build the descriptor-only runtime payload for the UAC configuration fix. |
 
 ## check（1）
 
@@ -479,6 +481,12 @@
 | 工具 | 说明 |
 | --- | --- |
 | [decode_a23_trace.py](decode_a23_trace.py) | Decode the A23 endpoint trace carried in the ISO report diagnostics. |
+
+## emulate（1）
+
+| 工具 | 说明 |
+| --- | --- |
+| [emulate_uac_config_assembly.py](emulate_uac_config_assembly.py) | Emulate the usb:ds configuration assembler with UAC descriptor sizes. |
 
 ## experiment.py（1）
 

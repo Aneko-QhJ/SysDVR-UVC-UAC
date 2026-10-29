@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 QUICK = [
     "test_current_tools.py",
     "test_uac_standard.py",
+    "test_uac_descriptor_payload.py",
     "test_uac_pcm_ring.py",
     "test_a23_audio_cadence.py",
     "test_research_storage.py",
