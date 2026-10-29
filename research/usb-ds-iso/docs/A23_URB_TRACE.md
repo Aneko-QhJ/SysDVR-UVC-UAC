@@ -259,3 +259,21 @@ v4 只读最后一条，无法判断 `0x80030000` 是 index4 还是更早条目�
   （如 320 包）或 6 个 post，并在测试前用 `caffeinate` 固定主机不休眠。
 - 证据：`private/runs/A-urb-entries-v5-20261029/`（`device-log-v5.txt`
   `4e98dc57…`、`status.jsonl`、`run.json`）；卡已恢复安全 `52069a44…`。
+
+### v5 320 包结果（2026-10-29 17:52）
+
+- host：`caffeinate -dimsu iso-stream --transfers 1 --packets 320` →
+  `transfers=1 packets=96 bad=0 zero=224`；
+- 设备日志：`runtime result=0 record=29`，
+  `posts=8 completes=7 errors=0 late=6 attempts=8`；
+- status 8 条目全部非零，仍只在 `0x80030000`/`0x80040000` 两页间交替；
+- **没有 usb fatal**，第 6/7/8 次 map 都成功。
+
+这推翻了本 build 下“one-in-flight 只能到约 5 个 URB”的硬限制。前 8 个 post
+只占用两页，unmap/复用连续成立；serial640 的 5 URB 崩溃必须用当时的
+in-flight/主机状态或不同构建来解释，不能归因于一个固有的 5 页墙。
+
+- 证据：`private/runs/A-urb-entries-v5-320-20261029/`（`device-log-v5-320.txt`
+  `a67ebf29…`、`status.jsonl`、`run.json`）；卡已恢复安全 `52069a44…`。
+- 下一步：更长窗口/标准 UAC 宿主前，先确认 `caffeinate` 和 one-in-flight 是否
+  同样适用于 640 包，并复测 serial640 的崩溃条件。

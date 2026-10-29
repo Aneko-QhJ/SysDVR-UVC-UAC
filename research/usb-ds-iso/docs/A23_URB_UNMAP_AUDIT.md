@@ -105,10 +105,12 @@ serial5 的 `diagnostics_hex` 只有 magic、endpoint、producer、consumer、co
 结果：consumer=5、最后完成 URB 的 size=3072、IOVA=0x80030000，
 `last_entry_present`；最后一条没有走 size=0 分支。本轮只到 5 URB，
 没有尝试第 6 次 map，因此仍不能判定更早条目/free tree 是否泄漏。
-v5 全条目版本已实机一次（`11d5e9eb…`）：设备 `posts=4 completes=3`，
-条目 0–3 只在 `0x80030000`/`0x80040000` 两页间交替。也就是说 one-in-flight
-下 unmap/复用至少连续 4 轮成立，没有用掉 5 页；本轮未到第 5/6 次 map，
-因此“5 页全部泄漏”不再是唯一解释，下一步需要更长窗口复现 6 个 post。
+v5 全条目版本随后又做了 320 包 + `caffeinate`：host 96/320、bad=0，
+设备 `posts=8 completes=7 errors=0`、**无 usb fatal**；8 个条目仍只在
+`0x80030000`/`0x80040000` 两页间交替。第 6/7/8 次 map 都成功，说明
+one-in-flight 下 unmap/复用连续成立；本 build 没有“5 页墙”，
+serial640 的崩溃需要按当时的 in-flight/主机状态重新解释，不能再归因于
+`4c70` 永久 miss 或 free tree 必然泄漏。
 若要统计每次完成的返回值，需要在 `2c690` 的 `4c70` 调用点加只读记录，属于
 runtime patch 的下一步，不应和现有 A23 注入混在同一轮变量里。
 

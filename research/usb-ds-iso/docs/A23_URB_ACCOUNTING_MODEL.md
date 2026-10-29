@@ -109,3 +109,18 @@ host 侧用 `caffeinate` 固定不休眠，才能区分：
 3. 主机侧中断/休眠造成的假象。
 
 见 [A23_URB_TRACE.md](A23_URB_TRACE.md) 的 v5 实机结果。
+
+## 320 包修正：8 个 post 无崩溃（2026-10-29）
+
+v5 320 包 + `caffeinate` 实机：host `96/320`，设备 `posts=8 completes=7
+errors=0`，8 个条目全部非零，仍只在两页间交替，**没有 usb fatal**。
+
+这直接推翻了本 build 下“5 页/5 URB 硬限制”的经验结论：
+
+- 第 6/7/8 次 map 都成功，说明页会被 unmap 并立即复用；
+- 两个 IOVA 足以支撑 8 个 one-in-flight URB；
+- serial640 的崩溃必须用当时的 in-flight 数量、主机状态或构建差异解释，
+  不能再用“5 页泄漏”作为已证结论。
+
+本模型仍然是一个有用的容量边界，但不再是当前观察的主因解释。下一步应优先
+复测 serial640 的条件（3 in-flight？主机休眠？），而不是继续加页数/改 free tree。

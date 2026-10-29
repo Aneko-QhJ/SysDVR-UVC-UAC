@@ -1,4 +1,4 @@
-# 当前状态（2026-10-29 17:30，Asia/Shanghai）
+# 当前状态（2026-10-29 17:55，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -160,13 +160,16 @@
   所以不复现也不排除复用。r2–r4 分别修 magic gate/alt1/NOP；卡已恢复
   `52069a44…`。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
   下一步是 v5 全条目摘要或 6-URB 复现，需新授权。
-- **v5 全条目 trace 已实机一次（10-29 17:39）**：magic `0x394f5349`（ISO9），
-  diagnostics +8 起写 8 组 `{IOVA 低32, size}`；680/684B，NSP `11d5e9eb…`，
-  30 条 edits。设备 `posts=4 completes=3 errors=0`；4 个非零条目只在
-  `0x80030000`/`0x80040000` 两页间交替——**one-in-flight 下 unmap/复用至少
-  连续 4 轮成立**，没有用掉 5 页。本轮未到第 5/6 次 map，既未复现 serial640
-  崩溃，也不支持“5 页全部泄漏”的简单模型。下一步用更长窗口（320 包）或
-  6 个 post，并在 host 侧加 `caffeinate`。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+- **v5 全条目 trace 已实机两次（10-29）**：magic `0x394f5349`（ISO9），
+  diagnostics +8 起写 8 组 `{IOVA 低32, size}`；680/684B，NSP `11d5e9eb…`。
+  - 160 包：`posts=4 completes=3`，4 个非零条目两页交替；
+  - 320 包 + `caffeinate`：host **96/320、bad=0**，设备
+    `posts=8 completes=7 errors=0 late=6`，**无 usb fatal**；8 个条目全部非零，
+    仍只在 `0x80030000`/`0x80040000` 两页间交替。
+  **one-in-flight 下第 6/7/8 次 map 均成功，两页连续复用**；本 build 不存在
+  固有“5 URB/5 页”硬限制。serial640 的 5 URB 崩溃需要用当时的 in-flight/
+  主机状态或构建差异重新解释。下一步用更长窗口或标准宿主复测该条件。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和
