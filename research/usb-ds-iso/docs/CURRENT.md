@@ -119,6 +119,13 @@
   释放缺失。**serial640 不是稳定基线**；A23 只能在约 5 个 URB 内工作。
 - 当前唯一稳定的是 base A23 3-URB 短 burst（`52069a44…`）；持续流需要修
   A23 完成/URB 释放或写新 producer，不能再靠 in-flight/buffer/mailbox 调整。
+- **URB/IOVA 记账模型（离线）**：`tests/test_urb_accounting.py` 证明——unmap 正常时
+  5 页可复用；unmap 缺失或地址错误才精确得到“5 个完成后第 6 次 map 失败”；8 项 URB
+  表解释不了 5。host 已收到 5 个完成，说明 `complete_original` 被调用了，问题在
+  **unmap 没释放**（条目/地址/domain/free-list），不是完成没发生。见
+  [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md)。
+  下一步：usb:ds 侧记账 trace（`+0/+4/+8`、`[URB+0x10]/[+0x20]`、domain、unmap
+  返回值），trace 出来前不再部署 A23 长流。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

@@ -20,6 +20,7 @@ QUICK = [
     "test_research_storage.py",
     "test_a23_q2_epoch_lease_model.py",
     "test_a23_q2_generation_model.py",
+    "test_urb_accounting.py",
 ]
 
 
