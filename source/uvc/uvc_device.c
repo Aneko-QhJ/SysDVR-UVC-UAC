@@ -1130,6 +1130,9 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
     mutexInit(&g_uacCtx.audioMutex);
 
     if (hosversionAtLeast(5, 0, 0)) {
+/* WARNING: UAC_ONLY removes the USB device entirely on hardware
+ * (2026-10-29). Keep it only for offline descriptor inspection; never deploy
+ * a UAC_ONLY build. */
 #if !(defined(UAC_HOST_PROBE) && defined(UAC_ONLY))
         rc = _setupDescriptors5x(config);
         if (R_FAILED(rc)) {

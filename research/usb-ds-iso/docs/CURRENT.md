@@ -186,11 +186,14 @@
   `GET_DESCRIPTOR(config)` 返回 `0xE00002CD`（`kIOReturnNotReadable`），
   即**设备/usb:ds 无法提供新的 UAC 复合配置描述符**。safe build 的 config
   可正常读出（185B/3 接口），工具与链路正常。
-  **UAC-only 隔离 NSP 已构建**（`7ffdf733…`，81293B，无 UVC，仅 AC/AS，
-  配置约 97B），**未部署**；若它能被 config dump 读出，问题就在 UVC+UAC
-  组合/长度/第二 IAD；若仍不可读，则是 UAC append/usb:ds 本身。去 IAD 与
-  AS alt0-only 变体等 UAC-only 结果再定。UAC 默认仍禁用，AS `0x84` 仍无
-  ISO producer，10s PCM 未就绪。见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
+  **UAC-only 隔离 NSP 已实机一次，结果更严重**（`7ffdf733…`，仅 AC/AS）：
+  设备日志仍写 `UAC initialized: AC=0 AS=1 EP=0x84`，但主机**完全枚举不到
+  USB 设备**（不是无音频设备），也没有 `USB host connected`。该构建已标为
+  **dangerous，不再部署**，卡已恢复 `52069a44…`。下一步停止 UAC 变体试验，
+  先离线审计 usb:ds 的 `AppendConfigurationData`/配置状态、接口数/描述符长度
+  约束，解释“复合能枚举但 config 读失败、纯 AC/AS 连设备都不出现”。
+  UAC 默认仍禁用，AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
+  见 [UAC_HOST_10S.md](UAC_HOST_10S.md)。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

@@ -216,3 +216,20 @@ cat /proc/asound/cards > u0-asound-cards.txt
 - **未部署、未开机**。
 
 后续如果 UAC-only 可读，再做“去 UAC IAD”和“AS alt0-only”两个变体。
+
+### UAC-only 实机：USB 设备消失（2026-10-29 18:40）
+
+- `UAC initialized: AC=0 AS=1 EP=0x84` 仍写入日志，`UVC device initialized`
+  也出现；
+- 但 sysmodule 启动后主机**完全没有 USB 设备**（不是无音频设备，而是
+  枚举不到 `1209:ca57`），也没有 `USB host connected`；
+- 这是比 U0b/U0c 更严重的失败：**UAC-only 构建不可再部署**；
+- 已立即恢复安全 `52069a44…` 并安全弹出；日志
+  `private/runs/UAC-only-20261029/device-log-uac-only.txt`（`1d4091e8…`）。
+
+结论：不能再用“换一个 UAC 变体”继续试。下一步必须先离线审计
+`usb:ds` 的 `AppendConfigurationData`/配置状态与接口数/描述符长度约束，
+解释为什么：
+1. 复合 UVC+UAC 还能枚举设备，但 config descriptor 读失败；
+2. 纯 AC/AS 连设备都不出现。
+在这两个现象有同一个可解释机制前，不再上 UAC 变体。

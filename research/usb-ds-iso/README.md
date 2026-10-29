@@ -54,9 +54,10 @@
   EP=0x84`，但 macOS 只看到 USB 设备、没有音频设备/无 host-connected 记录。
   **U0b/U0c 均未通过**：macOS 内核日志显示 `GET_DESCRIPTOR(config)` 返回
   `0xE00002CD`（`kIOReturnNotReadable`），即设备/usb:ds 无法提供新的 UAC
-  复合配置；safe build 的 config 可读（185B/3 接口）。**UAC-only 隔离 NSP
-  已构建**（`7ffdf733…`，无 UVC，仅 AC/AS，配置约 97B），未部署；去 IAD 与
-  AS alt0-only 变体待其结果。UAC 默认仍禁用，10s PCM 未就绪。
+  复合配置；safe build 的 config 可读（185B/3 接口）。**UAC-only 隔离构建
+  实机后主机完全枚举不到 USB 设备**（`7ffdf733…`），已标 dangerous，卡恢复
+  `52069a44…`。停止 UAC 变体试验；下一步离线审计 usb:ds 的
+  `AppendConfigurationData`/配置状态。UAC 默认仍禁用，10s PCM 未就绪。
 - 修正版配套包/入口、alt1 安装探针仍待安排。
 
 ## 目录
