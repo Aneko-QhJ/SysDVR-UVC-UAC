@@ -215,7 +215,7 @@ endpoint/producer/count；consumer 与 status 的 sequence/state 足以定位轮
   另一轮 runtime patch。
 - 后续实机需要新的明确授权，且不应与 A23 长流或 per-URB 两阶段混在同一轮。
 
-## v5 全条目 trace（2026-10-29，离线构建）
+## v5 全条目 trace（2026-10-29，构建与一次实机）
 
 v4 只读最后一条，无法判断 `0x80030000` 是 index4 还是更早条目的地址。v5 把
 **8 个 URB 条目**全部写进 diagnostics：
@@ -234,6 +234,28 @@ v4 只读最后一条，无法判断 `0x80030000` 是 index4 还是更早条目�
   NSP `11d5e9eb2627c29204c041a5a83ff1ed5fbe29eb97c9b3100cee8d6875699c5b`，
   payload `049c47c4…`，IPS `275bd67c…`，目录
   `private/analysis/A23-urb-entries-v5-20261029-r2/`。
-- **未部署**。预期在 5 URB 后看到 5 个非零 size、5 个不同 IOVA；
-  若 index4 是 `0x80030000`，即可确认该地址属于第 5 个条目，而不是表错位；
-  若条目 IOVA 不是 5 个不同值或某个 size 为 0，则直接定位到对应条目。
+- **已部署一次**（结果见下）。原预期是 5 个非零 size、5 个不同 IOVA；
+  实测本轮只有 4 个 post，条目 IOVA 两页交替，说明复用至少 4 轮成立。
+
+### v5 实机结果（2026-10-29 17:39）
+
+- host：`transfers=1 packets=46 bad=1 zero=114`；
+- 设备日志：`runtime result=0 record=29`，
+  `posts=4 completes=3 errors=0 late=2 attempts=4`；
+- status 8 条目：
+
+| index | IOVA | size |
+| --- | --- | --- |
+| 0 | `0x80030000` | 3072 |
+| 1 | `0x80040000` | 3072 |
+| 2 | `0x80030000` | 3072 |
+| 3 | `0x80040000` | 3072 |
+| 4–7 | 0 | 0 |
+
+- 4 个 post 与 4 个非零条目一致；IOVA 只在两页之间交替，说明
+  **one-in-flight 下 unmap/复用至少连续 4 轮成立**，并没有用掉 5 页。
+- 本轮只到 4 post，没有第 5/6 次 map；因此既没有复现 serial640 的第 6 次
+  map 崩溃，也不支持“5 页全部泄漏”的简单模型。下一步需要更长的 host 窗口
+  （如 320 包）或 6 个 post，并在测试前用 `caffeinate` 固定主机不休眠。
+- 证据：`private/runs/A-urb-entries-v5-20261029/`（`device-log-v5.txt`
+  `4e98dc57…`、`status.jsonl`、`run.json`）；卡已恢复安全 `52069a44…`。

@@ -92,3 +92,20 @@ usb:ds 反编译确认：正常完成会经 `4c70 -> 40e0` 把块插回 free tre
 模型里的“unmap 缺失/地址错误”因此对应两条真实静默分支；仅凭
 producer/consumer/count 不能区分。见
 [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md)。
+
+## v5 修正：4 轮复用成立（2026-10-29）
+
+v5 全条目 trace 在一次 160 包单飞窗口里读到：设备 `posts=4 completes=3`，
+4 个非零 URB 条目只在 `0x80030000`/`0x80040000` 两页之间交替。也就是说
+one-in-flight 下 unmap/复用至少连续 4 轮成立，并没有用掉 5 页。
+
+因此本模型虽然仍能描述“5 页容量 + unmap 缺失 → 第 6 次失败”的边界，但不能
+把 serial640 的崩溃直接归因于“5 页全部泄漏”：v5 没有到第 5/6 次 map，且前
+4 轮明显复用了。下一步需要更长的 host 窗口（如 320 包）或 6 个 post，并在
+host 侧用 `caffeinate` 固定不休眠，才能区分：
+
+1. 第 5/6 次 map 才出现的 free-tree/记账问题；
+2. in-flight 时序导致 6th 在页未交还时提交；
+3. 主机侧中断/休眠造成的假象。
+
+见 [A23_URB_TRACE.md](A23_URB_TRACE.md) 的 v5 实机结果。
