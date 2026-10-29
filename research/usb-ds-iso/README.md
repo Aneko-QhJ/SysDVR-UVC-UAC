@@ -44,10 +44,12 @@
   **v5 全条目 trace 已实机两次**（`11d5e9eb…`）：160 包为 4 post；320 包 +
   `caffeinate` 为 **8 post、7 complete、无 fatal**，8 个条目仍只在
   `0x80030000`/`0x80040000` 两页间交替。one-in-flight 下第 6/7/8 次 map
-  成功，本 build 不存在固有 5 URB/5 页硬限制。serial640 的 10000 包复测
-  scope 已准备（未授权）：[A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md)。
-  见 [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
-- 下一步是修正版配套包/入口，以及 alt1 安装探针/标准宿主验证。
+  成功，本 build 不存在固有 5 URB/5 页硬限制。**serial640 10s 复测已通过**：
+  host 3392 包、bad=0，设备 `posts=214 completes=213 errors=0`，无 usb fatal；
+  旧 5 URB 崩溃未复现。见
+  [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
+  [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
+- 下一步是标准宿主下的 10s 连续 PCM，以及修正版配套包/入口、alt1 安装探针。
 
 ## 目录
 

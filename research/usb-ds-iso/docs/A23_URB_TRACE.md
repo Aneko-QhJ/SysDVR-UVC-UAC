@@ -277,3 +277,16 @@ in-flight/主机状态或不同构建来解释，不能归因于一个固有的 
   `a67ebf29…`、`status.jsonl`、`run.json`）；卡已恢复安全 `52069a44…`。
 - 下一步：更长窗口/标准 UAC 宿主前，先确认 `caffeinate` 和 one-in-flight 是否
   同样适用于 640 包，并复测 serial640 的崩溃条件。
+
+### 10000 包 / 10s 结果（2026-10-29 18:01）
+
+同 v5 NSP、640 缓冲、`posts == completes` 单飞，host 加 `caffeinate`：
+
+- host：`packets=3392 bad=0 zero=6608`；
+- 设备：`posts=214 completes=213 errors=0 late=212 attempts=214`；
+- **无 usb fatal**；8 条目仍只在两页间交替。
+
+原始 serial640 的 5 URB 崩溃没有复现。旧崩溃的首要解释转为 host 休眠/USB
+调度或当时运行状态，而不是 A23 的固有 5 页墙。证据：
+`private/runs/A-serial640-v5-retest-20261029/`（`device-log-serial640.txt`
+`8cf76657…`）；卡已恢复安全 `52069a44…`。

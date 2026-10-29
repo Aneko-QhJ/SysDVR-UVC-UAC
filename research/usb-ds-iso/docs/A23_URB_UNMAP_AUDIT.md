@@ -144,3 +144,11 @@ runtime patch 的下一步，不应和现有 A23 注入混在同一轮变量里�
 - 相关专题：[A23_URB_TRACE.md](A23_URB_TRACE.md)、
   [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md)、
   [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md)。
+
+## 10s 复测补充（2026-10-29 18:01）
+
+同 v5 build、640 缓冲、单飞、`caffeinate` 下跑满 10000 包：host 3392 有效包、
+bad=0；设备 `posts=214 completes=213 errors=0`，无 usb fatal；8 条目仍只在
+两页间交替。unmap/复用连续 214 轮成立，原始 serial640 的 5 URB 崩溃未复现。
+本轮不再支持“`4c70` 永久 miss/ free tree 必然泄漏”作为旧崩溃解释；优先查
+当时的 host 休眠/USB 调度或运行状态。

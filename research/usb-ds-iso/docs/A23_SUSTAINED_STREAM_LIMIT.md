@@ -1,10 +1,10 @@
 # A23 持续流上限（2026-10-28）
 
 > 2026-10-29 更新：v5 全条目 trace 在 one-in-flight + `caffeinate` 下做到
-> `posts=8 completes=7 errors=0`、无 usb fatal，且只复用两页 IOVA。本文下方
-> “约 5 个 URB 后崩”是 serial640 当时的结果，不再代表当前 build 的硬限制；
-> 需要按当时的 in-flight/主机状态重新解释。见
-> [A23_URB_TRACE.md](A23_URB_TRACE.md) 的 v5 320 包结果。
+> `posts=214 completes=213 errors=0`、无 usb fatal（10000 包 / 10s），且只
+> 复用两页 IOVA。本文下方“约 5 个 URB 后崩”是 serial640 当时的结果，不再
+> 代表当前 build 的硬限制；旧崩溃未复现，优先按当时的 in-flight/主机状态
+> 重新解释。见 [A23_URB_TRACE.md](A23_URB_TRACE.md) 的 10000 包结果。
 
 ## 实测阶梯
 

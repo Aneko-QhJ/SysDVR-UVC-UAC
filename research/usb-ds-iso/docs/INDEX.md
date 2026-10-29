@@ -18,13 +18,13 @@
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
-| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 2K | 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
+| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 3K | 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-29 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
-| [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 5K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
-| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 12K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
-| [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 6K | serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
-| [CURRENT.md](CURRENT.md) | 2026-10-29 | 16K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 6K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
+| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 13K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
+| [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 7K | serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
+| [CURRENT.md](CURRENT.md) | 2026-10-29 | 17K | 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [A23_BUFFER_RECYCLE.md](A23_BUFFER_RECYCLE.md) | 2026-10-28 | 2K | A23 事件 terminal： |
 | [A23_BUSY_MAP_LEAK.md](A23_BUSY_MAP_LEAK.md) | 2026-10-28 | 3K | 从反编译和反汇编看，Normal producer 的顺序是： |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-28 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
@@ -196,7 +196,7 @@
 | [A23_SEQUENCE_READINESS.md](A23_SEQUENCE_READINESS.md) | 2026-10-17 | 5K | 序号49的一次流程准备（2026-10-17） — 后续状态：序号49..64已在一次授权测试中永久保留，主机于SDK初始化失败且未提交ISO。59原件已回收并弹出，但boot2.flag缺失，部署核验未通过；见[首次实测及回收](A23_SEQUENCE_FIRST_… |
 | [A23_SEQUENCE_RECEIVER.md](A23_SEQUENCE_RECEIVER.md) | 2026-10-17 | 6K | 历史范围绑定的序号主机候选（2026-10-17） — 后续更新：正式一次流程已完成离线接入和验证，见[序号49流程准备](A23_SEQUENCE_READINESS.md)。本页保留候选构建阶段的历史状态；49..64仍未正式保留，本轮无实机测试。 |
 | [A23_SEQUENCE_WITNESS.md](A23_SEQUENCE_WITNESS.md) | 2026-10-17 | 6K | 跨端会话关联与起始序号可行性（2026-10-17） — 离线复核确认：当前SETUP顺序和状态比较不能区分两次成功运行的设备文件。现有设备协议已把主机指定的16位起始序号传到STATUS、trace和16个ISO包；可以优先准备一个绑定不同起始序号的新主机候选，以提高已知旧… |
-| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 2K | A23 serial640 复测方案（2026-10-29 准备） — 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
+| [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 3K | A23 serial640 复测方案（2026-10-29 准备） — 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
 | [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | A23 one-in-flight 串行基线（2026-10-28） — `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
 | [A23_SERVICE_OBSERVATION_OFFLINE.md](A23_SERVICE_OBSERVATION_OFFLINE.md) | 2026-10-25 | 7K | 末轮观察的队列服务证据候选（2026-10-25） — 继续离线审查[417..464实测](A23_LIVE126_INTEREPOCH_FIRST_RESULT.md)，结论是下一项应补末轮观察证据，而不是重复相同三轮或继续缩短ISO空槽。本轮核对旧证据/可变票据后，新… |
 | [A23_SESSION_ARM_CANDIDATE.md](A23_SESSION_ARM_CANDIDATE.md) | 2026-10-14 | 8K | 启动关联与独立保存ARM候选（2026-10-14） — 在上一轮启动ARM候选的新副本中接入REL1：VideoThread在Ep0CandidateStart成功后发布既有writer/boot/session nonce，main在诊断保存返回后发布绑定该份DIA1输入… |
@@ -237,9 +237,9 @@
 | [A23_TWO_EPOCH_RECEIVER.md](A23_TWO_EPOCH_RECEIVER.md) | 2026-10-18 | 7K | 有限两轮接收协调器与分轮归档（2026-10-18） — 后续：[独立两轮SDK资源层](A23_PAIRED_SDK_RESOURCES.md)已编译并以假operations接入本页离线协调器；真实SDK资源仍被本页入口拒绝，SDK执行驱动未接入。以下保留原验证结果。 |
 | [A23_TWO_EPOCH_SDK_DRIVER.md](A23_TWO_EPOCH_SDK_DRIVER.md) | 2026-10-19 | 7K | 两轮SDK执行驱动与联合回执（2026-10-18） — 后续：[独立等待入口、文件构建绑定及最终检查点](A23_TWO_EPOCH_SDK_ENTRY.md)已完成离线验证；生产许可与现场执行模式未实现。以下保留驱动阶段结果。 |
 | [A23_TWO_EPOCH_SDK_ENTRY.md](A23_TWO_EPOCH_SDK_ENTRY.md) | 2026-10-19 | 8K | 两轮SDK等待入口、构建绑定与最终检查点（2026-10-19） — 后续：[最新69基线与32序号一次流程模型](A23_TWO_EPOCH_BASELINE69_WORKFLOW.md)已完成只读采用和隔离文件验证；生产共享账本及permit尚未接入。以下保留入口阶段结果。 |
-| [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 5K | A23 URB/IOVA 记账模型（2026-10-29） — serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
-| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 12K | A23 endpoint 记账 trace（2026-10-29） — 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
-| [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 6K | A23 完成路径的 unmap 静态审计（2026-10-29） — serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
+| [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 6K | A23 URB/IOVA 记账模型（2026-10-29） — serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
+| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 13K | A23 endpoint 记账 trace（2026-10-29） — 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
+| [A23_URB_UNMAP_AUDIT.md](A23_URB_UNMAP_AUDIT.md) | 2026-10-29 | 7K | A23 完成路径的 unmap 静态审计（2026-10-29） — serial5 实机在 5 个 URB 后读到 endpoint `producer=5`、`consumer=5`、`count=0`， |
 | [A23_V3_RUNTIME.md](A23_V3_RUNTIME.md) | 2026-10-15 | 8K | A23 V3线程运行路径、日志与身份核对（2026-10-15） — 本轮审查封存V3 `window-30s`最终ELF、生成源码及已安装SDK头文件。确认工作线程 |
 | [A23_V3_STACK_PROFILES.md](A23_V3_STACK_PROFILES.md) | 2026-10-15 | 8K | A23 V3实际日志、文件名与等待路径栈剖面（2026-10-15） — 已对新接收器绑定的同一份V3 window-30s ELF重新核验实际日志入口及相关SDK指令。 |
 | [A23_VERSIONED_CLOCK_CANDIDATE.md](A23_VERSIONED_CLOCK_CANDIDATE.md) | 2026-10-20 | 5K | A23 参与式版本时钟快照候选（2026-10-20） — 后续：[版本快照接入主机端隔离模型](A23_VERSIONED_DRIVER_MODEL.md)完成59场景与61测试；C候选未改，模型引入store owner与提交票据，生产集成仍false。以下保留独立C阶段。 |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-29 | 16K | 当前状态（2026-10-29 17:55，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
+| [CURRENT.md](CURRENT.md) | 2026-10-29 | 17K | 当前状态（2026-10-29 18:05，Asia/Shanghai） — 视频可用；音频不可用。最近一次短包实机主机侧通过、设备侧保存失败；离线路径修正版已存在， |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-09 | 4K | 实验分支目录与本地产物 — `research/usb-ds-iso/README.md`是唯一研究入口。短期状态写入`docs/STATUS.md`；详细证据按实验 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |

@@ -50,3 +50,21 @@ PYTHONPATH=research/usb-ds-iso/tools python3 research/usb-ds-iso/tools/decode_a2
 - 一次 boot、一个 10s 窗口、一次 status；失败不重试、不补轮。
 - 设备可能再次 usb fatal；失败后只读卡，不取消/不重投。
 - 只准备方案，尚未授权部署或开机。
+
+## 实机结果（2026-10-29 18:01）
+
+- 主机：`caffeinate -dimsu iso-stream --transfers 1 --packets 10000` →
+  `transfers=1 packets=3392 bad=0 zero=6608`；
+- 设备：`ISO runtime patch result=0 record=29`，
+  `posts=214 completes=213 errors=0 late=212 attempts=214`；
+- status：`config_length=185`、magic ISO9，8 条目仍只在
+  `0x80030000`/`0x80040000` 两页间交替；
+- **没有 usb fatal，原始 serial640 的 5 URB 崩溃没有复现**。
+
+第一次 preflight 在 USB 枚举后过早执行，`iso-probe` 没拿到 session/status；
+同一 boot 内等待设备就绪后重做 preflight（`config_length=185`）才发 stream。
+这不消耗数据路径，但说明 host 等待脚本需要把“枚举出现”与“接口就绪”分开。
+
+结论：在 `caffeinate` + 明确 one-in-flight + 640 缓冲下，同一类构建可以稳定
+跑满 10s 窗口的 214 个 post；旧 serial640 崩溃更可能是主机休眠/USB 调度或
+当时运行状态，而不是 A23 的固有 5 页墙。下一步才是 10s 连续 PCM 与标准 UAC。

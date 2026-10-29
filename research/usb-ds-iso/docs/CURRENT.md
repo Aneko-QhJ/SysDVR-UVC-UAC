@@ -1,4 +1,4 @@
-# 当前状态（2026-10-29 17:55，Asia/Shanghai）
+# 当前状态（2026-10-29 18:05，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -168,9 +168,14 @@
     `posts=8 completes=7 errors=0 late=6`，**无 usb fatal**；8 个条目全部非零，
     仍只在 `0x80030000`/`0x80040000` 两页间交替。
   **one-in-flight 下第 6/7/8 次 map 均成功，两页连续复用**；本 build 不存在
-  固有“5 URB/5 页”硬限制。serial640 的 5 URB 崩溃需要用当时的 in-flight/
-  主机状态或构建差异重新解释。下一步用更长窗口或标准宿主复测该条件。
-  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+  固有“5 URB/5 页”硬限制。见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。
+- **serial640 10s 复测通过（10-29 18:01）**：同 v5 build、640 缓冲、
+  `posts == completes` 单飞，host `caffeinate -dimsu iso-stream --transfers 1
+  --packets 10000` → `packets=3392 bad=0 zero=6608`；设备
+  `posts=214 completes=213 errors=0 late=212 attempts=214`，**无 usb fatal**；
+  8 条目仍两页交替。**原始 serial640 的 5 URB 崩溃未复现**；主机休眠/USB
+  调度或当时运行状态成为首要解释，不再是固有 5 页墙。见
+  [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。
 - **serial640 复测已准备（10-29，未授权）**：候选仍是 v5 `11d5e9eb…`，
   host 改回 10000 包并加 `caffeinate`，保持 640 缓冲 + `posts == completes`
   单飞；只准备 scope，未部署/未开机。判别：稳定 ~200 post → 旧崩不是固有
@@ -202,10 +207,9 @@
 
 ## 开放问题（按优先级）
 
-1. **A23 持续流复测**：v5 320 包已到 8 post、两页复用、无 fatal；先在
-   `caffeinate` + 明确 one-in-flight 下复测 serial640 的旧条件（640/10000 包），
-   解释当时的 5 URB 崩溃，再定 10s 连续流是否可达。scope 已准备：
-   [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md)。需要新的明确授权。
+1. **A23 10s 连续流**：serial640 复测已通过（214 post/213 complete/0 error，
+   无 fatal）；下一步在标准宿主（Linux `snd-usb-audio`）接连续 PCM，验证
+   跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：描述符/控制状态机离线已完成；alt1 bulk 与 ISO 一次性 burst 都已
    打通；连续 PCM 的 3-URB 方案已被硬件否决（usb assert）。剩下单 URB 长传输/低 lead、
@@ -218,12 +222,11 @@
 
 ## 下一步（未授权）
 
-- 离线：为 A23 持续流复测准备明确的 one-in-flight 证据（源码/构建/日志三处），
-  做 640 包 host 脚本 + `caffeinate` scope；同时复核 serial640 当时的构建和
-  in-flight 数，先解释旧崩溃再谈 10s。
-- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计；alt1 安装探针或读 `usb:ds`
-  descriptor walk（Ghidra 工程已在 `private/analysis/A23-iova-free-list-audit-20261029-r1/`）。
-- 实机：另定范围与授权；A23 长流、alt1 探针、路径修正版不要混在同一轮变量里。
+- 离线：准备标准宿主（Linux `snd-usb-audio`）的 10s PCM 入口、跨块样本连续性
+  和时钟/反馈检查；A23 诊断 producer 已证明 10s 单飞可跑，但还不是连续 PCM。
+- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计；读 `usb:ds` descriptor
+  walk 可用 `private/analysis/A23-iova-free-list-audit-20261029-r1/` 的 Ghidra 工程。
+- 实机：另定范围与授权；标准 UAC、alt1 探针、路径修正版不要混在同一轮变量里。
 
 ## 不证明
 
