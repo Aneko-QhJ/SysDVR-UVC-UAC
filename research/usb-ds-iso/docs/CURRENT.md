@@ -139,8 +139,9 @@
   `--report` 模式已加；`--report` 的 GET_REPORT 是 PIPE，A23 trace 走 NSP status。
   **v3 实机读到了 3 URB 计数**：magic `0x314f5349`、endpoint `0x172f79560`、
   producer=3、consumer=3、count=0——3 个 URB 的 complete/consumer/count 正常。
-  下一步：serial one-in-flight 640（host 160 包=5 URB 后停）读 5 的计数，区分
-  “count 没递减”和“count 正常但 IOVA 没复用”。
+  **serial5 trace NSP 已构建**（`ef40adb9…`）：safe 源码 + 640 buffers + one-in-flight，
+  host 160 包（5 URB）后 alt0，再读 status。未部署。
+  见 [A23_URB_TRACE.md](A23_URB_TRACE.md)。下一步：一次实机读 5 的计数。
 - **两阶段 patch 已实现**：boot base A23；START 时 `_applyIsoStreamPatch()` 应用
   per-URB delta（injection 684B + report branch）。候选
   `iso-stream-twostage3.nsp`（`e33b7237…`，256 包）和

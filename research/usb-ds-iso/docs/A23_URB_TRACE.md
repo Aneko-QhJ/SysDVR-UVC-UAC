@@ -108,3 +108,24 @@ tools/decode_a23_trace.py <iso-probe.log>
   - count=0/consumer=5 → 表释放了，IOVA/free-list 没复用；
   - count=5/consumer=5 → count 没递减；
   - producer/consumer 异常 → 下标漂移。
+
+## serial5 trace NSP（2026-10-29）
+
+- `iso-stream-trace-serial5.nsp`
+  SHA256 `ef40adb93b4c282036958546787b00bc2b22a373ae969931ede774e83d6b9f58`；
+- safe 77e7480 源码 + `ISO_STREAM_BUFFERS=640` + one-in-flight guard
+  （`posts != completes` 时不下发）；
+- 归档 `private/deployments/20261027-alt1-probe/builds/`，未部署；
+- host：`iso-stream --transfers 1 --packets 160`（5 URB）；然后
+  `iso-probe --status --log serial5.jsonl`，`tools/decode_a23_trace.py`。
+
+预期与分支：
+
+| 结果 | 含义 | 处理 |
+| --- | --- | --- |
+| producer=5, consumer=5, count=0 | 表释放，IOVA 没复用 | 查 `FUN_00004c70`/domain free-list/`[URB+0x10]` |
+| producer=5, consumer=5, count=5 | count 没递减 | 修 A23 complete/URB 表 |
+| producer/consumer 漂移 | 下标/事件错位 | 回 completion/URB ID |
+
+注意：one-in-flight 下第 6 个应晚于第 5 个完成，host 160 包后立刻 alt0；若实测已
+崩，说明 6th 仍被下发，需要先停线程再读。
