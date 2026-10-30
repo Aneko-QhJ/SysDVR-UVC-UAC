@@ -1,14 +1,13 @@
-# 当前状态（2026-10-30 20:35，Asia/Shanghai）
+# 当前状态（2026-10-31 00:55，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 20:26–20:29 的 U2 no-report 诊断回合（一次 boot）：
-> 预检通过、`post rc=0x0`，**首次收到带 3072B 的 completion**（`rc=0x0
-> requested=3072 transferred=3072`，report 修复生效）；随后第二次 SET_CUR 数据
-> 阶段 `0xea01`、`EP0 write 0xf601`，usb `User Break`（同一 map 断言签名）。
+> 最后一次实机是 2026-10-31 00:49–00:51 的 U2 queue-object 诊断回合（一次 boot）：
+> 只发 1 次 SET_CUR，设备未崩溃；但 precheck 读到 `installed=0 table=0x0`，
+> 端点尚未安装，completion 为空 `0x748c/0/0`；host `GET_CUR=48000`、failures=0。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 20:35）
+## 当前进度（2026-10-31 00:55）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -18,8 +17,8 @@
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
 | U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
 | U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
-| U2 queue-object 诊断 | 已构建（`56b7f8ee…`，89714B），未部署 | `private/analysis/UAC-u2-noreport2-20261030` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-noreport` |
+| U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-noreport2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -56,6 +55,20 @@
 - 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
+## 最近一次 U2 queue-object 诊断实机（2026-10-31 00:49–00:51，无崩溃但未触发数据路径）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `56b7f8ee…`（89714B，29 条，cave 592B）一次 boot；`record=28`（29 条的最后一个索引） |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x24ef37d000`，但 **`installed=0 table=0x0`** |
+| post | `UAC U2 post begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| completion | `rc=0x748c requested=0 transferred=0`（空报告） |
+| queue | `ep addr=0x24ef2fc300 idx=262336`（仍是 endpoint 对象）；`obj ptr rd=0x0 value=0x0`（table pointer 为零） |
+| 宿主 | 只发 1 次 SET_CUR；`GET_INTERFACE=1`；`GET_CUR after SET=48000`；`failures=0`；无断连 |
+| 判定 | **安全但非数据路径通过**：端点尚未安装，driver 请求/完成路径没有被真正走到；precheck 只看 word/int/speed/ring，缺少 `installed`/`table` 门 |
+| 证据 | `private/runs/UAC-u2-noreport2-20261031`（日志 `921aa7c6…`）、`private/card-cycles/20261031-u2-noreport2` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 no-report 诊断实机（2026-10-30 20:26–20:29，completion 后崩溃）
 
@@ -188,8 +201,10 @@ completion（空报告）后仍因控制路径断言**。no-report 诊断版实�
 completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但随后
 第二次 SET_CUR/alt 切换触发 usb 崩溃（同一 map 断言）。因此 U2 只验证了
 **一次 3072B completion**，没有 host 16/16 计数，PCM 未测；控制/alt 路径仍
-不稳定。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。queue-object 修正版 `56b7f8ee…`
-已构建、未部署。卡已恢复安全 `52069a44…` 并安全弹出。
+不稳定。queue-object 修正版 `56b7f8ee…` 实机一次：只发 1 次 SET_CUR、未崩溃，
+但 precheck 读到 `installed=0 table=0`，端点未安装，completion 为空
+（`0x748c/0/0`），没有新增数据路径证据；precheck 需要补 `installed`/`table`
+门。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -279,6 +294,10 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U2 queue-object 诊断回合由用户“授权，部署”明确授权（2026-10-31 00:44），一次 boot；
+  只发 1 次 SET_CUR；设备未崩溃，但 `installed=0 table=0`，completion 为空；
+  读卡后恢复 `52069a44…` 并安全弹出，无重试。证据
+  `private/runs/UAC-u2-noreport2-20261031`、`private/card-cycles/20261031-u2-noreport2`。
 - U2 no-report 诊断回合由用户“授权，部署”明确授权（2026-10-30 20:24），一次 boot；
   只发 2 次 SET_CUR；首次 completion `rc=0 requested=3072 transferred=3072` 后
   usb 崩溃；读卡取回日志/崩溃报告后恢复 `52069a44…` 并安全弹出，无重试。
@@ -579,9 +598,12 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
   对象，不是 completion 的 table entry）。该 build 标 dangerous，不再部署。
   下一步离线：把 queue 读取改到 `0x2a980` 用的
   `[manager+0x14c8+index*16]` 对象；再用一次 SET_CUR 分离 completion 与控制/
-  alt 路径。该修正版已构建：`56b7f8ee…`（89714B，同一 29 条 payload），
-  `_uacLogQueue` 同时记录 `ep`（0xFC300）和 `obj`（0xDB608 指针）；未部署、
-  未授权实机。
+  alt 路径。修正版 `56b7f8ee…`（89714B）已实机一次：只发 1 次 SET_CUR，设备
+  未崩溃；但 `installed=0 table=0`，端点未安装，completion 为空、queue obj
+  指针为零——数据路径没有被走到。结论：precheck 必须增加
+  `installed != 0 && table != 0` 门，等端点安装后再 post。
+  下一步离线：构建带该门的 v3，并在有游戏/稳定音频流时用“一次 SET_CUR”
+  复测；如果装好端点后一次仍崩，再回到 completion/unmap。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

@@ -43,8 +43,9 @@
   先完成 report/unmap/一次性 post 的设计与离线验证；设计草案见
   [docs/UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)
   （实机一次：completion 3072 通过，随后控制/alt 路径崩溃；dangerous，不再部署）；
-  queue-object 修正版 `56b7f8ee…` 已构建、未部署。路径修正版已打包并绑定新
-  recipe 入口、通过包/入口审计，短包复测同样需要新授权。
+  queue-object 修正版 `56b7f8ee…` 实机一次：1 次 SET_CUR 未崩溃，但端点未安装
+  （`installed=0 table=0`）、completion 为空；需加 installed/table 门。路径修正版
+  已打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

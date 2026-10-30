@@ -237,9 +237,11 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   安全弹出，无重试。
 - 证据：`private/runs/UAC-u2-noreport-20261030`（日志 `748fa0f2…`、崩溃
   `489fa94e…`）、`private/card-cycles/20261030-u2-noreport`。
-- 修正版（未部署）：`56b7f8ee…`（89714B，同一 29 条 payload）同时记录
-  `ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）；下一轮只发一次
-  SET_CUR，分离 completion 与控制/alt 路径。
+- 修正版（实机一次，2026-10-31 00:51）：`56b7f8ee…`（89714B，同一 29 条
+  payload）同时记录 `ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）。
+  只发 1 次 SET_CUR，设备未崩溃；但 `installed=0 table=0`，端点未安装，
+  completion 为空（`0x748c/0/0`），数据路径未走到。precheck 需要增加
+  `installed != 0 && table != 0` 门。
 
 ## 风险与边界
 

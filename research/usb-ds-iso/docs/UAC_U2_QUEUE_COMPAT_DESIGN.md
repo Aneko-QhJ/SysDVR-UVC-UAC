@@ -253,10 +253,11 @@ LOG("UAC U2 post begin seq=%u\n", seq);
 - **实机一次（2026-10-30 20:29）**：`complete rc=0 requested=3072
   transferred=3072`，report 修复成立；随后第二次 SET_CUR/alt 路径 usb 崩溃
   （同一 map 断言）。build 标 dangerous，已恢复 `52069a44…`。
-- **queue-object 修正版（已构建，未部署）**：`56b7f8ee…`（89714B，同一
-  29 条 payload）；`_uacLogQueue` 同时记录 `ep`（0xFC300）和 `obj`
-  （`0xDB608` 的 table entry），用于区分 endpoint 对象与 completion 队列。
-  下一轮只发 **1 次** SET_CUR，不触发第二次/alt 切换。
+- **queue-object 修正版（已实机一次，2026-10-31 00:51）**：`56b7f8ee…`
+  （89714B，同一 29 条 payload）；`_uacLogQueue` 同时记录 `ep`（0xFC300）和
+  `obj`（`0xDB608` 的 table entry）。只发 1 次 SET_CUR，设备未崩溃；但
+  `installed=0 table=0`，端点未安装，completion 为空、obj 指针为零——数据
+  路径没有被走到。下一步需要把 `installed != 0 && table != 0` 加进 precheck。
 
 ## 7. 离线验证
 
@@ -337,9 +338,9 @@ cave 里手工拼 report。
 - `make -C research/usb-ds-iso check` 绿；
 - 不访问 USB/SD/硬件。
 
-## 8. 实机验证（2026-10-30 20:26–20:29，已执行一次）
+## 8. 实机验证（两次：2026-10-30 20:29 与 2026-10-31 00:51）
 
-本轮在用户明确“授权，部署”下执行一次：
+两次均在用户明确“授权，部署”下执行一次。第一次（no-report）：
 
 | 项 | 结果 |
 | --- | --- |
@@ -363,34 +364,49 @@ cave 里手工拼 report。
 - 停止条件：任何 fatal / 断连 / 超时；读卡后恢复 `52069a44…`，不重试；
 - 不测 PCM、不混短包复测。
 
-下一版（queue-object 修正版，未部署）：只发 1 次 SET_CUR，日志同时读
-`ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）；如果 `obj` 读数仍失败，
-说明 table pointer 不是可直接读的用户 VA，需要改从 cave/mailbox 侧记录。
+第二次（queue-object 修正版，2026-10-31 00:49–00:51）：
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `56b7f8ee…`（89714B，29 条，cave 592B） |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3`，但 **`installed=0 table=0x0`** |
+| post | `begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| complete | `rc=0x748c requested=0 transferred=0`（空） |
+| queue | `ep idx=262336`（仍是 endpoint 对象）；`obj rd=0x0 value=0x0` |
+| 宿主 | 只发 1 次 SET_CUR；`GET_CUR=48000`；`failures=0`；无断连 |
+| 判定 | **安全但未触发数据路径**：端点未安装，driver 请求/完成路径没走到；precheck 缺 `installed`/`table` 门 |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+下一步（v3，未构建）：precheck 增加 `installed != 0 && table != 0`，在
+游戏/稳定音频流下等端点安装后只发 1 次 SET_CUR；如果装好后一次仍崩，
+再回到 completion/unmap。
 
 ## 9. 开放问题
 
-1. **第二次 map 的来源**：H1、H2 还是 H3？本轮只有 1 次 post，H1（app
-   第二次 post）未出现；崩溃在 completion 之后，H2/H3 更可疑。queue 读取
-   用错了对象（`0xFC300+4` 不是 completion table entry），需改到
-   `0x2a980` 的 `[manager+0x14c8+index*16]` 对象再测。
-2. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
+1. **第二次 map 的来源**：H1、H2 还是 H3？no-report 轮只有 1 次 post，
+   崩溃在 completion 之后，H2/H3 更可疑；queue-object 轮只发 1 次且端点未
+   安装，没有新增数据路径证据。
+2. **端点安装门**：为什么第一次 SET_CUR 时 `installed=0 table=0`？需要
+   `installed != 0 && table != 0` 才 post，并在游戏/稳定音频流下复测。
+3. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
    同样静默泄漏。若 miss，先修 unmap 参数，再谈 completion。
-3. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
+4. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
    如果只写 status 不写 count，app 仍会解析失败。
-4. **cave 空间**：删除 `iso_report` 后是否真的够；若不够，优先删诊断，
+5. **cave 空间**：删除 `iso_report` 后是否真的够；若不够，优先删诊断，
    不要动 TRB 构造。
-5. **A23 是否同源**：如果 H2 成立，A23 的 buffer 复用崩溃可能是同一
+6. **A23 是否同源**：如果 H2 成立，A23 的 buffer 复用崩溃可能是同一
    unmap 问题；可用同一 Unicorn 模型回归，不额外上硬件。
-6. **拒绝路径**：返回 0x1908c 是否一定递归？需要离线重放
+7. **拒绝路径**：返回 0x1908c 是否一定递归？需要离线重放
    `0x302c0 -> 0x2a980 -> 0x2c690` 的完整链，而不是只看单个函数。
 
 ## 10. 决策
 
 - **采用 A**：§7.1/§7.2/§7.3 已完成；no-report 诊断 payload `4fc0247f…`
-  已实机一次：report 修复成立（3072/3072），但 completion 后控制/alt 路径
-  仍崩溃，build 标 dangerous、不再部署。queue-object 修正版 `56b7f8ee…`
-  已构建、未部署；下一步用它只发“一次 SET_CUR”分离 completion 与控制/alt
-  路径；拒绝路径仍待单独解决。
+  no-report 已实机一次：report 修复成立（3072/3072），但 completion 后
+  控制/alt 路径仍崩溃，build 标 dangerous、不再部署。queue-object 修正版
+  `56b7f8ee…` 实机一次：1 SET_CUR 未崩，但端点未安装（installed=0/table=0），
+  空报告，数据路径未走到。下一步构建带 `installed/table` 门的 v3，再测一次
+  SET_CUR；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。
