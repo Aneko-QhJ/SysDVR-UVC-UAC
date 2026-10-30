@@ -12,8 +12,9 @@
   - 8 条 alt0-filter NOP（安装 alt1 端点）。
   - header：`private/analysis/UAC-u2-producer-20261030/uac_u2_payload.h`
   - NSP：`private/analysis/UAC-u2-producer-20261030/build/outputs/exefs.nsp`
-    88669 B，SHA256 `db97b6e7bd9660a8833dcc1c91777c7e22632ce4034b3599ebd6c37999dcc302`
-    （实机用的上一版是 `703e7795…`/88676B；本版只加 `UAC U2 skip` 日志）
+    89090 B，SHA256 `b4252719fd5c66135cc29ed01caf6df9625033b31c34631bad26c079ee8957e5`
+    （实机用过 `703e7795…`/88676B 与 `db97b6e7…`/88669B；本版加 post 前
+    endpoint 状态 precheck，见下节）
   - defines：`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`
   - 生成工具：[tools/build_uac_u2_producer.py](../tools/build_uac_u2_producer.py)；组装源
     [patches/iso_burst_uac84.S](../patches/iso_burst_uac84.S)。`--check` 可在不组装的情况下
@@ -130,8 +131,16 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
   环非空/长度）与 EP `0x84` 的 endpoint 对象是否安装都还未确定。读卡后恢复
   `52069a44…` 并安全弹出，无重试。
 - 下一次尝试前必须先离线解决：
-  1. 保留 dmnt 调试句柄，在 post 前读 endpoint 对象 `+2` 的字并记录；不等于
-     `0x00C00584`（或环指针不满足）就不 post，避免再进致命拒绝路径。
-  2. 用 Unicorn 回放补上“被拒绝时的驱动错误路径”模型，确认拒绝后是否必然递归。
+  1. **已完成**：post 前用 dmnt 短暂 attach 读 endpoint 对象（`base+0xFC300`）
+     的端点字/interval/环指针与 HS 速度；不满足 `0x00C00584`/4/3、环非空或读
+     失败就只记 `UAC U2 post skipped`、不 post。对象地址由 `usb.elf` 推导，
+     与崩溃报告 `x21=base+0xDA000` 一致；`tests/test_uac_u2_precheck.py` 从
+     ELF 指令重新算出 `0xFC300`。
+  2. **已确认（静态）**：`reject_original`（`0x30394/0x30398`）返回 `0x1908c`，
+     提交调用方（`0x30290` 的 `cbz w0`、`0x302c0` 的 `bl 0x2a980`）对任何非零
+     结果都会调用 `complete_original`——即拒绝必然进入崩溃报告里那条递归路径。
+     `tests/test_uac_u2_precheck.py::test_reject_path_is_the_fatal_one` 从 ELF
+     指令解码确认。递归内部（`complete_original → 0x2c690 → vtable`）仍未知，
+     但只要不拒绝就不再进入，precheck 是当前唯一的安全阀。
   3. 证据：`private/runs/UAC-u2-burst2-20261030`（`run.json`、`device-log-u2b.txt`
      `b457421d…`、`crash-usb-0100000000000006.log` `ead11166…`、`erpt-a0311816.txt`）。

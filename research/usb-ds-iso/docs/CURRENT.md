@@ -25,8 +25,13 @@
   只有 GNU build-id note 随源码行号变化。
 - U2 producer payload：30 条编辑 = 684B cave（`0x68d54..0x69000`，正好填满）
   + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP。
-  实机用的 NSP 是 `703e7795…`（88676B）；实机后重建为 `db97b6e7…`（88669B）：
-  `_postUacBurst` 在 `alt != 1` 时记 `UAC U2 skip alt=… ep=…`，其余逻辑不变。
+  实机用过 `703e7795…`（88676B）和 `db97b6e7…`（88669B，skip 日志）。
+  **当前离线产物 `b4252719…`（89090B）**：在 post 前用 dmnt 短暂 attach 读
+  EP `0x84` 对象（`base+0xFC300`）的端点字/interval/环指针和 HS 速度，
+  不满足 `0x00C00584`/4/3、环非空或读失败就只记 `UAC U2 post skipped`、不 post，
+  避免再进 `0x1908c` 拒绝 → 驱动错误完成递归的崩溃路径。对象地址由
+  `usb.elf` 的 `0x2854/0x2900/0xb44/0x302fc/0x30300/0x30304` 推导，并与崩溃
+  报告的 `x21=base+0xDA000` 一致。
   `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；编译出的 `uacU2Edits`
   30 条与 manifest 一致。
 - **端点是 `0x00C00584`，不是 `0x00C00184`**：U0d 的 `usb-config.txt` 已从设备
@@ -453,9 +458,10 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 离线（UAC 下一步）：解释 usb 崩溃——逐项核对 cave 的 6 个拒绝条件；设计
-  post 前的 endpoint 字读取（保留 dmnt 句柄），不等于 `0x00C00584` 或环非空时
-  不 post；必要时让 cave 把失败检查 ID 写进 mailbox。`db97b6e7…` 不再部署。
+- 离线（UAC 下一步）：precheck 构建 `b4252719…` 已就绪；下一步可选：
+  (a) 用 Unicorn 回放“拒绝后驱动错误完成”路径，确认是否只能靠 precheck 规避；
+  (b) 再授权一次实机，读 `UAC U2 precheck` 行判断端点是否安装/环是否就绪。
+  在 precheck 之前不得再部署 post 版构建；`db97b6e7…` 永久 dangerous。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

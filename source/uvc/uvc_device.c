@@ -75,6 +75,11 @@ static int _isoPatchWrite(void *context, uint32_t offset, void *bytes, size_t si
 
 #if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH) || \
     defined(UAC_U2_PATCH)
+#ifdef UAC_U2_PATCH
+/* usb:ds target recorded by _applyUacPatch; used by the U2 pre-check. */
+static u64 g_uacUsbPid;
+static u64 g_uacUsbBase;
+#endif
 /* Apply a bounded usb:ds runtime payload.  Fail closed: a build that requires
    a patch must not enable the device with an unpatched module. */
 static bool _applyUacPatch(const IsoRuntimeEdit *edits, size_t edit_count,
@@ -127,6 +132,15 @@ static bool _applyUacPatch(const IsoRuntimeEdit *edits, size_t edit_count,
         LOG("UAC %s patch rollback unverified; usb remains paused\n", tag);
         for (;;) svcSleepThread(1000000000ULL);
     }
+#ifdef UAC_U2_PATCH
+    /* Remember the target so the U2 pre-check can attach briefly later; the
+       debug session itself is not kept open (an attached usb would intercept
+       its own faults instead of producing a crash report). */
+    if (result >= 0) {
+        g_uacUsbPid = pid;
+        g_uacUsbBase = modules[0].base_address;
+    }
+#endif
     svcCloseHandle(debug);
     applied = result >= 0;
     return applied;
@@ -2089,6 +2103,31 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    transfer before sending this SET_CUR trigger.  Post exactly once per boot;
    a timeout is reported, never retried or cancelled here. */
 #define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16)
+/* Endpoint 0x84 object inside usb:ds, from the 0x302e0 submit path:
+   manager = module base + 0xD3000 (device) + 0x7000; the object is at
+   manager + 0x22000 + ((0x84 & 0xf) << 1 | 1) * 0x48 + 0x78.  The
+   2026-10-30 crash report pinned the manager at base + 0xDA000 (x21).
+   Reading this state before posting keeps a rejected submit (0x1908c,
+   which the driver's error completion turns into a stack overflow) from
+   ever reaching the driver. */
+#define UAC_U2_EP_OBJ 0xFC300ULL
+#define UAC_U2_SPEED_OFFSET 0x22A58ULL /* manager + 0x22 * 0x1000 + 0xa58 */
+
+static bool _uacReadUsbState(u8 state[0x48], u32 *speed)
+{
+    if (!g_uacUsbPid) return false;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return false;
+    Result rc = svcReadDebugProcessMemory(state, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ, 0x48);
+    if (R_SUCCEEDED(rc) && speed) {
+        rc = svcReadDebugProcessMemory(speed, h,
+            g_uacUsbBase + UAC_U2_SPEED_OFFSET, sizeof(*speed));
+    }
+    svcCloseHandle(h);
+    return R_SUCCEEDED(rc);
+}
+
 static void _postUacBurst(void)
 {
     /* The host may trigger many times while chasing an alt1 window; log every
@@ -2099,6 +2138,26 @@ static void _postUacBurst(void)
         return;
     }
     if (g_uacCtx.burstPosted) return;
+
+    u8 state[0x48] = {0};
+    u32 speed = 0;
+    bool read_ok = _uacReadUsbState(state, &speed);
+    u32 word = (u32)state[2] | ((u32)state[3] << 8) |
+               ((u32)state[4] << 16) | ((u32)state[5] << 24);
+    u64 ring = 0, prod = 0, cons = 0;
+    if (read_ok) {
+        memcpy(&ring, state + 0x10, sizeof(ring));
+        memcpy(&prod, state + 0x18, sizeof(prod));
+        memcpy(&cons, state + 0x20, sizeof(cons));
+    }
+    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx\n",
+        read_ok, word, state[6], speed, (unsigned long long)ring,
+        (unsigned long long)prod, (unsigned long long)cons);
+    if (!read_ok || word != 0x00C00584u || state[6] != 4 || speed != 3 ||
+        ring == 0 || prod != cons) {
+        LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
+        return;
+    }
 
     memset(g_audioEndpointBuffer, 0, UAC_U2_BURST_BYTES);
     armDCacheFlush(g_audioEndpointBuffer, UAC_U2_BURST_BYTES);
