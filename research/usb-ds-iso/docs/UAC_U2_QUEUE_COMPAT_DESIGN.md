@@ -1,8 +1,9 @@
 # UAC U2 队列兼容的 ISO 提交设计（2026-10-30）
 
-> 状态：**离线设计草案 + 一次实机**；completion/report 回放已做，no-report
-> 诊断 payload 实机一次：report 修复成立，但随后控制/alt 路径崩溃，build
-> 标 dangerous。地址均来自
+> 状态：**离线设计草案 + 四次实机**；completion/report 回放已做。no-report
+> 的 report 修复成立但随后崩溃；v3 installed/table 门在 `force-alt1` 后通过，
+> completion 3072/3072、无崩溃，设备侧单次 burst 通过（host 16/16 未计数）。
+> 地址均来自
 > `private/module/usb.elf` 的当前 BuildID；所有“预期”都不是实机结论。
 >
 > 结论：不要再伪造“拒绝→返回 0”。driver 已经在 `0x2c520` 里完成 map 和
@@ -258,11 +259,12 @@ LOG("UAC U2 post begin seq=%u\n", seq);
   `obj`（`0xDB608` 的 table entry）。只发 1 次 SET_CUR，设备未崩溃；但
   `installed=0 table=0`，端点未安装，completion 为空、obj 指针为零——数据
   路径没有被走到。下一步需要把 `installed != 0 && table != 0` 加进 precheck。
-- **v3 installed 门（已实机一次，2026-10-31 01:01）**：`c80fa717…`（89725B，
-  同一 29 条 payload）；precheck 在 `installed == 0 || table_ptr == 0` 时只记
-  `post skipped: endpoint not installed ...` 并返回。实机时 host
-  `GET_INTERFACE=0`，两次 SET_CUR 都落在 alt0，设备只记 `skip alt=0`，
-  0 post、门未触发、无崩溃。host 侧需要先加 `--require-alt1`。
+- **v3 installed 门（已实机两次）**：`c80fa717…`（89725B，同一 29 条
+  payload）；precheck 在 `installed == 0 || table_ptr == 0` 时只记
+  `post skipped: endpoint not installed ...` 并返回。第一次 host 停在 alt0，
+  门未触发；第二次 `--require-alt1` 先拦截 alt0，`--force-alt1` 显式
+  `SET_INTERFACE(1)` 后 `installed=240 table=0xfc0101000027`，门通过，
+  completion 3072/3072，无崩溃。
 
 ## 7. 离线验证
 
@@ -392,17 +394,31 @@ cave 里手工拼 report。
 | 判定 | **未触发**：host 没选中 alt1，installed/table 门没有执行；设备安全 |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步：host 侧已加 `--require-alt1`（`GET_INTERFACE != 1` 就不发
-SET_CUR，`host/uac-control.c` 已重建）；确认游戏音频在流后再用 v3 重测。
-如果装好后一次仍崩，再回到 completion/unmap。
+第四次（v3 + force-alt1，2026-10-31 01:15–01:17，设备侧通过）：
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `c80fa717…`（89725B，29 条，cave 592B） |
+| host | `--require-alt1` 先拦截 alt0；`--force-alt1` 设 alt1、2 次 SET_CUR、`GET_CUR=48000`、恢复 alt0、failures=0 |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x49e537d000`，`installed=240 table=0xfc0101000027` |
+| post | `begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| **complete** | **`rc=0x0 requested=3072 transferred=3072`** |
+| queue | `ep idx=262336`（endpoint 对象）；`obj addr=0xfc0101000027 rd=0xd401`（table pointer 是 handle，不可直接读） |
+| 控制路径 | 第二次 SET_CUR 数据阶段仍 `0x25c8c`；无 crash |
+| 判定 | **设备侧单次 burst 通过**；host 16/16 包数、PCM 未测；`force-alt1` 是 macOS 的 host workaround |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+下一步：host 侧统计 16×192 包（或换 Linux 标准宿主）；解释第二次 SET_CUR 的
+`0x25c8c`；`force-alt1` 不作为产品前提。
 
 ## 9. 开放问题
 
 1. **第二次 map 的来源**：H1、H2 还是 H3？no-report 轮只有 1 次 post，
    崩溃在 completion 之后，H2/H3 更可疑；queue-object 轮只发 1 次且端点未
    安装，没有新增数据路径证据。
-2. **端点安装门**：为什么第一次 SET_CUR 时 `installed=0 table=0`？需要
-   `installed != 0 && table != 0` 才 post，并在游戏/稳定音频流下复测。
+2. **host alt1**：macOS 保持 alt0；`--require-alt1` 正确拦截，`--force-alt1`
+   可显式切到 alt1 并让门通过。产品路径需要标准宿主自然选择 alt1；
+   host 侧 16×192 包计数仍未做。
 3. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
    同样静默泄漏。若 miss，先修 unmap 参数，再谈 completion。
 4. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
@@ -420,9 +436,10 @@ SET_CUR，`host/uac-control.c` 已重建）；确认游戏音频在流后再用 
   no-report 已实机一次：report 修复成立（3072/3072），但 completion 后
   控制/alt 路径仍崩溃，build 标 dangerous、不再部署。queue-object 修正版
   `56b7f8ee…` 实机一次：1 SET_CUR 未崩，但端点未安装（installed=0/table=0），
-  空报告，数据路径未走到。v3 `c80fa717…` 已实机一次：host alt=0，0 post，
-  installed/table 门未触发；host 需要先加 `--require-alt1`，再重测。
-  拒绝路径仍待单独解决。
+  空报告，数据路径未走到。v3 `c80fa717…` 两次实机：第一次 host alt=0、门
+  未触发；第二次 `--force-alt1` 后门通过、completion 3072/3072、无崩溃，
+  设备侧单次 burst 通过。host 16/16、PCM、第二次 SET_CUR 的 `0x25c8c`
+  仍待确认；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

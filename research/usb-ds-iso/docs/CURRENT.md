@@ -1,13 +1,15 @@
-# 当前状态（2026-10-31 01:05，Asia/Shanghai）
+# 当前状态（2026-10-31 01:20，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 00:59–01:01 的 U2 v3 门控回合（一次 boot）：
-> host `GET_INTERFACE(AS)=0`，两次 SET_CUR 都落在 alt0，设备只记 2 次
-> `UAC U2 skip alt=0`；0 post、0 completion、无崩溃。v3 的 installed/table
-> 门没有被触发。卡恢复 `52069a44…` 并安全弹出，无重试。
+> 最后一次实机是 2026-10-31 01:15–01:17 的 U2 v3 门控回合（一次 boot）：
+> macOS 保持 alt0，`--require-alt1` 正确拦截；随后 `--force-alt1` 显式
+> `SET_INTERFACE(1)`，precheck 看到 `installed=240 table=0xfc0101000027`，
+> 门通过，post 后 **completion `rc=0 requested=3072 transferred=3072`**，
+> 无 crash report。第二次 SET_CUR 的数据阶段仍报 `0x25c8c`，但设备未崩。
+> 卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-31 01:05）
+## 当前进度（2026-10-31 01:20）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -18,8 +20,8 @@
 | U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
 | U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
 | U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
-| U2 v3 installed 门 | 实机一次：host alt=0，0 post，门未触发 | `private/runs/UAC-u2-v3-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v3` |
+| U2 v3 installed 门 | 实机一次（force-alt1）：门通过，completion 3072/3072，无崩溃 | `private/runs/UAC-u2-v3b-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v3b` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -57,7 +59,23 @@
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
-## 最近一次 U2 v3 门控实机（2026-10-31 00:59–01:01，host alt=0，未触发）
+## 最近一次 U2 v3 门控实机（2026-10-31 01:15–01:17，force-alt1，3072/3072）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `c80fa717…`（89725B，29 条，cave 592B）一次 boot；`record=28`（29 条的最后一个索引） |
+| host 第一次 | `--require-alt1`：`GET_INTERFACE=0`，按设计退出，**未发 SET_CUR** |
+| host 第二次 | `--force-alt1`：`SET_INTERFACE(1)` 成功、回读 alt=1；2 次 SET_CUR；`GET_CUR=48000`；恢复 alt0；failures=0 |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x49e537d000`，**`installed=240 table=0xfc0101000027`** |
+| post | `UAC U2 post begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| **completion** | **`rc=0x0 requested=3072 transferred=3072`** |
+| queue | `ep idx=262336`（仍是 endpoint 对象）；`obj addr=0xfc0101000027 rd=0xd401`（table pointer 是 handle，不可直接读） |
+| 控制路径 | 第二次 SET_CUR 数据阶段仍报 `0x25c8c`；设备未崩溃；断电时 `USB host disconnected` |
+| 判定 | **设备侧一次 burst 通过**：installed/table 门通过、completion 3072/3072、无 crash；host 16/16 包数未计数，PCM 未测 |
+| 证据 | `private/runs/UAC-u2-v3b-20261031`（日志 `99cc8d79…`）、`private/card-cycles/20261031-u2-v3b` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+## 前一次 U2 v3 门控尝试（2026-10-31 00:59–01:01，host alt=0，未触发）
 
 | 项 | 结果 |
 | --- | --- |
@@ -216,9 +234,11 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
 不稳定。queue-object 修正版 `56b7f8ee…` 实机一次：只发 1 次 SET_CUR、未崩溃，
 但 precheck 读到 `installed=0 table=0`，端点未安装，completion 为空
 （`0x748c/0/0`），没有新增数据路径证据；precheck 已补 `installed`/`table`
-门。v3 `c80fa717…` 实机一次：host `GET_INTERFACE=0`，两次 SET_CUR 都落在
-alt0，设备只记 `skip alt=0`，0 post、门未触发。UAC 默认仍禁用（仅
-`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+门。v3 `c80fa717…` 实机一次：macOS 保持 alt0，`--require-alt1` 正确拦截；
+`--force-alt1` 显式切到 alt1 后 `installed=240`、table 非零，门通过，
+completion `3072/3072`，无崩溃。第二次 SET_CUR 数据阶段仍报 `0x25c8c`；
+host 16/16 包数和 PCM 未测。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复
+安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -308,6 +328,10 @@ alt0，设备只记 `skip alt=0`，0 post、门未触发。UAC 默认仍禁用�
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U2 v3 门控重试由用户“部署”明确授权（2026-10-31 01:08），一次 boot；
+  `--require-alt1` 先拦截 alt0，`--force-alt1` 后门通过、completion 3072/3072、
+  无崩溃；读卡后恢复 `52069a44…` 并安全弹出，无重试。证据
+  `private/runs/UAC-u2-v3b-20261031`、`private/card-cycles/20261031-u2-v3b`。
 - U2 v3 门控回合由用户“部署”明确授权（2026-10-31 00:57），一次 boot；host
   `GET_INTERFACE=0`，两次 SET_CUR 均在 alt0，0 post、门未触发、无崩溃；读卡后
   恢复 `52069a44…` 并安全弹出，无重试。证据
@@ -620,12 +644,12 @@ alt0，设备只记 `skip alt=0`，0 post、门未触发。UAC 默认仍禁用�
   未崩溃；但 `installed=0 table=0`，端点未安装，completion 为空、queue obj
   指针为零——数据路径没有被走到。结论：precheck 必须增加
   `installed != 0 && table != 0` 门，等端点安装后再 post。
-  下一步：v3 `c80fa717…` 已实机一次：host `GET_INTERFACE=0`，两次 SET_CUR
-  都在 alt0，设备只记 `skip alt=0`，0 post，门未触发。host 侧已修：
-  `uac-control --require-alt1` 在 `GET_INTERFACE != 1` 时直接退出、不发
-  SET_CUR（host/uac-control.c 已重建）。下一轮用 v3 重测（需新授权）：
-  确认游戏音频在流、alt1 后最多 2 次 SET_CUR、间隔 1s；如果装好端点后一次
-  仍崩，再回到 completion/unmap。
+  已实机一次：macOS 保持 alt0，`--require-alt1` 正确拦截（未发 SET_CUR）；
+  `--force-alt1` 显式 `SET_INTERFACE(1)` 后 `installed=240`、table 非零，
+  门通过，completion `3072/3072`，无崩溃。**U2 单次 burst 设备侧通过**；
+  host 16/16 包数与 PCM 未验证。下一步：host 侧统计 16×192 包（或换 Linux
+  标准宿主），并解释第二次 SET_CUR 的 `0x25c8c`；`--force-alt1` 是 macOS
+  的 host workaround，不作为产品前提。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

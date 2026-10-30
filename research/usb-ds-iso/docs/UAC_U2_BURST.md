@@ -242,9 +242,9 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   只发 1 次 SET_CUR，设备未崩溃；但 `installed=0 table=0`，端点未安装，
   completion 为空（`0x748c/0/0`），数据路径未走到。带
   `installed != 0 && table != 0` 门的 v3 `c80fa717…`（89725B）实机一次：
-  host `GET_INTERFACE=0`，两次 SET_CUR 都在 alt0，设备只记 `skip alt=0`，
-  0 post、门未触发、无崩溃；host 已加 `--require-alt1`：`GET_INTERFACE != 1`
-  时不发 SET_CUR。
+  `--require-alt1` 先拦截 alt0；`--force-alt1` 显式 `SET_INTERFACE(1)` 后
+  `installed=240 table=0xfc0101000027`，门通过，completion `3072/3072`，
+  无崩溃。host 16/16 包数与 PCM 未测；第二次 SET_CUR 数据阶段仍 `0x25c8c`。
 
 ## 风险与边界
 

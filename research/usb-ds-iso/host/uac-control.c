@@ -43,19 +43,20 @@ static int rate_ok(const uint8_t *data, int length)
 
 int main(int argc, char **argv)
 {
-    int set_rate = 0, alt = -1, alt_only = 0, require_alt1 = 0;
+    int set_rate = 0, alt = -1, alt_only = 0, require_alt1 = 0, force_alt1 = 0;
     int repeat = 1, interval_ms = 20;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--set-rate")) set_rate = 1;
         else if (!strcmp(argv[i], "--alt-only")) alt_only = 1;
         else if (!strcmp(argv[i], "--require-alt1")) require_alt1 = 1;
+        else if (!strcmp(argv[i], "--force-alt1")) force_alt1 = 1;
         else if (!strncmp(argv[i], "--alt=", 6)) alt = atoi(argv[i] + 6);
         else if (!strncmp(argv[i], "--repeat=", 9)) repeat = atoi(argv[i] + 9);
         else if (!strncmp(argv[i], "--interval-ms=", 14)) interval_ms = atoi(argv[i] + 14);
         else {
             fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1] "
-                    "[--require-alt1] [--repeat=1..1000] [--interval-ms=5..1000]\n",
-                    argv[0]);
+                    "[--require-alt1] [--force-alt1] [--repeat=1..1000] "
+                    "[--interval-ms=5..1000]\n", argv[0]);
             return 2;
         }
     }
@@ -65,6 +66,10 @@ int main(int argc, char **argv)
     }
     if (alt_only && require_alt1) {
         fprintf(stderr, "--require-alt1 cannot be combined with --alt-only\n");
+        return 2;
+    }
+    if (alt_only && force_alt1) {
+        fprintf(stderr, "--force-alt1 cannot be combined with --alt-only\n");
         return 2;
     }
     if (alt_only && alt < 0) alt = 1;
@@ -103,17 +108,25 @@ int main(int argc, char **argv)
     }
 
     rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE(AS)");
+    if (force_alt1 && (rc != 1 || data[0] != 1)) {
+        rc = ctrl(h, 0x01, 0x0B, 1, AS_INTERFACE, NULL, 0,
+                  "SET_INTERFACE(1) force");
+        if (rc != 0) ++failures;
+        usleep(20000);
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1,
+                  "GET_INTERFACE forced");
+    }
     if (rc != 1) {
         ++failures;
-        if (require_alt1) {
-            fprintf(stderr, "GET_INTERFACE failed; --require-alt1 aborts\n");
+        if (require_alt1 || force_alt1) {
+            fprintf(stderr, "GET_INTERFACE failed; aborting before SET_CUR\n");
             libusb_close(h);
             libusb_exit(ctx);
             return 1;
         }
     } else {
         printf("  alt=%u\n", data[0]);
-        if (require_alt1 && data[0] != 1) {
+        if ((require_alt1 || force_alt1) && data[0] != 1) {
             fprintf(stderr,
                     "alt1 required but GET_INTERFACE=%u; not sending SET_CUR\n",
                     data[0]);
@@ -160,6 +173,11 @@ int main(int argc, char **argv)
         }
         rc = ctrl(h, 0xA2, 0x81, 0x0100, AS_ENDPOINT, data, 3, "GET_CUR after SET (ep)");
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
+    }
+    if (force_alt1) {
+        rc = ctrl(h, 0x01, 0x0B, 0, AS_INTERFACE, NULL, 0,
+                  "SET_INTERFACE(0) restore force");
+        if (rc != 0) ++failures;
     }
 
     if (alt >= 0) {

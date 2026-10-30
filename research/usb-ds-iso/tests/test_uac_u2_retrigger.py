@@ -49,6 +49,23 @@ class UacU2RetriggerTests(unittest.TestCase):
         set_cur = self.host.index("SET_CUR rate 48k (ep)")
         self.assertLess(abort, set_cur)
 
+    def test_host_can_force_alt1_before_set_cur(self):
+        for token in ("--force-alt1", "SET_INTERFACE(1) force",
+                      "GET_INTERFACE forced", "SET_INTERFACE(0) restore force",
+                      "--force-alt1 cannot be combined with --alt-only"):
+            self.assertIn(token, self.host)
+        force = self.host.index("SET_INTERFACE(1) force")
+        set_cur = self.host.index("SET_CUR rate 48k (ep)")
+        self.assertLess(force, set_cur)
+
+    def test_binary_rejects_force_alt1_with_alt_only(self):
+        if not BINARY.is_file():
+            self.skipTest(f"missing {BINARY}; run make -C host")
+        result = subprocess.run([str(BINARY), "--force-alt1", "--alt-only"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("cannot be combined", result.stderr)
+
     def test_binary_rejects_require_alt1_with_alt_only(self):
         if not BINARY.is_file():
             self.skipTest(f"missing {BINARY}; run make -C host")
