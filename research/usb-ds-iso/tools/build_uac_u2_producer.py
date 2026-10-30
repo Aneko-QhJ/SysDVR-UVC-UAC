@@ -48,6 +48,10 @@ REPORT_HOOK = 0x2CBE0         # report epilogue -> iso_report
 ENDPOINT_WORD = 0x00C00584    # addr 0x84, attrs 0x05 (ISO|async), MPS 192
 BURST_BYTES = 16 * 192
 EDITS_COUNT = 1 + 3 + len(DESCRIPTOR_EDITS) + len(NOP_EDITS)
+BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
+BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
+BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
+EDITS_COUNT_BREAKER = EDITS_COUNT + 1
 
 LINKER = (
     "SECTIONS { . = 0x68d54; .text : { *(.text.iso) } }\n"
@@ -68,7 +72,9 @@ def payload_ready(work):
     if not header.is_file() or not manifest_path.is_file():
         raise SystemExit(f"missing payload under {work}; run build_uac_u2_producer.py")
     doc = json.loads(manifest_path.read_text())
-    if doc["edit_count"] != EDITS_COUNT or doc["cave_bytes"] > CAVE_END - CAVE:
+    if doc["edit_count"] not in (EDITS_COUNT, EDITS_COUNT_BREAKER):
+        raise SystemExit("payload manifest is inconsistent; rebuild it")
+    if doc["cave_bytes"] > CAVE_END - CAVE:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if sha256(header.read_bytes()) != doc["header_sha256"]:
         raise SystemExit("payload header is stale; rebuild it")
@@ -105,7 +111,7 @@ def assemble(toolchain, out, asm=ASM):
     return binary.read_bytes(), symbols
 
 
-def build_edits(nso, code, symbols):
+def build_edits(nso, code, symbols, breaker=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -156,8 +162,12 @@ def build_edits(nso, code, symbols):
             struct.pack("<I", after),
             "install the alt1 endpoint (NOP the alt0-only filter)",
         )
-    if len(edits) != EDITS_COUNT:
-        raise ValueError(f"expected {EDITS_COUNT} edits, built {len(edits)}")
+    if breaker:
+        edit(BREAKER_HOOK, BREAKER_BEFORE, BREAKER_AFTER,
+             "break the completion/retry recursion: skip the ISO submit error completion")
+    expected = EDITS_COUNT_BREAKER if breaker else EDITS_COUNT
+    if len(edits) != expected:
+        raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
     if len(addresses) != len(set(addresses)):
         raise ValueError("overlapping edits")
@@ -188,7 +198,7 @@ def render(edits):
     return "\n".join(lines) + "\n"
 
 
-def manifest(edits, code, symbols):
+def manifest(edits, code, symbols, breaker=False):
     return {
         "schema": "UAC-u2-producer-payload-1",
         "assembly": str(ASM.relative_to(ROOT)),
@@ -204,8 +214,9 @@ def manifest(edits, code, symbols):
                      "attributes": "0x05", "max_packet": 192, "interval": 4},
         "burst_bytes": BURST_BYTES,
         "edit_count": len(edits),
-        "counts": {"cave": 1, "branch": 3, "descriptor": len(DESCRIPTOR_EDITS),
-                   "nop": len(NOP_EDITS)},
+        "counts": {"cave": 1, "branch": 3 + (1 if breaker else 0),
+                   "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)},
+        "breaker": bool(breaker),
         "symbols": {name: hex(symbols[name])
                     for name in ("iso_enter", "iso_event", "iso_report")},
         "edits": [
@@ -226,10 +237,11 @@ def check(nso, work):
     doc = json.loads((work / "manifest.json").read_text())
     if doc["assembly_sha256"] != sha256(ASM.read_bytes()):
         raise SystemExit("payload is stale: patches/iso_burst_uac84.S changed")
-    if doc["counts"] != {"cave": 1, "branch": 3, "descriptor": len(DESCRIPTOR_EDITS),
-                         "nop": len(NOP_EDITS)}:
+    expected = {"cave": 1, "branch": 3 + (1 if doc.get("breaker") else 0),
+                "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)}
+    if doc["counts"] != expected:
         raise SystemExit("unexpected edit counts")
-    if doc["edit_count"] != EDITS_COUNT:
+    if doc["edit_count"] not in (EDITS_COUNT, EDITS_COUNT_BREAKER):
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
         address = int(entry["address"], 16)
@@ -276,6 +288,8 @@ def main():
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--breaker", action="store_true",
+                        help="add the 0x302c0 error-completion breaker edit")
     args = parser.parse_args()
     work = args.work.resolve()
     nso = validate_module(args.nso.read_bytes())
@@ -285,9 +299,9 @@ def main():
         return
 
     code, symbols = assemble(args.toolchain, work / "asm")
-    edits = build_edits(nso, code, symbols)
+    edits = build_edits(nso, code, symbols, breaker=args.breaker)
     header = render(edits)
-    doc = manifest(edits, code, symbols)
+    doc = manifest(edits, code, symbols, breaker=args.breaker)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)

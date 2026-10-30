@@ -117,6 +117,38 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
      不再进入递归；
   3. 实机在**有游戏/稳定音频流**时进行，避免主机反复 abort 触发重提。
 
+## 断路器候选（离线就绪，待实机）
+
+precheck2 已经证明 cave 接受首次 3072B 提交；崩溃来自完成后的重提。静态解码
+`0x2c690`（URB 完成）可以看到它按队列项重新提交：
+
+```
+ldr  x0, [x20, #96]     ; controller
+ldrb w1, [x20, #112]    ; endpoint address (0x84)
+ldr  w9, [x8,  #32]     ; entry.size
+ldr  x2, [x8,  #16]     ; entry.buffer
+ldr  w10,[x20, #116]    ; endpoint limit
+csel w3, w9, w10, cc    ; w3 = min(entry.size, limit)
+blr  [vtable + 136]     ; 再次进入 0x302e0
+```
+
+只有 app 的第一次提交携带 3072；后续重提用的是请求项自己的 size，cave 的
+`cmp w3, #3072` 会拒绝，随后 `0x302c0` 的错误完成进入递归。
+
+断路器候选 = 在 payload 里再加一条编辑：
+
+| 地址 | before | after | 作用 |
+| --- | --- | --- | --- |
+| `0x302c0` | `bl 0x2a980`（`b0e9ff97`） | `nop`（`1f2003d5`） | 跳过错误完成，不再递归 |
+
+- 31 条 payload（30 + 断路器），cave 不变；
+- NSP `f92ce7a5…`（89175B），工作目录
+  `private/analysis/UAC-u2-breaker-20261030`；
+- `tests/test_uac_u2_breaker.py`：断言断路器只改这一条、错误路径其余指令不变，
+  并从 `usb.elf` 解码上面的重提参数；
+- 边界：这是诊断用断路器——被拒的重提不再触发完成，driver 的请求项不会被完成/
+  上报，调用方忽略返回值；目的是先避免 usb 崩溃并观察首次 URB 是否完成。
+
 ## 风险与边界
 
 - 8 条 NOP 是全局的：Configured 时所有接口/速度的 alt 端点都会安装。UAC build 只有
