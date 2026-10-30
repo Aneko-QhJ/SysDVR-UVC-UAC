@@ -38,13 +38,12 @@
   通过，v6 的空报告未复现（v7 仅多日志）。门/对象/report 生成**不是**
   剩余阻塞。
 - 当前工作：U0、U1a、U1b 通过；U2 的 host 16/16 与 PCM 未测，WAV 仍全零。
-  主机内核显示 **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
-  （transaction error / not responding）完成**，错误在 post 前已开始：
-  host 确实在 alt1 提交了 ISO，但设备端点没有应答；cave 的 3072 是
-  16×192 记账，不是 host 收到数据。下一步是**离线对比 A23 已工作的
-  EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB（DCI/type/MPS/interval/
-  frame/doorbell）**，确认安装器是否把 EP `0x84` 的控制器上下文置为
-  ISO；先定位，不直接上硬件。下一次实机需新的明确授权。
+  主机内核显示 143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
+  完成，但 **host engine 到 02:20:07.788 才 `starting`，触发在 02:20:04–05，
+  16 ms burst 早于真正的流启动**；WAV 只有 0.86 s。错误包含启动期失败，
+  不能先断定端点已死。下一步是 **host 时序实验**：ffmpeg 录 8 s，等
+  engine `starting`/约 6 s 后再 SET_CUR；若 WAV 出现 1 kHz 段，根因是
+  时序；若仍零，再查 EP `0x84` 端点/ED/TRB。下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

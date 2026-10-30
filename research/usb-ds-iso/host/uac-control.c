@@ -44,18 +44,22 @@ static int rate_ok(const uint8_t *data, int length)
 int main(int argc, char **argv)
 {
     int set_rate = 0, alt = -1, alt_only = 0, require_alt1 = 0, force_alt1 = 0;
+    int hold_alt1 = 0, trigger_only = 0;
     int repeat = 1, interval_ms = 20;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--set-rate")) set_rate = 1;
         else if (!strcmp(argv[i], "--alt-only")) alt_only = 1;
         else if (!strcmp(argv[i], "--require-alt1")) require_alt1 = 1;
         else if (!strcmp(argv[i], "--force-alt1")) force_alt1 = 1;
+        else if (!strcmp(argv[i], "--hold-alt1")) hold_alt1 = 1;
+        else if (!strcmp(argv[i], "--trigger-only")) trigger_only = 1;
         else if (!strncmp(argv[i], "--alt=", 6)) alt = atoi(argv[i] + 6);
         else if (!strncmp(argv[i], "--repeat=", 9)) repeat = atoi(argv[i] + 9);
         else if (!strncmp(argv[i], "--interval-ms=", 14)) interval_ms = atoi(argv[i] + 14);
         else {
             fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1] "
-                    "[--require-alt1] [--force-alt1] [--repeat=1..1000] "
+                    "[--require-alt1] [--force-alt1] [--hold-alt1] "
+                    "[--trigger-only] [--repeat=1..1000] "
                     "[--interval-ms=5..1000]\n", argv[0]);
             return 2;
         }
@@ -70,6 +74,14 @@ int main(int argc, char **argv)
     }
     if (alt_only && force_alt1) {
         fprintf(stderr, "--force-alt1 cannot be combined with --alt-only\n");
+        return 2;
+    }
+    if (hold_alt1 && (alt_only || force_alt1 || trigger_only || alt >= 0)) {
+        fprintf(stderr, "--hold-alt1 cannot be combined with other alt modes\n");
+        return 2;
+    }
+    if (trigger_only && (alt_only || force_alt1 || hold_alt1 || alt >= 0)) {
+        fprintf(stderr, "--trigger-only cannot be combined with alt changes\n");
         return 2;
     }
     if (alt_only && alt < 0) alt = 1;
@@ -101,6 +113,54 @@ int main(int argc, char **argv)
         usleep(10000);
         rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE after");
         if (rc != 1 || data[0] != 0) ++failures;
+        libusb_close(h);
+        libusb_exit(ctx);
+        printf("failures=%d\n", failures);
+        return failures ? 1 : 0;
+    }
+
+    if (hold_alt1) {
+        /* Leave the device at alt1 before the host opens its audio stream.
+           The later --trigger-only run must not touch the alt setting. */
+        rc = ctrl(h, 0x01, 0x0B, 0, AS_INTERFACE, NULL, 0,
+                  "SET_INTERFACE(0) hold-reset");
+        if (rc != 0) ++failures;
+        usleep(20000);
+        rc = ctrl(h, 0x01, 0x0B, 1, AS_INTERFACE, NULL, 0,
+                  "SET_INTERFACE(1) hold");
+        if (rc != 0) ++failures;
+        usleep(20000);
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1,
+                  "GET_INTERFACE held");
+        if (rc != 1 || data[0] != 1) ++failures;
+        libusb_close(h);
+        libusb_exit(ctx);
+        printf("failures=%d\n", failures);
+        return failures ? 1 : 0;
+    }
+
+    if (trigger_only) {
+        /* Trigger without SET_INTERFACE(0)/(1), so an already-running host
+           stream is not reset immediately before the burst. */
+        rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1,
+                  "GET_INTERFACE trigger");
+        if (rc != 1 || data[0] != 1) {
+            fprintf(stderr, "trigger requires alt1; GET_INTERFACE=%u\n",
+                    rc == 1 ? data[0] : 0xff);
+            libusb_close(h);
+            libusb_exit(ctx);
+            return 1;
+        }
+        uint8_t payload[3] = {0x80, 0xBB, 0x00};
+        for (int n = 0; n < repeat; ++n) {
+            rc = ctrl(h, 0x22, 0x01, 0x0100, AS_ENDPOINT, payload, 3,
+                      n == 0 ? "SET_CUR rate 48k (ep)" : "SET_CUR retrigger (ep)");
+            if (rc != 3) ++failures;
+            if (n + 1 < repeat) usleep((useconds_t)interval_ms * 1000);
+        }
+        rc = ctrl(h, 0xA2, 0x81, 0x0100, AS_ENDPOINT, data, 3,
+                  "GET_CUR after SET (ep)");
+        if (rc != 3 || !rate_ok(data, rc)) ++failures;
         libusb_close(h);
         libusb_exit(ctx);
         printf("failures=%d\n", failures);

@@ -373,15 +373,18 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   status=3`、`complete rc=0 requested=3072 transferred=3072`。
   **设备侧 completion 通过**；v6 的空报告未复现（v7 仅多日志）。
 - 但 WAV 41472 frames 全零、detector FAIL、无 crash。主机内核日志显示
-  **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
-  （`kIOReturnNotResponding` / transaction error）完成**（02:20:05.496–
-  02:20:08.051，abort 29/31/16 个请求），错误在 post 前已开始：
-  **host 确实在 alt1 提交了 ISO，设备端点没有应答**。cave 的 3072 是
-  16×192 记账，不是 host 收到数据。剩余阻塞是 EP `0x84` 的 ISO
-  端点/ED/TRB 配置。
-- 下一步离线对比 A23 已工作的 vendor EP `0x83` 与 UAC EP `0x84` 的
-  DCI/type/MPS/interval/frame/doorbell，确认安装器是否把 EP `0x84` 的
-  控制器上下文置为 ISO；先定位，不直接上硬件。下一次实机需新授权。
+  143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
+  （`kIOReturnNotResponding` / transaction error）完成（02:20:05.496–
+  02:20:08.051，abort 29/31/16 个请求）。不过 ffmpeg 于 02:20:03 启动、
+  触发在 02:20:04–05，而 CoreAudio/AppleUSBAudio 直到 02:20:07.788 才
+  `starting`，16 ms burst 早于真正的流启动；WAV 只有 0.86 s。错误包含
+  启动期失败，**不能先断定 EP `0x84` 端点已死**；cave 的 3072 仍是
+  16×192 记账，不是 host 收到数据。
+- 下一步先做 **host 时序实验**：`uac-control --hold-alt1` → ffmpeg 录 8 s →
+  等 engine `starting`/约 6 s → `uac-control --trigger-only`（只 SET_CUR，
+  不碰 alt）→ 收 WAV。若 WAV 出现 1 kHz 段，根因是 host 流启动时序；若
+  trigger-only 报 alt0，说明 AppleUSBAudio 在打开时重置了 alt；若仍全零，
+  再查 EP `0x84` 的端点/ED/TRB。下一次实机需新授权。
 - 证据：`private/analysis/UAC-u2-v7-20261031`、
   `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav`
   `8e59a0da…`、内核 `kernel-usb-0x84.txt` `6b98ba9b…`）、

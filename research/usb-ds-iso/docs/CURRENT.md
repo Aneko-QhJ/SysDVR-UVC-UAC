@@ -9,9 +9,11 @@
 > 41472 frames 全零。主机内核日志同时显示：02:20:05.496–02:20:08.051
 > 有 **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
 > （`kIOReturnNotResponding` / transaction error）完成**，abort 29/31/16 个
-> 请求；错误在 post 之前就开始。**host 确实在 alt1 上提交了 ISO，但设备
-> 端点没有应答**；设备侧 3072 是 cave 的 16×192 记账，不是 host 收到数据。
-> 剩余阻塞是 EP `0x84` 的 ISO 端点/ED/TRB 配置。v6 的空报告未复现。
+> 请求；错误在 post 之前就开始。ffmpeg 于 02:20:03 启动、触发在 02:20:04–05，
+> 但 CoreAudio/AppleUSBAudio 直到 02:20:07.788 才 `starting`，16 ms burst
+> 早于 host 流真正启动；WAV 只有 0.86 s。故内核错误包含启动期失败，
+> **不能先断定 EP `0x84` 端点已死**；设备侧 3072 仍是 cave 的 16×192 记账。
+> 下一步：把触发延后到 host engine 启动后；若 WAV 仍零，再查端点/TRB。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
 ## 当前进度（2026-10-31 02:24）
@@ -65,13 +67,14 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线优先）：解释“host 在 EP `0x84` 上持续提交 ISO，但每个事务都
-  以 `0xe00002ed` 失败；同时 cave 按 16×192 报 completion”。优先对比 A23
-  已工作的 vendor EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB 字段：DCI、
-  endpoint type、MPS、interval、frame ID、doorbell 目标是否随 0x84 正确变化；
-  检查安装器是否真的把 EP `0x84` 的控制器上下文置为 ISO。先离线定位，
-  不直接上硬件；下一次实机需新的明确授权。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（host 时序优先，离线已备）：本次触发在 host engine `starting` 前约
+  3.7 s，16 ms burst 已结束，WAV 只有 0.86 s；先不要改设备/TRB。`uac-control`
+  已加 `--hold-alt1`（0→1 后不恢复）与 `--trigger-only`（只 GET_INTERFACE +
+  SET_CUR，不碰 alt）。实验顺序：hold alt1 → ffmpeg 录 8 s → 等 engine
+  `starting`/约 6 s → trigger-only → 收 WAV → `--alt=0` 恢复。若 WAV 出现
+  1 kHz 段，根因是 host 流启动时序；若 trigger-only 报 alt0，说明 AppleUSBAudio
+  在打开时重置了 alt，需要改成“先启动采集、等 engine 后再切 alt1”。下一次
+  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -88,7 +91,7 @@
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
 
-## 最近一次 U2 v7 实机（2026-10-31 02:19–02:21，cave 记账 3072/3072，host ISO 事务全失败）
+## 最近一次 U2 v7 实机（2026-10-31 02:19–02:21，cave 记账 3072/3072，host 流启动晚于 burst）
 
 | 项 | 结果 |
 | --- | --- |
@@ -100,8 +103,8 @@
 | **completion** | **`rc=0x0 requested=3072 transferred=3072`** |
 | host 内核 | **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`（`kIOReturnNotResponding` / transaction error）完成**（02:20:05.496–02:20:08.051），abort 29/31/16 个请求；错误在 post 前已开始 |
 | WAV | 41472 frames，min=max=0，nonzero=0；detector FAIL |
-| 判定 | **cave/驱动侧 3072 记账通过，host ISO 事务全部失败**：host 确实在 alt1 提交了请求，但设备 EP `0x84` 没有应答；WAV 全零。v6 的空报告未复现（v7 仅多日志）。设备侧 completion 不能当作 host 收数证据 |
-| 下一步 | 离线对比 A23 已工作的 EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB（DCI、type、MPS、interval、frame、doorbell），确认安装器是否把 EP `0x84` 的控制器上下文置为 ISO；先定位，不直接上硬件 |
+| 判定 | **cave/驱动侧 3072 记账通过**；但 host engine 到 02:20:07.788 才 `starting`，触发在 02:20:04–05，16 ms burst 早于真正的流启动，WAV 只有 0.86 s。内核错误包含启动期失败，**不能先断定 EP `0x84` 端点已死**；设备侧 completion 不能当作 host 收数证据 |
+| 下一步 | 先做 host 时序实验：ffmpeg 8 s，等 engine `starting`/约 6 s 后再 SET_CUR；若 WAV 出现 1 kHz 段，根因是时序；若仍零，再查 EP `0x84` 端点/ED/TRB |
 | 证据 | `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav` `8e59a0da…`、内核 `kernel-usb-0x84.txt` `6b98ba9b…`）、`private/card-cycles/20261031-u2-v7` |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
@@ -354,12 +357,12 @@ v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要�
 但 completion 为空 `0x748c/0/0`、WAV 全零、无 crash。v7 `4db0adcc…`
 （90280B，仅多 report 日志）**02:19–02:21 实机一次**：同一对象/门，
 `report count=1 id=388 req=3072 xfer=3072 status=3`、complete `rc=0
-3072/3072`，v6 的空报告未复现。但主机内核日志显示 143 个 EP `0x84`
-IsochronousRequest 均以 `0xe00002ed`（transaction error / not responding）完成，
-WAV 全零：**host 确实在 alt1 提交了 ISO，设备端点没有应答**；cave 的 3072
-是 16×192 记账，不是 host 收到数据。剩余阻塞是 EP `0x84` 的 ISO 端点/ED/TRB
-配置，不是门或 report 生成。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复
-安全 `52069a44…` 并安全弹出。
+3072/3072`，v6 的空报告未复现。但 host engine 到 02:20:07.788 才 `starting`，
+触发在 02:20:04–05，16 ms burst 早于真正的流启动；WAV 只有 0.86 s。内核日志
+143 个 EP `0x84` IsochronousRequest 的 `0xe00002ed` 包含启动期失败，**不能先
+断定端点已死**；cave 的 3072 仍是 16×192 记账，不是 host 收到数据。下一步先做
+延迟触发的 host 时序实验；若 WAV 仍零，再查 EP `0x84` 的端点/ED/TRB。UAC 默认
+仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

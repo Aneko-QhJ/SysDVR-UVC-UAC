@@ -46,7 +46,8 @@ class UacU2RetriggerTests(unittest.TestCase):
             self.assertIn(token, self.host)
         # The abort must come before the SET_CUR loop.
         abort = self.host.index("not sending SET_CUR")
-        set_cur = self.host.index("SET_CUR rate 48k (ep)")
+        set_cur = self.host.index("SET_CUR rate 48k (ep)",
+                                  self.host.index("if (set_rate) {"))
         self.assertLess(abort, set_cur)
 
     def test_host_can_force_alt1_before_set_cur(self):
@@ -57,13 +58,25 @@ class UacU2RetriggerTests(unittest.TestCase):
             self.assertIn(token, self.host)
         reset = self.host.index("SET_INTERFACE(0) force-reset")
         force = self.host.index("SET_INTERFACE(1) force")
-        set_cur = self.host.index("SET_CUR rate 48k (ep)")
+        set_cur = self.host.index("SET_CUR rate 48k (ep)",
+                                  self.host.index("if (set_rate) {"))
         self.assertLess(reset, force)
         self.assertLess(force, set_cur)
         # v4 showed that alt1 selected by the OS is not enough and a
         # redundant 1 -> 1 can read back 0; always do 0 -> 1.
         self.assertNotIn("force_alt1 && (rc != 1", self.host)
         self.assertIn("if (force_alt1) {", self.host)
+
+    def test_host_can_hold_alt1_and_trigger_without_alt_change(self):
+        for token in ("--hold-alt1", "SET_INTERFACE(0) hold-reset",
+                      "SET_INTERFACE(1) hold", "GET_INTERFACE held",
+                      "--trigger-only", "GET_INTERFACE trigger",
+                      "trigger requires alt1"):
+            self.assertIn(token, self.host)
+        # The trigger-only path must not call SET_INTERFACE(0)/(1).
+        start = self.host.index("if (trigger_only) {")
+        body = self.host[start:self.host.index("if (alt_only)", start)] if "if (alt_only)" in self.host[start:] else self.host[start:]
+        self.assertNotIn("ctl(h, 0x01, 0x0B", body[:2000])
 
     def test_binary_rejects_force_alt1_with_alt_only(self):
         if not BINARY.is_file():
