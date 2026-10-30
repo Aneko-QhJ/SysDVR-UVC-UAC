@@ -47,10 +47,10 @@
   （`installed=0 table=0`）、completion 为空。带 installed/table 门的 v3
   `c80fa717…` 实机一次：`--require-alt1` 拦截 alt0；`--force-alt1` 后
   installed/table 非零，门通过，completion `3072/3072`，无崩溃；host 16/16
-  与 PCM 未测。v4 `c33d0d07…` 实机一次：host alt1 但未发 `SET_INTERFACE(1)`，
-  installed=0、门跳过、WAV 全零；host 已改为总是发 `SET_INTERFACE(1)`。
-  路径修正版已打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要
-  新授权。
+  与 PCM 未测。v4 `c33d0d07…` 实机两次：第一次 alt1/installed=0、门跳过；
+  第二次 1→1 回读 alt0、未发 SET_CUR；host 已改为真正的
+  `SET_INTERFACE(0) → SET_INTERFACE(1)`。路径修正版已打包并绑定新 recipe
+  入口、通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

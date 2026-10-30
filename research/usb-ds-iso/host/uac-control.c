@@ -109,10 +109,14 @@ int main(int argc, char **argv)
 
     rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE(AS)");
     if (force_alt1) {
-        /* Always issue SET_INTERFACE(1), even if GET_INTERFACE already
-           reads 1: the device installer runs on this control request, and
-           an alt1 state selected by the macOS audio driver alone leaves
-           installed/table at 0 (2026-10-31 v4 run). */
+        /* Force a real 0 -> 1 transition.  A redundant SET_INTERFACE(1)
+           while already at alt1 can read back 0 (2026-10-31 v4 retest), and
+           an OS-selected alt1 alone leaves installed/table at 0.  Reset to
+           alt0 first, then start alt1, so the device installer runs. */
+        rc = ctrl(h, 0x01, 0x0B, 0, AS_INTERFACE, NULL, 0,
+                  "SET_INTERFACE(0) force-reset");
+        if (rc != 0) ++failures;
+        usleep(20000);
         rc = ctrl(h, 0x01, 0x0B, 1, AS_INTERFACE, NULL, 0,
                   "SET_INTERFACE(1) force");
         if (rc != 0) ++failures;

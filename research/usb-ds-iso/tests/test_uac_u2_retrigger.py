@@ -50,15 +50,18 @@ class UacU2RetriggerTests(unittest.TestCase):
         self.assertLess(abort, set_cur)
 
     def test_host_can_force_alt1_before_set_cur(self):
-        for token in ("--force-alt1", "SET_INTERFACE(1) force",
-                      "GET_INTERFACE forced", "SET_INTERFACE(0) restore force",
+        for token in ("--force-alt1", "SET_INTERFACE(0) force-reset",
+                      "SET_INTERFACE(1) force", "GET_INTERFACE forced",
+                      "SET_INTERFACE(0) restore force",
                       "--force-alt1 cannot be combined with --alt-only"):
             self.assertIn(token, self.host)
+        reset = self.host.index("SET_INTERFACE(0) force-reset")
         force = self.host.index("SET_INTERFACE(1) force")
         set_cur = self.host.index("SET_CUR rate 48k (ep)")
+        self.assertLess(reset, force)
         self.assertLess(force, set_cur)
-        # v4 showed that alt1 selected by the OS is not enough: always
-        # issue SET_INTERFACE(1), not only when GET_INTERFACE reads 0.
+        # v4 showed that alt1 selected by the OS is not enough and a
+        # redundant 1 -> 1 can read back 0; always do 0 -> 1.
         self.assertNotIn("force_alt1 && (rc != 1", self.host)
         self.assertIn("if (force_alt1) {", self.host)
 

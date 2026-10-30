@@ -265,12 +265,12 @@ LOG("UAC U2 post begin seq=%u\n", seq);
   门未触发；第二次 `--require-alt1` 先拦截 alt0，`--force-alt1` 显式
   `SET_INTERFACE(1)` 后 `installed=240 table=0xfc0101000027`，门通过，
   completion 3072/3072，无崩溃。
-- **v4 patterned burst（已实机一次，2026-10-31 01:27）**：`c33d0d07…`
-  （89772B，同一 29 条 payload）；一次性 3072B buffer 改为 16 ms/1 kHz
-  方波。实机时 host 已经看到 alt1，`--force-alt1` 因而不发
-  `SET_INTERFACE(1)`；precheck `installed=0 table=0`，门跳过、0 post，
-  WAV 全零、无崩溃。**alt1 状态本身不等于安装器已运行**；host 已改为
-  总是发 `SET_INTERFACE(1)`，待重测。
+- **v4 patterned burst（已实机两次，2026-10-31）**：`c33d0d07…`（89772B，
+  同一 29 条 payload）；一次性 3072B buffer 改为 16 ms/1 kHz 方波。
+  第一次 host 已看到 alt1，`--force-alt1` 未发 `SET_INTERFACE(1)`；
+  `installed=0 table=0`，门跳过、0 post、WAV 全零。第二次 `SET_INTERFACE(1)`
+  的 1→1 重复设置回读 alt0，门控退出、未发 SET_CUR。**安装器需要真正的
+  0→1 过渡**；host 已改为 `SET_INTERFACE(0) → SET_INTERFACE(1)`，待重测。
 
 ## 7. 离线验证
 
@@ -427,9 +427,20 @@ cave 里手工拼 report。
 | 判定 | **未触发**：alt1 状态本身不等于安装器已运行；门正确跳过 |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步：host 已改为**总是**发 `SET_INTERFACE(1)`；重测 v4：
+第六次（v4 重试，2026-10-31 01:41–01:43，1→1 回读 0，未触发）：
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `c33d0d07…`（89772B，29 条，cave 592B） |
+| host | 初始 `GET_INTERFACE=1`；`SET_INTERFACE(1)` 返回 0 但回读 alt0；未发 SET_CUR |
+| 设备 | 只有 SET_INTERFACE(1/0) 记录；0 post、0 completion、无 crash |
+| WAV | 41472 frames，全零；detector FAIL（无 SET_CUR，预期） |
+| 判定 | **未触发**：1→1 重复设置不能保持 alt1，必须 0→1 过渡 |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+下一步：host 已改为 `SET_INTERFACE(0) → SET_INTERFACE(1) → 回读`；重测 v4：
 `--force-alt1 --set-rate --repeat=1`（一次 SET_CUR，避开 `0x25c8c`），
-host 录 `:2` 到 WAV，`tools/check_uac_burst_wav.py` 检查 16 ms/1 kHz 段。
+host 录 `:0`/`:2` 到 WAV，`tools/check_uac_burst_wav.py` 检查 16 ms/1 kHz 段。
 
 ## 9. 开放问题
 
@@ -437,8 +448,9 @@ host 录 `:2` 到 WAV，`tools/check_uac_burst_wav.py` 检查 16 ms/1 kHz 段。
    崩溃在 completion 之后，H2/H3 更可疑；queue-object 轮只发 1 次且端点未
    安装，没有新增数据路径证据。
 2. **host alt1 / 安装器**：macOS 可能保持 alt0，也可能显示 alt1 但不运行
-   安装器；`--force-alt1` 必须**总是**发 `SET_INTERFACE(1)`。产品路径需要
-   标准宿主自然选择 alt1；host 侧 16×192 包计数仍未做。
+   安装器；1→1 的重复设置还会回读 alt0。`--force-alt1` 需要真正的
+   `SET_INTERFACE(0) → SET_INTERFACE(1)` 过渡。产品路径需要标准宿主自然
+   选择 alt1；host 侧 16×192 包计数仍未做。
 3. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
    同样静默泄漏。若 miss，先修 unmap 参数，再谈 completion。
 4. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
@@ -459,9 +471,10 @@ host 录 `:2` 到 WAV，`tools/check_uac_burst_wav.py` 检查 16 ms/1 kHz 段。
   空报告，数据路径未走到。v3 `c80fa717…` 两次实机：第一次 host alt=0、门
   未触发；第二次 `--force-alt1` 后门通过、completion 3072/3072、无崩溃，
   设备侧单次 burst 通过。host 16/16、PCM、第二次 SET_CUR 的 `0x25c8c`
-  仍待确认；v4 `c33d0d07…` 实机一次：alt1 但未发 `SET_INTERFACE(1)`，
-  installed=0、门跳过、WAV 全零。host 已改为总是发 `SET_INTERFACE(1)`，
-  下一步重测 v4（`--repeat=1`）验证 host 侧数据；拒绝路径仍待单独解决。
+  仍待确认；v4 `c33d0d07…` 实机两次：第一次 alt1 但未发 SET_INTERFACE，
+  installed=0、门跳过；第二次 1→1 回读 alt0、未发 SET_CUR。host 已改为
+  `SET_INTERFACE(0) → SET_INTERFACE(1)` 的真实过渡，下一步重测 v4
+  （`--repeat=1`）验证 host 侧数据；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

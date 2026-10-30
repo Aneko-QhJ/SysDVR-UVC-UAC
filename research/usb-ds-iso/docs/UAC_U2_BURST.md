@@ -245,10 +245,11 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `--require-alt1` 先拦截 alt0；`--force-alt1` 显式 `SET_INTERFACE(1)` 后
   `installed=240 table=0xfc0101000027`，门通过，completion `3072/3072`，
   无崩溃。host 16/16 包数与 PCM 未测；第二次 SET_CUR 数据阶段仍 `0x25c8c`。
-- v4 `c33d0d07…`（89772B）实机一次：host 已经看到 alt1，`--force-alt1`
-  因而不发 `SET_INTERFACE(1)`；precheck `installed=0 table=0`，门跳过、
-  0 post，WAV 全零、无崩溃。结论：alt1 状态本身不等于安装器已运行；
-  `--force-alt1` 已改为**总是**发 `SET_INTERFACE(1)`，待重测。
+- v4 `c33d0d07…`（89772B）实机两次：第一次 host 已看到 alt1、未发
+  `SET_INTERFACE(1)`；`installed=0 table=0`，门跳过、0 post、WAV 全零。
+  第二次 1→1 的 `SET_INTERFACE(1)` 回读 alt0，门控退出、未发 SET_CUR。
+  结论：安装器需要真正的 0→1 过渡；`--force-alt1` 已改为
+  `SET_INTERFACE(0) → SET_INTERFACE(1)`，待重测。
 
 ## 风险与边界
 
