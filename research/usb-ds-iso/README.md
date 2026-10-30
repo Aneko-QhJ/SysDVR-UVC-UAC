@@ -34,7 +34,8 @@
   `installed=0 table=0`、端点未安装、completion 为空。带 installed/table 门
   的 v3 `c80fa717…` 实机一次：`--require-alt1` 先拦截 alt0，`--force-alt1`
   后 `installed=240`、table 非零，门通过，completion `3072/3072`，无崩溃；
-  host 16/16 与 PCM 未测。设计草案见
+  host 16/16 与 PCM 未测。v4 `c33d0d07…` 已构建（16ms/1kHz 方波 + WAV
+  检查器），未部署。设计草案见
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。

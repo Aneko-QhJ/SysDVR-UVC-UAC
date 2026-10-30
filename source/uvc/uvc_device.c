@@ -2258,7 +2258,20 @@ static void _postUacBurst(void)
     u32 seq = ++g_uacCtx.postSeq;
     LOG("UAC U2 post begin seq=%u\n", seq);
 
-    memset(g_audioEndpointBuffer, 0, UAC_U2_BURST_BYTES);
+    /* Diagnostic payload: 16 ms of 1 kHz square wave at -12 dBFS.  The host
+       records the UAC stream to WAV and checks this segment, so a successful
+       completion can be tied to data actually reaching EP 0x84, not just to
+       the device-side report. */
+    {
+        s16 *samples = (s16 *)g_audioEndpointBuffer;
+        const u32 frames = UAC_U2_BURST_BYTES / (2 * sizeof(s16));
+        for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
+            const u32 frame = i / 2;
+            samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
+        }
+        (void)frames;
+    }
+    LOG("UAC U2 pattern 1kHz 16ms seq=%u\n", seq);
     armDCacheFlush(g_audioEndpointBuffer, UAC_U2_BURST_BYTES);
     eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 

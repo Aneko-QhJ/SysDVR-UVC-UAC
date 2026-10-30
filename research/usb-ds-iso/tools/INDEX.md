@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 438 个 Python 工具。
+共 439 个 Python 工具。
 
 ## 当前使用
 
@@ -32,12 +32,12 @@
 | `context65` | 7 |
 | `io` | 6 |
 | `model` | 4 |
+| `check` | 2 |
 | `lifecycle` | 2 |
 | `package` | 2 |
 | `replay` | 2 |
 | `sequence` | 2 |
 | `summarize` | 2 |
-| `check` | 1 |
 | `decode` | 1 |
 | `emulate` | 1 |
 | `experiment.py` | 1 |
@@ -441,10 +441,11 @@
 | [build_uac_u2_probe.py](build_uac_u2_probe.py) | Build the U2 probe: the UAC alt1 producer payload with the burst trigger. |
 | [build_uac_u2_producer.py](build_uac_u2_producer.py) | Build the U2 payload: UAC AS alt1 ISO producer plus the 26-edit base. |
 
-## check（1）
+## check（2）
 
 | 工具 | 说明 |
 | --- | --- |
+| [check_uac_burst_wav.py](check_uac_burst_wav.py) | Find the U2 diagnostic 1 kHz square burst in a captured WAV. |
 | [check_uac_wav.py](check_uac_wav.py) | Validate a 10 s UAC capture WAV for the standard-host experiment. |
 
 ## collect（18）

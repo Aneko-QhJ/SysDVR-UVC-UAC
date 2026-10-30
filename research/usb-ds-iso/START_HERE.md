@@ -47,8 +47,9 @@
   （`installed=0 table=0`）、completion 为空。带 installed/table 门的 v3
   `c80fa717…` 实机一次：`--require-alt1` 拦截 alt0；`--force-alt1` 后
   installed/table 非零，门通过，completion `3072/3072`，无崩溃；host 16/16
-  与 PCM 未测。路径修正版已打包并绑定新 recipe 入口、通过包/入口审计，
-  短包复测同样需要新授权。
+  与 PCM 未测。v4 `c33d0d07…` 已构建（16ms/1kHz 方波 + WAV 检查器），
+  未部署。路径修正版已打包并绑定新 recipe 入口、通过包/入口审计，短包复测
+  同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

@@ -265,6 +265,11 @@ LOG("UAC U2 post begin seq=%u\n", seq);
   门未触发；第二次 `--require-alt1` 先拦截 alt0，`--force-alt1` 显式
   `SET_INTERFACE(1)` 后 `installed=240 table=0xfc0101000027`，门通过，
   completion 3072/3072，无崩溃。
+- **v4 patterned burst（已构建，未部署）**：`c33d0d07…`（89772B，同一 29 条
+  payload）；一次性 3072B buffer 改为 16 ms/1 kHz 方波（-12 dBFS），host
+  录 WAV 后用 `tools/check_uac_burst_wav.py` 找该段。下一轮用
+  `--force-alt1 --set-rate --repeat=1`，只发一次 SET_CUR，避开第二次的
+  `0x25c8c`。
 
 ## 7. 离线验证
 
@@ -341,7 +346,8 @@ cave 里手工拼 report。
 
 - `tools/build_uac_u2_producer.py --check` 复核 cave 大小/编辑数；
 - 新 payload 的 `cave_bytes` 必须 ≤ 684；
-- `tests/test_uac_u2_queue_compat.py` 已加入 quick suite（22 个文件）；
+- `tests/test_uac_u2_queue_compat.py` 与 `tests/test_uac_burst_wav.py` 已加入
+  quick suite（23 个文件）；
 - `make -C research/usb-ds-iso check` 绿；
 - 不访问 USB/SD/硬件。
 
@@ -408,8 +414,10 @@ cave 里手工拼 report。
 | 判定 | **设备侧单次 burst 通过**；host 16/16 包数、PCM 未测；`force-alt1` 是 macOS 的 host workaround |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步：host 侧统计 16×192 包（或换 Linux 标准宿主）；解释第二次 SET_CUR 的
-`0x25c8c`；`force-alt1` 不作为产品前提。
+下一步：v4 `c33d0d07…` 已构建；用 `--force-alt1 --set-rate --repeat=1`
+只发一次 SET_CUR，host 录 `:2` 到 WAV，`tools/check_uac_burst_wav.py` 检查
+16 ms/1 kHz 段。通过则得到 host 侧数据证据；host 16×192 包计数仍需单独的
+接收器或 Linux 标准宿主；`force-alt1` 不作为产品前提。
 
 ## 9. 开放问题
 
@@ -439,7 +447,8 @@ cave 里手工拼 report。
   空报告，数据路径未走到。v3 `c80fa717…` 两次实机：第一次 host alt=0、门
   未触发；第二次 `--force-alt1` 后门通过、completion 3072/3072、无崩溃，
   设备侧单次 burst 通过。host 16/16、PCM、第二次 SET_CUR 的 `0x25c8c`
-  仍待确认；拒绝路径仍待单独解决。
+  仍待确认；v4 patterned burst `c33d0d07…` 已构建、未部署，下一步用
+  `--repeat=1` 验证 host 侧数据；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

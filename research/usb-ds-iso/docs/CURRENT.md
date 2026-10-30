@@ -21,6 +21,7 @@
 | U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
 | U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
 | U2 v3 installed 门 | 实机一次（force-alt1）：门通过，completion 3072/3072，无崩溃 | `private/runs/UAC-u2-v3b-20261031` |
+| U2 v4 方波 burst | 已构建（`c33d0d07…`，89772B），未部署 | `private/analysis/UAC-u2-pattern-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v3b` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -237,8 +238,9 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
 门。v3 `c80fa717…` 实机一次：macOS 保持 alt0，`--require-alt1` 正确拦截；
 `--force-alt1` 显式切到 alt1 后 `installed=240`、table 非零，门通过，
 completion `3072/3072`，无崩溃。第二次 SET_CUR 数据阶段仍报 `0x25c8c`；
-host 16/16 包数和 PCM 未测。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复
-安全 `52069a44…` 并安全弹出。
+host 16/16 包数和 PCM 未测。v4 把一次性 3072B 改成 16ms/1kHz 方波，供 host
+录 WAV 验证数据是否真的到达 EP `0x84`；`c33d0d07…`（89772B）已构建、未部署。
+UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -649,7 +651,9 @@ host 16/16 包数和 PCM 未测。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）�
   门通过，completion `3072/3072`，无崩溃。**U2 单次 burst 设备侧通过**；
   host 16/16 包数与 PCM 未验证。下一步：host 侧统计 16×192 包（或换 Linux
   标准宿主），并解释第二次 SET_CUR 的 `0x25c8c`；`--force-alt1` 是 macOS
-  的 host workaround，不作为产品前提。
+  的 host workaround，不作为产品前提。v4 `c33d0d07…` 已构建：`--force-alt1
+  --set-rate --repeat=1`（只发一次 SET_CUR，避开 `0x25c8c`），host 录
+  `:2` 到 WAV，用 `tools/check_uac_burst_wav.py` 检查 16ms/1kHz 段。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

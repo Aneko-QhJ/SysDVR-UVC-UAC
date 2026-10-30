@@ -179,6 +179,8 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('_uacLogQueue("obj", h, table);', source)
         self.assertIn("ep.installed == 0 || ep.table_ptr == 0", source)
         self.assertIn("endpoint not installed installed=%u table=0x%llx", source)
+        self.assertIn("UAC U2 pattern 1kHz 16ms", source)
+        self.assertIn("samples[i] = ((frame / 24) & 1)", source)
 
 
 
