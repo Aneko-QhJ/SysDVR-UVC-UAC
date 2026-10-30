@@ -1,13 +1,13 @@
-# 当前状态（2026-10-30 15:30，Asia/Shanghai）
+# 当前状态（2026-10-30 15:35，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 15:19–15:22 的 U2 precheck2 回合（一次 boot）：
-> 预检全通过（`word=0x00c00584`、`int=4`、`speed=3`、环空），`UAC U2 post rc=0x0`
-> —— **cave 接受了提交**——随后 usb 在完成/重提路径崩溃（`0x1908c` 递归）。
+> 最后一次实机是 2026-10-30 15:27–15:30 的 U2 breaker 回合（一次 boot）：
+> 全局断路器把 `0x302c0` 的错误完成也跳过了，EP0 控制传输因此不完成，
+> usb 触发 `User Break` 断言（不是之前的递归）；**断路器无效**。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 15:30）
+## 当前进度（2026-10-30 15:35）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -15,7 +15,7 @@
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | 实机四次：未触发 / 崩溃 / 安全跳过 / **post 被接受后崩溃** | `private/runs/UAC-u2-precheck2-20261030` |
+| U2 producer | 实机五次：未触发 / 崩溃 / 安全跳过 / post 后崩溃 / breaker 断言 | `private/runs/UAC-u2-breaker-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -53,6 +53,29 @@
 - 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
+## 最近一次 U2 breaker 实机（2026-10-30 15:27–15:30，User Break，断路器无效）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | breaker `f92ce7a5…`（89175B，31 条：+`0x302c0` `bl 0x2a980` → `nop`）一次 boot；`UAC u2 patch result=0 record=30` |
+| 设备事件 | 只有 alt0 的 SET_CUR（`skip alt=0`）；**0× precheck、0× post** |
+| 崩溃 | usb `User Break`（`svcBreak #0x26`）：PC `0x1927c`、LR `0x9668`，栈 `0x944c→0x9514→0x9534→0x9560→0x40d0`；日志 `data stage failed 0x25c8c/0xf601`、`GetSetupPacket failed 0xf601` |
+| 判定 | **断路器无效**：`0x302c0` 是通用 submit 的错误完成，EP0 控制传输也走它；跳过会让失败的 control submit 永不完成并触发断言。没有 post、也没有完成 |
+| 证据 | `private/runs/UAC-u2-breaker-20261030`（设备日志 `739ea70d…`、`crash-usb-breaker.log` `8b033f94…`）、`private/card-cycles/20261030-u2-breaker` |
+| 收尾 | 恢复 `52069a44…`、清日志、安全弹出；无重试 |
+
+**替代方案（离线就绪）**：把“安全接受”收进 cave 本身——ISO 提交被拒时返回 0
+（不建 TRB、不跳 `reject_original`），调用方 `cbz w0` 自然会跳过错误完成，且
+EP0 控制传输不经过 cave，不受影响。
+
+- 新汇编 `patches/iso_burst_uac84_safe.S`：`fail_accept` 返回 0，删除
+  `iso_event` 的 `error:` 诊断腾空间；cave **668/684B**；
+- payload 30 条（不含 `0x302c0`），NSP `6a27d4c8…`（89166B），工作目录
+  `private/analysis/UAC-u2-safecave-20261030`；
+- Unicorn 回放（`replay_uac_u2_cave.py --safe`）：五类拒绝都返回 0 且不写环，
+  接受路径仍与 A23 逐字节相同（`d50a3872…`）；
+- 测试 `tests/test_uac_u2_safecave.py`（5 项）。
 
 ## 最近一次 U2 precheck2 实机（2026-10-30 15:19–15:22，post 被接受后崩溃）
 
@@ -129,10 +152,11 @@ cave 拒绝；候选修法是把 `0x302c0` 的 `bl 0x2a980`（错误完成）改
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机四次：触发错过窗口、usb 崩溃、
-precheck 安全跳过、以及最新一次 **post 被接受后崩溃**——预检四项全过
-（`word=0x00c00584`/`int=4`/`speed=3`/环空），`post rc=0x0`，随后 usb 在
-完成/重提路径以 `0x1908c` 递归崩溃。AS alt1 数据路径仍未验证，PCM 未测试。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机五次：触发错过窗口、usb 崩溃、
+precheck 安全跳过、post 被接受后完成路径崩溃、以及全局 breaker 触发 usb
+`User Break`。已知 cave 能接受首次 3072B 提交；崩溃来自完成后的重提。
+安全接受版 cave（`6a27d4c8…`，668B，拒绝时返回 0）已离线就绪并回放通过。
+AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -497,11 +521,11 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：断路器候选 `f92ce7a5…`（89175B，31 条：30 + `0x302c0`
-  错误完成 → nop）已离线就绪。`0x2c690` 的解码显示完成后的重提用请求项自己的
-  size（`min(entry.size, limit)`），只有首次提交是 3072，所以会被 cave 拒绝；
-  断路器跳过该错误完成、断开递归。**在有游戏/稳定音频流时**做一轮，需要新授权。
-- 离线（可选）：Unicorn 回放“断路器后”的调用方行为，确认不会在上层循环。
+- 实机（UAC 下一步）：安全接受版 `6a27d4c8…`（89166B，668B cave，拒绝→0）
+  做一轮；预期 `post rc=0x0` 之后要么 `complete`、要么 `no completion`，
+  **不再崩溃**。有游戏/稳定音频流更稳；需要新授权。
+- 离线（可选）：把安全接受版与 precheck 结果结合，确认被拒的重提不会在上层
+  队列里反复触发。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

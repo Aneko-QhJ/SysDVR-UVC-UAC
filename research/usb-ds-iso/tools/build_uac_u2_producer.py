@@ -198,11 +198,11 @@ def render(edits):
     return "\n".join(lines) + "\n"
 
 
-def manifest(edits, code, symbols, breaker=False):
+def manifest(edits, code, symbols, breaker=False, asm=ASM):
     return {
         "schema": "UAC-u2-producer-payload-1",
-        "assembly": str(ASM.relative_to(ROOT)),
-        "assembly_sha256": sha256(ASM.read_bytes()),
+        "assembly": str(asm.relative_to(ROOT)),
+        "assembly_sha256": sha256(asm.read_bytes()),
         "build_id": USB_BUILD_ID.hex().upper(),
         "elf_sha256": USB_ELF_SHA256,
         "cave_address": hex(CAVE),
@@ -235,8 +235,9 @@ def check(nso, work):
     """Validate an existing payload without assembling or writing anything."""
     header = (work / "uac_u2_payload.h").read_text()
     doc = json.loads((work / "manifest.json").read_text())
-    if doc["assembly_sha256"] != sha256(ASM.read_bytes()):
-        raise SystemExit("payload is stale: patches/iso_burst_uac84.S changed")
+    asm = ROOT / doc["assembly"]
+    if doc["assembly_sha256"] != sha256(asm.read_bytes()):
+        raise SystemExit(f"payload is stale: {doc['assembly']} changed")
     expected = {"cave": 1, "branch": 3 + (1 if doc.get("breaker") else 0),
                 "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)}
     if doc["counts"] != expected:
@@ -290,18 +291,21 @@ def main():
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--breaker", action="store_true",
                         help="add the 0x302c0 error-completion breaker edit")
+    parser.add_argument("--asm", type=Path, default=ASM,
+                        help="cave assembly (default patches/iso_burst_uac84.S)")
     args = parser.parse_args()
     work = args.work.resolve()
+    args.asm = args.asm.resolve()
     nso = validate_module(args.nso.read_bytes())
 
     if args.check:
         check(nso, work)
         return
 
-    code, symbols = assemble(args.toolchain, work / "asm")
+    code, symbols = assemble(args.toolchain, work / "asm", args.asm)
     edits = build_edits(nso, code, symbols, breaker=args.breaker)
     header = render(edits)
-    doc = manifest(edits, code, symbols, breaker=args.breaker)
+    doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)

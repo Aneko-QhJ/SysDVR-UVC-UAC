@@ -30,6 +30,7 @@ DEFAULT_TOOLCHAIN = Path("/opt/devkitpro/devkitA64/bin")
 ELF = ROOT / "private/module/usb.elf"
 ASM_A = ROOT / "patches/iso_burst_patch.S"
 ASM_B = ROOT / "patches/iso_burst_uac84.S"
+ASM_SAFE = ROOT / "patches/iso_burst_uac84_safe.S"
 
 CODE = 0x00000000
 STACK = 0x70000000
@@ -291,14 +292,77 @@ def replay(toolchain=DEFAULT_TOOLCHAIN, asm_a=ASM_A, asm_b=ASM_B):
     return report
 
 
+def replay_safe(toolchain=DEFAULT_TOOLCHAIN):
+    """Safe cave: a rejected ISO submit returns 0 instead of 0x1908c."""
+    uni = load_unicorn()
+    with tempfile.TemporaryDirectory() as tmp:
+        cave_a, _sym_a = assemble(toolchain, Path(tmp) / "a", ASM_A)
+        cave_s, _sym_s = assemble(toolchain, Path(tmp) / "s", ASM_SAFE)
+    if len(cave_s) >= 684:
+        raise SystemExit("safe cave must leave room in the RX page")
+
+    matrix = {
+        "accept": {},
+        "reject-word": {"descriptor": VENDOR},
+        "reject-size": {"transfer_size": 1024},
+        "reject-interval": {"descriptor": UAC_INT1},
+        "reject-speed": {"speed": 2},
+        "reject-ring": {"prod": RING, "cons": RING + 0x10},
+    }
+    cases = {}
+    for name, kwargs in matrix.items():
+        descriptor = kwargs.pop("descriptor", UAC)
+        cases[f"safe/{name}"] = run_case(uni, cave_s, descriptor, **kwargs)
+    cases["a23/accept"] = run_case(uni, cave_a, VENDOR)
+
+    problems = []
+    accepted = cases["safe/accept"]
+    reference = cases["a23/accept"]
+    if accepted["outcome"] != "accept":
+        problems.append(f"safe/accept: {accepted['outcome']} (pc={accepted['pc']}, w0={accepted['w0']})")
+    else:
+        problems.extend(check_ring(accepted))
+    if reference["outcome"] != "accept":
+        problems.append("a23/accept did not accept")
+    elif reference["ring_sha256"] != accepted["ring_sha256"]:
+        problems.append("safe accept builds a different ring than A23")
+    for name, case in cases.items():
+        if name.endswith("/accept"):
+            continue
+        if case["pc"] != SENTINEL:
+            problems.append(f"{name}: did not return normally (pc={case['pc']})")
+        if case["w0"] != 0:
+            problems.append(f"{name}: reject code {case['w0']:#x} != 0 (safe cave must fake success)")
+        if any(case["ring"]):
+            problems.append(f"{name}: rejected run wrote the ring")
+
+    return {
+        "schema": "UAC-u2-safe-cave-replay-1",
+        "unicorn": uni["unicorn"].__version__,
+        "cave": {"asm": str(ASM_SAFE.relative_to(ROOT)), "sha256": sha256(cave_s),
+                  "bytes": len(cave_s)},
+        "ring_identical": reference["ring_sha256"] == accepted["ring_sha256"],
+        "ring_sha256": accepted["ring_sha256"],
+        "cases": {name: {k: case[k] for k in ("outcome", "pc", "w0", "steps",
+                                              "error", "ring_sha256")}
+                   for name, case in cases.items()},
+        "problems": problems,
+        "check_passed": not problems,
+        "usb_operations": 0,
+        "sd_accesses": 0,
+        "hardware_verified": False,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--asm-a", type=Path, default=ASM_A)
     parser.add_argument("--asm-b", type=Path, default=ASM_B)
     parser.add_argument("--toolchain", type=Path, default=DEFAULT_TOOLCHAIN)
     parser.add_argument("--out", type=Path, default=None, help="JSON report path")
+    parser.add_argument("--safe", action="store_true", help="replay the safe cave instead")
     args = parser.parse_args()
-    report = replay(args.toolchain, args.asm_a, args.asm_b)
+    report = replay_safe(args.toolchain) if args.safe else replay(args.toolchain, args.asm_a, args.asm_b)
     text = json.dumps(report, indent=2) + "\n"
     if args.out:
         args.out.write_text(text)

@@ -117,7 +117,30 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
      不再进入递归；
   3. 实机在**有游戏/稳定音频流**时进行，避免主机反复 abort 触发重提。
 
-## 断路器候选（离线就绪，待实机）
+## 断路器候选（已实机，无效）
+
+> 2026-10-30 15:27–15:30 实机一次：`f92ce7a5…`（31 条）在 alt0 的第一次 SET_CUR
+> 后触发 usb `User Break`（svcBreak）：`0x302c0` 是**通用** submit 的错误完成，
+> EP0 控制传输也走它；跳过它会让失败的 control submit 永不完成并断言。
+> 该方案作废，改用下面的“安全接受 cave”。
+
+## 安全接受 cave（离线就绪，待实机）
+
+ISO 提交被拒时，cave 直接返回 0（不建 TRB、不跳 `reject_original`）；调用方
+`cbz w0` 跳过错误完成，而 EP0 控制传输根本不经过 cave，所以两条路径都不受影响。
+
+- 汇编 `patches/iso_burst_uac84_safe.S`：所有入口检查失败都跳到 `fail_accept`
+  （`ldp x29,x30,[sp],#16; mov w0,#0; ret`）；删除 `iso_event` 的 `error:`
+  诊断以腾出空间；cave **668/684B**；
+- payload 仍 30 条（cave + 3 分支 + 18 描述符 + 8 NOP），不含 `0x302c0`；
+- NSP `6a27d4c8…`（89166B），工作目录 `private/analysis/UAC-u2-safecave-20261030`；
+- Unicorn 回放（`tools/replay_uac_u2_cave.py --safe`）：五类拒绝都返回 0、
+  不写环；接受路径与 A23 逐字节相同（`d50a3872…`）；
+- `tests/test_uac_u2_safecave.py` 覆盖 payload/汇编/回放；
+- 边界：被拒的提交对 app 表现为“已接受但无完成”；driver 的请求项仍在队列里，
+  上层是否会重试仍需实机观察。
+
+## 旧断路器候选（已被上面替代）
 
 precheck2 已经证明 cave 接受首次 3072B 提交；崩溃来自完成后的重提。静态解码
 `0x2c690`（URB 完成）可以看到它按队列项重新提交：
