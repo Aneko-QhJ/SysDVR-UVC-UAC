@@ -24,8 +24,10 @@
   只有 GNU build-id note 随源码行号变化。
 - U2 producer payload：30 条编辑 = 684B cave（`0x68d54..0x69000`，正好填满）
   + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP。
-  NSP `703e7795…`（88676B），`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；
-  编译出的 `uacU2Edits` 表 30 条与 manifest 一致。
+  实机用的 NSP 是 `703e7795…`（88676B）；实机后重建为 `db97b6e7…`（88669B）：
+  `_postUacBurst` 在 `alt != 1` 时记 `UAC U2 skip alt=… ep=…`，其余逻辑不变。
+  `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；编译出的 `uacU2Edits`
+  30 条与 manifest 一致。
 - **端点是 `0x00C00584`，不是 `0x00C00184`**：U0d 的 `usb-config.txt` 已从设备
   读到 `ep 84 attr=05 mps=192 interval=4`（原始 `07 05 84 05 c0 00 04`）；驱动在
   `0x2fd80` 把 8 字节描述符原样拷进 endpoint 对象，A23 vendor 端点是
@@ -422,10 +424,11 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：U2 触发修正——设备侧在 `alt != 1` 时记一行 skip 日志，
-  宿主在采集期间每 ~20ms 发 SET_CUR；一次 boot、最多一次 post
-  （`burstPosted` 保护），通过条件与停止条件见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
-  需要新的明确授权，且不与 alt1 探针/路径修正版混在同一轮。
+- 实机（UAC 下一步）：U2 触发修正——用 `db97b6e7…`（含 skip 日志）；
+  ffmpeg 采集 `:2` 的同时运行
+  `host/uac-control --set-rate --repeat=100 --interval-ms=20`，一次 boot、
+  最多一次 post（`burstPosted` 保护）。通过/停止条件见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md)；需要新的明确授权。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

@@ -12,7 +12,8 @@
   - 8 条 alt0-filter NOP（安装 alt1 端点）。
   - header：`private/analysis/UAC-u2-producer-20261030/uac_u2_payload.h`
   - NSP：`private/analysis/UAC-u2-producer-20261030/build/outputs/exefs.nsp`
-    88676 B，SHA256 `703e779587b0c9d84fc8a7ae1abe9361b8896a6eea1b8bcfcc11904be09ca43b`
+    88669 B，SHA256 `db97b6e7bd9660a8833dcc1c91777c7e22632ce4034b3599ebd6c37999dcc302`
+    （实机用的上一版是 `703e7795…`/88676B；本版只加 `UAC U2 skip` 日志）
   - defines：`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`
   - 生成工具：[tools/build_uac_u2_producer.py](../tools/build_uac_u2_producer.py)；组装源
     [patches/iso_burst_uac84.S](../patches/iso_burst_uac84.S)。`--check` 可在不组装的情况下
@@ -102,8 +103,11 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
   `_postUacBurst` 在 post 之前返回。主机内核日志显示 endpoint 0x84 停止时
   abort 了 30 个请求（流确实开过）。
 - 判定：**未通过**；producer 未被触发，不能评价 EP `0x84` 的数据路径。
-- 下一轮：`_postUacBurst` 在 `alt != 1` 时也写一行日志；宿主在采集期间每 ~20ms
-  发一次 SET_CUR（设备端 `burstPosted` 保证每 boot 最多一次 post）。
+- 下一轮（已离线就绪）：设备用 `db97b6e7…`，`_postUacBurst` 在 `alt != 1` 时记
+  `UAC U2 skip alt=… ep=…`；宿主在采集期间循环触发：
+  `host/uac-control --set-rate --repeat=100 --interval-ms=20`
+  （`burstPosted` 保证每 boot 最多一次 post）。设备日志里 skip 的行数与
+  `UAC setup[...] action=1` 的行数可直接对比，判断触发落在哪个 alt。
 - 证据：`private/runs/UAC-u2-burst-20261030`（`run.json`、`device-log-u2.txt`、
   `host-audio-log.txt`、`host-claim-failure.json`）、
   `private/card-cycles/20261030-u2-burst`。卡已恢复 `52069a44…` 并安全弹出。

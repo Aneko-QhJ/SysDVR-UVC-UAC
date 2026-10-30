@@ -44,14 +44,22 @@ static int rate_ok(const uint8_t *data, int length)
 int main(int argc, char **argv)
 {
     int set_rate = 0, alt = -1, alt_only = 0;
+    int repeat = 1, interval_ms = 20;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--set-rate")) set_rate = 1;
         else if (!strcmp(argv[i], "--alt-only")) alt_only = 1;
         else if (!strncmp(argv[i], "--alt=", 6)) alt = atoi(argv[i] + 6);
+        else if (!strncmp(argv[i], "--repeat=", 9)) repeat = atoi(argv[i] + 9);
+        else if (!strncmp(argv[i], "--interval-ms=", 14)) interval_ms = atoi(argv[i] + 14);
         else {
-            fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1]\n", argv[0]);
+            fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1] "
+                    "[--repeat=1..1000] [--interval-ms=5..1000]\n", argv[0]);
             return 2;
         }
+    }
+    if (repeat < 1 || repeat > 1000 || interval_ms < 5 || interval_ms > 1000) {
+        fprintf(stderr, "repeat must be 1..1000 and interval-ms 5..1000\n");
+        return 2;
     }
     if (alt_only && alt < 0) alt = 1;
 
@@ -115,9 +123,17 @@ int main(int argc, char **argv)
     }
 
     if (set_rate) {
+        /* The macOS audio driver only keeps alt1 briefly around config-change
+           restarts, so the U2 trigger is repeated: the device posts at most
+           once per boot (burstPosted), and logs every SET_CUR that arrives at
+           alt0 as "UAC U2 skip". */
         uint8_t payload[3] = {0x80, 0xBB, 0x00};
-        rc = ctrl(h, 0x22, 0x01, 0x0100, AS_ENDPOINT, payload, 3, "SET_CUR rate 48k (ep)");
-        if (rc != 3) ++failures;
+        for (int n = 0; n < repeat; ++n) {
+            rc = ctrl(h, 0x22, 0x01, 0x0100, AS_ENDPOINT, payload, 3,
+                      n == 0 ? "SET_CUR rate 48k (ep)" : "SET_CUR retrigger (ep)");
+            if (rc != 3) ++failures;
+            if (n + 1 < repeat) usleep((useconds_t)interval_ms * 1000);
+        }
         rc = ctrl(h, 0xA2, 0x81, 0x0100, AS_ENDPOINT, data, 3, "GET_CUR after SET (ep)");
         if (rc != 3 || !rate_ok(data, rc)) ++failures;
     }

@@ -2091,7 +2091,13 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16)
 static void _postUacBurst(void)
 {
-    if (!g_uacCtx.audioEndpointIn || g_uacStd.alt_setting != 1) return;
+    /* The host may trigger many times while chasing an alt1 window; log every
+       miss so the device log shows how many SET_CURs arrived at alt0. */
+    if (!g_uacCtx.audioEndpointIn || g_uacStd.alt_setting != 1) {
+        LOG("UAC U2 skip alt=%u ep=%u\n", g_uacStd.alt_setting,
+            g_uacCtx.audioEndpointIn ? 1u : 0u);
+        return;
+    }
     if (g_uacCtx.burstPosted) return;
 
     memset(g_audioEndpointBuffer, 0, UAC_U2_BURST_BYTES);
