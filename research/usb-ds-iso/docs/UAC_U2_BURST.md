@@ -61,6 +61,10 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
   `private/analysis/UAC-u2-producer-20261030/replay.json`（`check_passed=true`）。
 - 编译出的 `uacU2Edits`（30×24B @ `0x20010`）逐条与 manifest 相同；cave before 为
   684 个零。
+- 完成路径静态审计：`complete_original`（`0x2a980`）先用 `0x3a30(address)` 求
+  endpoint 表索引（IN 端点 = `0x10|num`，EP0x84 → `0x14`），再查
+  `manager+0x14c8+index*16`；安装器（`0x295d0`）用同一函数写同一张表。因此
+  `mov w1,#0x84` 与 A23 的 `0x83` 走同一通用路径，driver 里没有硬编码 `0x83`。
 - 默认 / descriptor / U2 基础 / U2 producer 四种配置均构建通过；基础 NSP 重建后
   text 段与 HEAD 版本逐字节相同（只有 GNU build-id note 随源码行号变化）。
 - **没有 USB/SD 操作。**
