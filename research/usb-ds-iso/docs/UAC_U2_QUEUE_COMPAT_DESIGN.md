@@ -258,11 +258,11 @@ LOG("UAC U2 post begin seq=%u\n", seq);
   `obj`（`0xDB608` 的 table entry）。只发 1 次 SET_CUR，设备未崩溃；但
   `installed=0 table=0`，端点未安装，completion 为空、obj 指针为零——数据
   路径没有被走到。下一步需要把 `installed != 0 && table != 0` 加进 precheck。
-- **v3 installed 门（已构建，未部署）**：`c80fa717…`（89725B，同一 29 条
-  payload）；precheck 在 `installed == 0 || table_ptr == 0` 时只记
-  `post skipped: endpoint not installed ...` 并返回。实机计划（需新授权）：
-  游戏/稳定音频流，等端点安装，最多 2 次 SET_CUR、间隔 1s；门会跳过未安装
-  的第一次，`burstPosted` 保证最多一次 post。
+- **v3 installed 门（已实机一次，2026-10-31 01:01）**：`c80fa717…`（89725B，
+  同一 29 条 payload）；precheck 在 `installed == 0 || table_ptr == 0` 时只记
+  `post skipped: endpoint not installed ...` 并返回。实机时 host
+  `GET_INTERFACE=0`，两次 SET_CUR 都落在 alt0，设备只记 `skip alt=0`，
+  0 post、门未触发、无崩溃。host 侧需要先加 `--require-alt1`。
 
 ## 7. 离线验证
 
@@ -382,10 +382,19 @@ cave 里手工拼 report。
 | 判定 | **安全但未触发数据路径**：端点未安装，driver 请求/完成路径没走到；precheck 缺 `installed`/`table` 门 |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步（v3，已构建、未部署）：precheck 已增加
-`installed != 0 && table != 0`；在游戏/稳定音频流下等端点安装，最多发
-2 次 SET_CUR、间隔 1s（第一次未安装则跳过，第二次若已安装则 post）。
-如果装好后一次仍崩，再回到 completion/unmap。
+第三次（v3 installed 门，2026-10-31 00:59–01:01）：
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `c80fa717…`（89725B，29 条，cave 592B） |
+| host | `GET_INTERFACE(AS)=0`；2 次 SET_CUR 都在 alt0；`GET_CUR=48000`；`failures=0` |
+| 设备 | 2× `UAC U2 skip alt=0`；0 post、0 completion、无 crash |
+| 判定 | **未触发**：host 没选中 alt1，installed/table 门没有执行；设备安全 |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+下一步：host 侧 `uac-control` 增加 `--require-alt1`，`GET_INTERFACE != 1`
+就不发 SET_CUR；确认游戏音频在流后再用 v3 重测。如果装好后一次仍崩，
+再回到 completion/unmap。
 
 ## 9. 开放问题
 
@@ -411,8 +420,8 @@ cave 里手工拼 report。
   no-report 已实机一次：report 修复成立（3072/3072），但 completion 后
   控制/alt 路径仍崩溃，build 标 dangerous、不再部署。queue-object 修正版
   `56b7f8ee…` 实机一次：1 SET_CUR 未崩，但端点未安装（installed=0/table=0），
-  空报告，数据路径未走到。v3 `c80fa717…` 已构建（带 `installed/table` 门），
-  未部署；下一轮最多 2 次 SET_CUR（间隔 1s），门会跳过未安装的触发。
+  空报告，数据路径未走到。v3 `c80fa717…` 已实机一次：host alt=0，0 post，
+  installed/table 门未触发；host 需要先加 `--require-alt1`，再重测。
   拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
