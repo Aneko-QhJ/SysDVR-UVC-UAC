@@ -621,10 +621,11 @@ alt0，设备只记 `skip alt=0`，0 post、门未触发。UAC 默认仍禁用�
   指针为零——数据路径没有被走到。结论：precheck 必须增加
   `installed != 0 && table != 0` 门，等端点安装后再 post。
   下一步：v3 `c80fa717…` 已实机一次：host `GET_INTERFACE=0`，两次 SET_CUR
-  都在 alt0，设备只记 `skip alt=0`，0 post，门未触发。host 侧先修：
-  `uac-control` 增加 `--require-alt1`，`GET_INTERFACE` 不是 1 就直接退出、
-  不发 SET_CUR。然后用 v3 重测（需新授权）：确认游戏音频在流、alt1 后最多
-  2 次 SET_CUR、间隔 1s；如果装好端点后一次仍崩，再回到 completion/unmap。
+  都在 alt0，设备只记 `skip alt=0`，0 post，门未触发。host 侧已修：
+  `uac-control --require-alt1` 在 `GET_INTERFACE != 1` 时直接退出、不发
+  SET_CUR（host/uac-control.c 已重建）。下一轮用 v3 重测（需新授权）：
+  确认游戏音频在流、alt1 后最多 2 次 SET_CUR、间隔 1s；如果装好端点后一次
+  仍崩，再回到 completion/unmap。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

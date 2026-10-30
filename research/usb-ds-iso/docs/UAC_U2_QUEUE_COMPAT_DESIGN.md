@@ -392,9 +392,9 @@ cave 里手工拼 report。
 | 判定 | **未触发**：host 没选中 alt1，installed/table 门没有执行；设备安全 |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步：host 侧 `uac-control` 增加 `--require-alt1`，`GET_INTERFACE != 1`
-就不发 SET_CUR；确认游戏音频在流后再用 v3 重测。如果装好后一次仍崩，
-再回到 completion/unmap。
+下一步：host 侧已加 `--require-alt1`（`GET_INTERFACE != 1` 就不发
+SET_CUR，`host/uac-control.c` 已重建）；确认游戏音频在流后再用 v3 重测。
+如果装好后一次仍崩，再回到 completion/unmap。
 
 ## 9. 开放问题
 

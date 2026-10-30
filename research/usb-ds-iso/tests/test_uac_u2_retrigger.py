@@ -39,6 +39,24 @@ class UacU2RetriggerTests(unittest.TestCase):
         self.assertIn("SET_CUR retrigger (ep)", self.host)
         self.assertIn("usleep((useconds_t)interval_ms * 1000)", self.host)
 
+    def test_host_can_require_alt1_before_set_cur(self):
+        for token in ("--require-alt1", "require_alt1",
+                      "alt1 required but GET_INTERFACE=%u; not sending SET_CUR",
+                      "--require-alt1 cannot be combined with --alt-only"):
+            self.assertIn(token, self.host)
+        # The abort must come before the SET_CUR loop.
+        abort = self.host.index("not sending SET_CUR")
+        set_cur = self.host.index("SET_CUR rate 48k (ep)")
+        self.assertLess(abort, set_cur)
+
+    def test_binary_rejects_require_alt1_with_alt_only(self):
+        if not BINARY.is_file():
+            self.skipTest(f"missing {BINARY}; run make -C host")
+        result = subprocess.run([str(BINARY), "--require-alt1", "--alt-only"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("cannot be combined", result.stderr)
+
     def test_binary_rejects_out_of_range_repeat(self):
         if not BINARY.is_file():
             self.skipTest(f"missing {BINARY}; run make -C host")

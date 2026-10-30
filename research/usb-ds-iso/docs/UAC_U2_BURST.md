@@ -243,7 +243,8 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   completion 为空（`0x748c/0/0`），数据路径未走到。带
   `installed != 0 && table != 0` 门的 v3 `c80fa717…`（89725B）实机一次：
   host `GET_INTERFACE=0`，两次 SET_CUR 都在 alt0，设备只记 `skip alt=0`，
-  0 post、门未触发、无崩溃；host 需要先加 `--require-alt1`。
+  0 post、门未触发、无崩溃；host 已加 `--require-alt1`：`GET_INTERFACE != 1`
+  时不发 SET_CUR。
 
 ## 风险与边界
 

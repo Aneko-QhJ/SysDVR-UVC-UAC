@@ -43,22 +43,28 @@ static int rate_ok(const uint8_t *data, int length)
 
 int main(int argc, char **argv)
 {
-    int set_rate = 0, alt = -1, alt_only = 0;
+    int set_rate = 0, alt = -1, alt_only = 0, require_alt1 = 0;
     int repeat = 1, interval_ms = 20;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--set-rate")) set_rate = 1;
         else if (!strcmp(argv[i], "--alt-only")) alt_only = 1;
+        else if (!strcmp(argv[i], "--require-alt1")) require_alt1 = 1;
         else if (!strncmp(argv[i], "--alt=", 6)) alt = atoi(argv[i] + 6);
         else if (!strncmp(argv[i], "--repeat=", 9)) repeat = atoi(argv[i] + 9);
         else if (!strncmp(argv[i], "--interval-ms=", 14)) interval_ms = atoi(argv[i] + 14);
         else {
             fprintf(stderr, "usage: %s [--set-rate] [--alt-only] [--alt=0|1] "
-                    "[--repeat=1..1000] [--interval-ms=5..1000]\n", argv[0]);
+                    "[--require-alt1] [--repeat=1..1000] [--interval-ms=5..1000]\n",
+                    argv[0]);
             return 2;
         }
     }
     if (repeat < 1 || repeat > 1000 || interval_ms < 5 || interval_ms > 1000) {
         fprintf(stderr, "repeat must be 1..1000 and interval-ms 5..1000\n");
+        return 2;
+    }
+    if (alt_only && require_alt1) {
+        fprintf(stderr, "--require-alt1 cannot be combined with --alt-only\n");
         return 2;
     }
     if (alt_only && alt < 0) alt = 1;
@@ -97,7 +103,25 @@ int main(int argc, char **argv)
     }
 
     rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE(AS)");
-    if (rc != 1) ++failures; else printf("  alt=%u\n", data[0]);
+    if (rc != 1) {
+        ++failures;
+        if (require_alt1) {
+            fprintf(stderr, "GET_INTERFACE failed; --require-alt1 aborts\n");
+            libusb_close(h);
+            libusb_exit(ctx);
+            return 1;
+        }
+    } else {
+        printf("  alt=%u\n", data[0]);
+        if (require_alt1 && data[0] != 1) {
+            fprintf(stderr,
+                    "alt1 required but GET_INTERFACE=%u; not sending SET_CUR\n",
+                    data[0]);
+            libusb_close(h);
+            libusb_exit(ctx);
+            return 1;
+        }
+    }
 
     const uint16_t indexes[] = {AS_ENDPOINT, AS_INTERFACE};
     const char *names[] = {"ep", "if"};
