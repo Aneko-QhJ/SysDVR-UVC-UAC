@@ -717,7 +717,14 @@ SET_CUR；第三次 0→1 后门通过（`installed=1 table=0x800501000000`）�
   无崩溃。结论：`installed=1` 是部分安装状态，门太弱。下一步离线解码安装器
   在 `manager + 0x14d0 + index*16` 写的字节和 table tag，要求成功回合的完整
   值（`0xA2`/`0xF0`）；然后重测 v4（一次 SET_CUR + WAV），再谈 host 包级
-  接收器。
+  接收器。**已完成（离线）**：`0x295d0` 的 8 条安装循环只写 `w21/w24 = 0/1`
+  到 `manager+0x14d0+index*16`，没有路径写 `0xA2/0xF0`；因此 app 读到的
+  `installed=162/240` 不是这个字节，可能读错 manager/device 对象或被另一张
+  表覆盖。pattern3 的 `installed=1` 与安装器写值一致，说明 `!=0` 门确实
+  放行了部分安装。v5 计划：同时读 manager `0xDB610/0xDB611/0xDB608` 与
+  device `0xD4610/0xD4611/0xD4608`，`installed <= 1` 时只 skip；host 用
+  `--force-alt1 --repeat=2 --interval-ms=1000`，第一次 skip、第二次在安装
+  完成后 post。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

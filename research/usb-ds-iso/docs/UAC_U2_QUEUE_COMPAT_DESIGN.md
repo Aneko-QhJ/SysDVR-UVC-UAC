@@ -494,3 +494,34 @@ tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0`，然后�
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。
+
+## 11. 安装器字节解码（离线，2026-10-31）
+
+`0x295d0` 的 8 条 endpoint 安装循环在 `manager + 0x14d0 + index*16` 写一个
+字节；所有写点都是：
+
+```
+0x296e4  strb w21, [x23, x8]
+0x29b08  strb w24, [x23, x8]
+0x29bf4  strb w21, [x23, x8]
+0x29cbc  strb w24, [x23, x8]
+0x29da4  strb w21, [x23, x8]
+0x29e6c  strb w24, [x23, x8]
+0x29f54  strb w21, [x23, x8]
+0x2a01c  strb w21, [x23, x8]
+```
+
+`w21`/`w24` 在该函数里被显式设为 `1`（`0x29668`、`0x29b70`、`0x29d24`、
+`0x29ed4`、`0x29fbc` 等），SS 分支另有 `strb wzr, [x8, #8]`（清 0）。
+**安装器只会写 0 或 1，没有任何路径写 0xA2/0xF0。**
+
+因此实机看到的 `installed=162/240` 不能是 `manager+0x14d0+index*16` 这个
+字节；要么 app 读的对象/基址不对（manager `0xDA000` vs device `0xD3000`），
+要么该地址被另一张表覆盖。pattern3 的 `installed=1` 反而与安装器写值一致——
+它很可能就是真实的“已安装”标志，而 `!=0` 门让**部分安装**提前 post，导致
+空 completion。
+
+下一步 v5（未构建）：同时读 manager `+0x1610/+0x1611/+0x1608` 与 device
+`+0x1610/+0x1611/+0x1608`，记录两套值；`installed <= 1` 时只记 skip，
+不 post；host 用 `--force-alt1 --repeat=2 --interval-ms=1000`，让第一次
+skip、第二次在安装完成后 post。
