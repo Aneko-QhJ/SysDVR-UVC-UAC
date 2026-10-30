@@ -245,11 +245,11 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `--require-alt1` 先拦截 alt0；`--force-alt1` 显式 `SET_INTERFACE(1)` 后
   `installed=240 table=0xfc0101000027`，门通过，completion `3072/3072`，
   无崩溃。host 16/16 包数与 PCM 未测；第二次 SET_CUR 数据阶段仍 `0x25c8c`。
-- v4 `c33d0d07…`（89772B）实机两次：第一次 host 已看到 alt1、未发
-  `SET_INTERFACE(1)`；`installed=0 table=0`，门跳过、0 post、WAV 全零。
-  第二次 1→1 的 `SET_INTERFACE(1)` 回读 alt0，门控退出、未发 SET_CUR。
-  结论：安装器需要真正的 0→1 过渡；`--force-alt1` 已改为
-  `SET_INTERFACE(0) → SET_INTERFACE(1)`，待重测。
+- v4 `c33d0d07…`（89772B）实机三次：第一次 alt1、未发 `SET_INTERFACE(1)`，
+  installed=0、门跳过；第二次 1→1 回读 alt0、未发 SET_CUR；第三次 0→1 后
+  门通过（installed=1/table=0x800501000000），post/pattern 发生，但
+  completion 为空、WAV 全零、无崩溃。结论：`installed=1` 是部分安装状态，
+  门太弱；需解码安装器字节/table tag 后收紧。
 
 ## 风险与边界
 

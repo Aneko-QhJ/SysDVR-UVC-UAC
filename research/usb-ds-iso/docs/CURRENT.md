@@ -1,15 +1,15 @@
-# 当前状态（2026-10-31 01:45，Asia/Shanghai）
+# 当前状态（2026-10-31 01:50，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 01:41–01:43 的 U2 v4 重试（一次 boot）：
-> host 先读到 alt1；`--force-alt1` 发 `SET_INTERFACE(1)` 后回读却是 alt0，
-> 于是按门控退出，**没有发 SET_CUR**。设备只有 SET_INTERFACE 记录，0 post、
-> 无 crash；WAV 全零。结论：1→1 的重复设置不会保持 alt1，必须做真正的
-> 0→1 过渡；host 已改为 `SET_INTERFACE(0) → SET_INTERFACE(1)`。卡恢复
-> `52069a44…` 并安全弹出，无重试。
+> 最后一次实机是 2026-10-31 01:47–01:49 的 U2 v4 第三次（一次 boot）：
+> host 用 `SET_INTERFACE(0) → SET_INTERFACE(1)` 拿到 alt1，只发 1 次 SET_CUR；
+> precheck `installed=1 table=0x800501000000`，门通过，pattern 已填写、post
+> `rc=0`，但 **completion 为空 `0x748c/0/0`**，WAV 全零，无 crash。
+> 结论：`installed=1` 是部分安装状态，门还不够严。卡恢复 `52069a44…` 并
+> 安全弹出，无重试。
 
-## 当前进度（2026-10-31 01:45）
+## 当前进度（2026-10-31 01:50）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -21,8 +21,8 @@
 | U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
 | U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
 | U2 v3 installed 门 | 实机一次（force-alt1）：门通过，completion 3072/3072，无崩溃 | `private/runs/UAC-u2-v3b-20261031` |
-| U2 v4 方波 burst | 实机两次：第一次 alt1/installed=0；第二次 1→1 回读 0，未发 SET_CUR；均无 post | `private/runs/UAC-u2-pattern2-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-pattern2` |
+| U2 v4 方波 burst | 实机三次：alt1/installed=0；1→1 回读 0；0→1 门过但 completion 空、WAV 零 | `private/runs/UAC-u2-pattern3-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-pattern3` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -60,7 +60,22 @@
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
-## 最近一次 U2 v4 重试（2026-10-31 01:41–01:43，1→1 回读 0，未触发）
+## 最近一次 U2 v4 第三次（2026-10-31 01:47–01:49，门过但空 completion）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `c33d0d07…`（89772B，29 条，cave 592B）一次 boot；`record=28` |
+| host | `SET_INTERFACE(0)` → `SET_INTERFACE(1)` → alt1；1 次 SET_CUR；`GET_CUR=48000`；failures=0 |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x358b97d000`，**`installed=1 table=0x800501000000`** |
+| post | `UAC U2 post begin seq=1`、`UAC U2 pattern 1kHz 16ms seq=1`、`rc=0x0 urb=388 size=3072` |
+| **completion** | **`rc=0x748c requested=0 transferred=0`（空）** |
+| WAV | 40960 frames，min=max=0，nonzero=0；detector FAIL |
+| 判定 | **门太弱**：`installed=1` 是部分安装状态，门放行后 post 成功但 completion 为空、host 无数据；无 crash |
+| 下一步 | 离线解码安装器在 `manager + 0x14d0 + index*16` 写的字节和 table tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0` |
+| 证据 | `private/runs/UAC-u2-pattern3-20261031`（日志 `7e26f53c…`、`capture.wav`）、`private/card-cycles/20261031-u2-pattern3` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+## 前一次 U2 v4 重试（2026-10-31 01:41–01:43，1→1 回读 0，未触发）
 
 | 项 | 结果 |
 | --- | --- |
@@ -265,12 +280,13 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
 门。v3 `c80fa717…` 实机一次：macOS 保持 alt0，`--require-alt1` 正确拦截；
 `--force-alt1` 显式切到 alt1 后 `installed=240`、table 非零，门通过，
 completion `3072/3072`，无崩溃。第二次 SET_CUR 数据阶段仍报 `0x25c8c`；
-host 16/16 包数和 PCM 未测。v4 `c33d0d07…` 实机两次：第一次 host 已看到
-alt1、未发 `SET_INTERFACE(1)`，installed=0、门跳过；第二次 1→1 后回读 alt0，
-门控直接退出、未发 SET_CUR；两次都无 post、WAV 全零、无崩溃。host 已改为
-真正的 `SET_INTERFACE(0) → SET_INTERFACE(1)` 过渡，待重测 v4。UAC 默认仍
-禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
-并安全弹出。
+host 16/16 包数和 PCM 未测。v4 `c33d0d07…` 实机三次：第一次 alt1 但
+未发 `SET_INTERFACE(1)`、installed=0、门跳过；第二次 1→1 回读 alt0、未发
+SET_CUR；第三次 0→1 后门通过（`installed=1 table=0x800501000000`），post
+与 1kHz 填充都发生，但 completion 为空、WAV 全零、无崩溃。结论：
+`installed=1` 是部分安装状态，门还不够严；需解码安装器字节/table tag，
+要求成功回合的完整值（`0xA2`/`0xF0`）。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -360,6 +376,11 @@ alt1、未发 `SET_INTERFACE(1)`，installed=0、门跳过；第二次 1→1 后
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U2 v4 第三次由用户“部署/测试”明确授权（2026-10-31 01:45），一次 boot；
+  0→1 后门通过（installed=1/table=0x800501000000），post/pattern 发生但
+  completion 为空、WAV 全零、无崩溃；读卡后恢复 `52069a44…` 并安全弹出，
+  无重试。证据 `private/runs/UAC-u2-pattern3-20261031`、
+  `private/card-cycles/20261031-u2-pattern3`。
 - U2 v4 重试由用户“部署”明确授权（2026-10-31 01:37），一次 boot；初始 alt1，
   `SET_INTERFACE(1)` 后回读 alt0，门控退出、未发 SET_CUR；0 post、WAV 全零、
   无崩溃；读卡后恢复 `52069a44…` 并安全弹出，无重试。证据
@@ -689,13 +710,14 @@ alt1、未发 `SET_INTERFACE(1)`，installed=0、门跳过；第二次 1→1 后
   门通过，completion `3072/3072`，无崩溃。**U2 单次 burst 设备侧通过**；
   host 16/16 包数与 PCM 未验证。下一步：host 侧统计 16×192 包（或换 Linux
   标准宿主），并解释第二次 SET_CUR 的 `0x25c8c`；`--force-alt1` 是 macOS
-  的 host workaround，不作为产品前提。v4 `c33d0d07…` 实机两次：第一次 host
-  已看到 alt1、未发 `SET_INTERFACE(1)`，installed=0、门跳过；第二次 1→1 后
-  回读 alt0，门控退出、未发 SET_CUR；均无 post、WAV 全零、无崩溃。host 已
-  改为真正的 `SET_INTERFACE(0) → SET_INTERFACE(1)` 过渡；重测 v4：
-  `--force-alt1 --set-rate --repeat=1`（一次 SET_CUR，避开 `0x25c8c`），
-  host 录 `:0`/`:2` 到 WAV，用 `tools/check_uac_burst_wav.py` 检查
-  16ms/1kHz 段。
+  的 host workaround，不作为产品前提。v4 `c33d0d07…` 实机三次：第一次
+  alt1 但未发 `SET_INTERFACE(1)`、installed=0、门跳过；第二次 1→1 回读
+  alt0、未发 SET_CUR；第三次 0→1 后门通过（`installed=1
+  table=0x800501000000`），post/pattern 发生但 completion 为空、WAV 全零、
+  无崩溃。结论：`installed=1` 是部分安装状态，门太弱。下一步离线解码安装器
+  在 `manager + 0x14d0 + index*16` 写的字节和 table tag，要求成功回合的完整
+  值（`0xA2`/`0xF0`）；然后重测 v4（一次 SET_CUR + WAV），再谈 host 包级
+  接收器。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。
