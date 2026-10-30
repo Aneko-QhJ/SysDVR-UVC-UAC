@@ -18,6 +18,7 @@
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
 | U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
 | U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
+| U2 queue-object 诊断 | 已构建（`56b7f8ee…`，89714B），未部署 | `private/analysis/UAC-u2-noreport2-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-noreport` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -187,7 +188,8 @@ completion（空报告）后仍因控制路径断言**。no-report 诊断版实�
 completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但随后
 第二次 SET_CUR/alt 切换触发 usb 崩溃（同一 map 断言）。因此 U2 只验证了
 **一次 3072B completion**，没有 host 16/16 计数，PCM 未测；控制/alt 路径仍
-不稳定。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+不稳定。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。queue-object 修正版 `56b7f8ee…`
+已构建、未部署。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -577,7 +579,9 @@ completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但
   对象，不是 completion 的 table entry）。该 build 标 dangerous，不再部署。
   下一步离线：把 queue 读取改到 `0x2a980` 用的
   `[manager+0x14c8+index*16]` 对象；再用一次 SET_CUR 分离 completion 与控制/
-  alt 路径。
+  alt 路径。该修正版已构建：`56b7f8ee…`（89714B，同一 29 条 payload），
+  `_uacLogQueue` 同时记录 `ep`（0xFC300）和 `obj`（0xDB608 指针）；未部署、
+  未授权实机。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

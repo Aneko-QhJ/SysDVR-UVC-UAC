@@ -253,6 +253,10 @@ LOG("UAC U2 post begin seq=%u\n", seq);
 - **实机一次（2026-10-30 20:29）**：`complete rc=0 requested=3072
   transferred=3072`，report 修复成立；随后第二次 SET_CUR/alt 路径 usb 崩溃
   （同一 map 断言）。build 标 dangerous，已恢复 `52069a44…`。
+- **queue-object 修正版（已构建，未部署）**：`56b7f8ee…`（89714B，同一
+  29 条 payload）；`_uacLogQueue` 同时记录 `ep`（0xFC300）和 `obj`
+  （`0xDB608` 的 table entry），用于区分 endpoint 对象与 completion 队列。
+  下一轮只发 **1 次** SET_CUR，不触发第二次/alt 切换。
 
 ## 7. 离线验证
 
@@ -359,6 +363,10 @@ cave 里手工拼 report。
 - 停止条件：任何 fatal / 断连 / 超时；读卡后恢复 `52069a44…`，不重试；
 - 不测 PCM、不混短包复测。
 
+下一版（queue-object 修正版，未部署）：只发 1 次 SET_CUR，日志同时读
+`ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）；如果 `obj` 读数仍失败，
+说明 table pointer 不是可直接读的用户 VA，需要改从 cave/mailbox 侧记录。
+
 ## 9. 开放问题
 
 1. **第二次 map 的来源**：H1、H2 还是 H3？本轮只有 1 次 post，H1（app
@@ -380,8 +388,9 @@ cave 里手工拼 report。
 
 - **采用 A**：§7.1/§7.2/§7.3 已完成；no-report 诊断 payload `4fc0247f…`
   已实机一次：report 修复成立（3072/3072），但 completion 后控制/alt 路径
-  仍崩溃，build 标 dangerous、不再部署。下一步离线修正 queue 读取对象并
-  用“一次 SET_CUR”分离 completion 与控制/alt 路径；拒绝路径仍待单独解决。
+  仍崩溃，build 标 dangerous、不再部署。queue-object 修正版 `56b7f8ee…`
+  已构建、未部署；下一步用它只发“一次 SET_CUR”分离 completion 与控制/alt
+  路径；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

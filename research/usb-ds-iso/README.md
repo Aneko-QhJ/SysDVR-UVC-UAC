@@ -30,7 +30,8 @@
   暂停，待完成 report 覆盖与 unmap/一次性 post 的设计和离线验证。no-report
   诊断 `4fc0247f…` 实机一次：`complete rc=0 requested=3072 transferred=3072`
   （report 修复成立），但随后控制/alt 路径仍 usb 崩溃；已标 dangerous、不再部署。
-  设计草案见 [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
+  queue-object 修正版 `56b7f8ee…` 已构建、未部署。设计草案见
+  [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口

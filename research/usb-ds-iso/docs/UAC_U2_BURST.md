@@ -237,6 +237,9 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   安全弹出，无重试。
 - 证据：`private/runs/UAC-u2-noreport-20261030`（日志 `748fa0f2…`、崩溃
   `489fa94e…`）、`private/card-cycles/20261030-u2-noreport`。
+- 修正版（未部署）：`56b7f8ee…`（89714B，同一 29 条 payload）同时记录
+  `ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）；下一轮只发一次
+  SET_CUR，分离 completion 与控制/alt 路径。
 
 ## 风险与边界
 

@@ -2160,42 +2160,57 @@ static bool _uacReadUsbState(UacUsbEpState *out)
     return R_SUCCEEDED(rc);
 }
 
-static void _uacLogQueueState(void)
+static void _uacLogQueue(const char *tag, Handle h, u64 address)
 {
-    if (!g_uacUsbPid) return;
-    Handle h = INVALID_HANDLE;
-    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
     u32 index = 0, count = 0;
     u8 entry[0x30] = {0};
-    Result rc = svcReadDebugProcessMemory(&index, h,
-        g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_QUEUE_INDEX_OFFSET,
+    Result rc = svcReadDebugProcessMemory(&index, h, address + 0x04,
         sizeof(index));
     if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(&count, h,
-            g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_QUEUE_COUNT_OFFSET,
+        rc = svcReadDebugProcessMemory(&count, h, address + 0x08,
             sizeof(count));
     }
     u32 prev = (index + 7) & 7;
     if (R_SUCCEEDED(rc)) {
         rc = svcReadDebugProcessMemory(entry, h,
-            g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_ENTRY_BASE +
-                (u64)prev * UAC_U2_ENTRY_STRIDE,
-            sizeof(entry));
+            address + 0x78 + (u64)prev * 0x30, sizeof(entry));
     }
-    if (R_SUCCEEDED(rc)) {
-        u32 status = 0, requested = 0, transferred = 0;
-        u64 iova = 0;
-        memcpy(&status, entry + 0x28, sizeof(status));
-        memcpy(&requested, entry + 0x20, sizeof(requested));
-        memcpy(&transferred, entry + 0x2c, sizeof(transferred));
-        memcpy(&iova, entry + 0x10, sizeof(iova));
-        /* GetReportData may have consumed the entry and zeroed status; read
-           count/xfer as the completion evidence, not status alone. */
-        LOG("UAC U2 queue idx=%u count=%u prev=%u status=%u req=%u xfer=%u iova=0x%llx\n",
-            index, count, prev, status, requested, transferred,
-            (unsigned long long)iova);
+    if (R_FAILED(rc)) {
+        LOG("UAC U2 queue %s addr=0x%llx rd=0x%x\n", tag,
+            (unsigned long long)address, rc);
+        return;
+    }
+    u32 status = 0, requested = 0, transferred = 0;
+    u64 iova = 0;
+    memcpy(&status, entry + 0x28, sizeof(status));
+    memcpy(&requested, entry + 0x20, sizeof(requested));
+    memcpy(&transferred, entry + 0x2c, sizeof(transferred));
+    memcpy(&iova, entry + 0x10, sizeof(iova));
+    /* GetReportData may have consumed the entry and zeroed status; read
+       count/xfer as the completion evidence, not status alone. */
+    LOG("UAC U2 queue %s addr=0x%llx idx=%u count=%u prev=%u status=%u req=%u xfer=%u iova=0x%llx\n",
+        tag, (unsigned long long)address, index, count, prev, status,
+        requested, transferred, (unsigned long long)iova);
+}
+
+static void _uacLogQueueState(void)
+{
+    if (!g_uacUsbPid) return;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
+
+    /* 0xFC300 is the endpoint object used by 0x302e0; the completion queue
+       lives on the table entry returned by 0x2a980
+       (manager + 0x14c8 + index*16), not on this object.  Log both. */
+    _uacLogQueue("ep", h, g_uacUsbBase + UAC_U2_EP_OBJ);
+    u64 table = 0;
+    Result rc = svcReadDebugProcessMemory(&table, h,
+        g_uacUsbBase + UAC_U2_TABLE_PTR_OFFSET, sizeof(table));
+    if (R_SUCCEEDED(rc) && table) {
+        _uacLogQueue("obj", h, table);
     } else {
-        LOG("UAC U2 queue read rc=0x%x\n", rc);
+        LOG("UAC U2 queue obj ptr rd=0x%x value=0x%llx\n", rc,
+            (unsigned long long)table);
     }
     svcCloseHandle(h);
 }
