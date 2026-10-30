@@ -332,3 +332,24 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
      但只要不拒绝就不再进入，precheck 是当前唯一的安全阀。
   3. 证据：`private/runs/UAC-u2-burst2-20261030`（`run.json`、`device-log-u2b.txt`
      `b457421d…`、`crash-usb-0100000000000006.log` `ead11166…`、`erpt-a0311816.txt`）。
+
+## 2026-10-31 02:10 v6：安装对象修正（离线，未部署）
+
+- 之前 precheck 把 `0x295d0`/`0x2a980` 的表基址当成 manager；实际两者都用
+  `[manager + 0x229b8]` 这个独立安装对象。`0x30294`/`0x30298` 组成
+  `0x229b8`，`0x302a8` 从 `[x21+0x229b8]` 取 x0，`0x302c0` 调
+  `complete_original`；`0x2f188` 用同一指针调安装器。
+- 两份 2026-10-30 crash 的 `x0 - x21 = 0xa1038`：
+  `0x712cd7b038-0x712ccda000` 与 `0x714857b038-0x71484da000`。因此
+  安装对象 = `base + 0x17b038`；EP `0x84` 的 flag = `base + 0x17c648`，
+  表项指针 = `base + 0x17c640`。此前读的 `base + 0xdb610/+0xdb608` 是
+  manager 内无关字节，v3/v4 的 `installed=240/1` 不能当判据。
+- v6 NSP `73becbd5…`（90174B，29 条 / cave 592B）：
+  - 先读 `[manager+0x229b8]`，再读对象 `+0x1610/+0x1611/+0x1608`；
+  - 门：`install_ok && installed == 1 && table != 0`；
+  - 旧 manager 值只写日志；超时/无完成/报错时读表项 `+0x10/+0x20/+0x28/+0x2c`；
+  - 未部署、0 实机，设备/卡状态不推定。
+- 下一次（需新授权）：一次 boot，host `--force-alt1 --set-rate --repeat=2
+  --interval-ms=1000`。通过条件：completion `3072/3072`、WAV 出现 1 kHz
+  16 ms 段、无 usb fatal；失败即停、不重试、恢复 `52069a44…` 并安全弹出。
+- 证据：`private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`）。

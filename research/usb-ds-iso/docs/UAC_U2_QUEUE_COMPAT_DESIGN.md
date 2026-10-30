@@ -487,42 +487,50 @@ tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0`，然后�
   空报告，数据路径未走到。v3 `c80fa717…` 两次实机：第一次 host alt=0、门
   未触发；第二次 `--force-alt1` 后门通过、completion 3072/3072、无崩溃，
   设备侧单次 burst 通过。host 16/16、PCM、第二次 SET_CUR 的 `0x25c8c`
-  仍待确认；v4 `c33d0d07…` 实机两次：第一次 alt1 但未发 SET_INTERFACE，
+  仍待确认；v4 `c33d0d07…` 实机三次：第一次 alt1 但未发 SET_INTERFACE，
   installed=0、门跳过；第二次 1→1 回读 alt0、未发 SET_CUR；第三次 0→1
-  门通过（installed=1）但 completion 为空、WAV 全零。`installed=1` 是部分
-  安装状态，下一步离线解码安装器字节/table tag、收紧门；拒绝路径仍待单独解决。
+  门通过（installed=1）但 completion 为空、WAV 全零。**v3/v4 的 installed
+  值读错了对象（manager+0x1610），不是安装状态；安装对象是
+  `[manager+0x229b8]=base+0x17b038`，见 §11。** v6 `73becbd5…` 改为跟随
+  对象读 `+0x1610/+0x1608`，门收紧为 `installed==1 && table!=0`；已构建、
+  未部署。拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。
 
-## 11. 安装器字节解码（离线，2026-10-31）
+## 11. 安装对象与 v6 门（离线，2026-10-31）
 
-`0x295d0` 的 8 条 endpoint 安装循环在 `manager + 0x14d0 + index*16` 写一个
-字节；所有写点都是：
+`0x295d0` 的 8 条 endpoint 安装循环确实只写 `0`/`1`，但**写入对象不是
+manager**。`complete_original`（`0x2a980`）的 x0 由调用方从
+`manager + 0x229b8` 取出（`0x30294`/`0x30298` 组成 `0x229b8`，
+`0x302a8` 执行 `ldr x0, [x21, x22]`，`0x302c0` 调 `0x2a980`）；
+`0x2f17c`/`0x2f188` 用同一指针调用 `0x292b0 -> 0x295d0`。因此安装表、
+flag 和完成路径都挂在**独立安装对象**上，不是 manager。
 
-```
-0x296e4  strb w21, [x23, x8]
-0x29b08  strb w24, [x23, x8]
-0x29bf4  strb w21, [x23, x8]
-0x29cbc  strb w24, [x23, x8]
-0x29da4  strb w21, [x23, x8]
-0x29e6c  strb w24, [x23, x8]
-0x29f54  strb w21, [x23, x8]
-0x2a01c  strb w21, [x23, x8]
-```
+两份 2026-10-30 crash report 给出了该对象的实际偏移：
 
-`w21`/`w24` 在该函数里被显式设为 `1`（`0x29668`、`0x29b70`、`0x29d24`、
-`0x29ed4`、`0x29fbc` 等），SS 分支另有 `strb wzr, [x8, #8]`（清 0）。
-**安装器只会写 0 或 1，没有任何路径写 0xA2/0xF0。**
+| 报告 | x0（安装对象） | x21（manager） | 差 |
+| --- | --- | --- | --- |
+| `UAC-u2-precheck2` | `0x712cd7b038` | `0x712ccda000` | `0xa1038` |
+| `UAC-u2-burst2` | `0x714857b038` | `0x71484da000` | `0xa1038` |
 
-因此实机看到的 `installed=162/240` 不能是 `manager+0x14d0+index*16` 这个
-字节；要么 app 读的对象/基址不对（manager `0xDA000` vs device `0xD3000`），
-要么该地址被另一张表覆盖。pattern3 的 `installed=1` 反而与安装器写值一致——
-它很可能就是真实的“已安装”标志，而 `!=0` 门让**部分安装**提前 post，导致
-空 completion。
+所以安装对象 = `module base + 0x17b038`（`manager + 0xa1038`）。对 EP `0x84`
+（`0x3a30(0x84) = 0x14`）：
 
-v5（已构建，未部署）：`ddd44cd4…`（90115B，同一 29 条 payload）同时读
-manager `+0x1610/+0x1611/+0x1608` 与 device `+0x1610/+0x1611/+0x1608`，
-记录两套值；`installed <= 1` 时只记 skip、不 post；host 用
-`--force-alt1 --repeat=2 --interval-ms=1000`，让第一次 skip、第二次在
-安装完成后 post。
+- flag：`对象 + 0x14d0 + 0x14*16 = 对象 + 0x1610` = `base + 0x17c648`；
+- 表项指针：`对象 + 0x14c8 + 0x14*16 = 对象 + 0x1608` = `base + 0x17c640`。
+
+此前 precheck 读 `manager + 0x1610`（`base + 0xdb610`）和
+`manager + 0x1608`（`base + 0xdb608`），读到的是 manager 内无关字节；
+`installed=0/1/0x90/0xa2/0xf0` 的跳变正是这个原因。v3/v4 的
+“`installed=1` 是部分安装”结论作废；成功回合的 `installed=240` 也只是
+碰巧非零，不能当判据。
+
+v6（已构建，未部署）：`73becbd5…`（90174B，同一 29 条 payload / cave 592B）。
+- 先读 `[manager + 0x229b8]` 得到对象指针，再读 `+0x1610/+0x1611/+0x1608`；
+- 门：`install_ok && installed == 1 && table != 0`；
+- manager 旧值 `0xdb610/0xdb608` 只写日志，绝不参与门；
+- 超时/无完成/报错时读 `[obj+0x1608]` 的表项：`+0x10` IOVA、`+0x20`
+  requested、`+0x28` status、`+0x2c` transferred；
+- 实机计划：一次 boot，host `--force-alt1 --set-rate --repeat=2
+  --interval-ms=1000`；需新的明确授权。

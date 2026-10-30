@@ -54,7 +54,7 @@ def main():
 
     nsp = outputs / "exefs.nsp"
     elf = outputs / "exefs.elf"
-    for marker in (b"UAC U2 post", b"UAC U2 complete", b"UAC U2 queue"):
+    for marker in (b"UAC U2 post", b"UAC U2 complete", b"UAC U2 install"):
         if marker not in elf.read_bytes():
             raise SystemExit(f"missing compile-time marker {marker!r}")
 

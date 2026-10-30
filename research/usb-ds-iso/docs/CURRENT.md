@@ -1,15 +1,19 @@
-# 当前状态（2026-10-31 01:50，Asia/Shanghai）
+# 当前状态（2026-10-31 02:10，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 01:47–01:49 的 U2 v4 第三次（一次 boot）：
+> 最后一次实机仍是 2026-10-31 01:47–01:49 的 U2 v4 第三次（一次 boot）：
 > host 用 `SET_INTERFACE(0) → SET_INTERFACE(1)` 拿到 alt1，只发 1 次 SET_CUR；
 > precheck `installed=1 table=0x800501000000`，门通过，pattern 已填写、post
 > `rc=0`，但 **completion 为空 `0x748c/0/0`**，WAV 全零，无 crash。
-> 结论：`installed=1` 是部分安装状态，门还不够严。卡恢复 `52069a44…` 并
-> 安全弹出，无重试。
+> 01:53–02:10 离线修正：安装器/完成路径的对象不是 manager，而是
+> `[manager + 0x229b8]`（两次 crash 的 `x0 - x21 = 0xa1038`，即
+> `base + 0x17b038`）。此前 precheck 读 `manager + 0x1610` 是无关字节，
+> `installed=0/1/0x90/0xa2/0xf0` 都不是安装状态。v6 `73becbd5…`（90174B）
+> 改为跟随该指针读 `obj + 0x1610/+0x1608`，要求 `installed == 1` 且
+> `table != 0`；已构建、未部署、0 实机。
 
-## 当前进度（2026-10-31 01:50）
+## 当前进度（2026-10-31 02:10）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -22,7 +26,8 @@
 | U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
 | U2 v3 installed 门 | 实机一次（force-alt1）：门通过，completion 3072/3072，无崩溃 | `private/runs/UAC-u2-v3b-20261031` |
 | U2 v4 方波 burst | 实机三次：alt1/installed=0；1→1 回读 0；0→1 门过但 completion 空、WAV 零 | `private/runs/UAC-u2-pattern3-20261031` |
-| U2 v5 候选读取 | 已构建（`ddd44cd4…`，90115B），未部署 | `private/analysis/UAC-u2-v5-20261031` |
+| U2 v5 候选读取 | 已构建（`ddd44cd4…`，90115B），未部署；被 v6 取代 | `private/analysis/UAC-u2-v5-20261031` |
+| U2 v6 安装对象门 | 已构建（`73becbd5…`，90174B），未部署、0 实机 | `private/analysis/UAC-u2-v6-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-pattern3` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -34,16 +39,17 @@
   + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP（覆盖安装器
   全部 8 条 alt 循环，4 SS + 4 HS，见 `tests/test_a23_alt1_nop_coverage.py`）。
   实机用过 `703e7795…`（88676B）和 `db97b6e7…`（88669B，skip 日志）。
-  **当前离线产物 `cbfbedbb…`（89174B）**：在 post 前用 dmnt 短暂 attach 读
-  EP `0x84` 对象（`base+0xFC300`）的端点字/interval/环指针、HS 速度，以及
-  安装器写入的 flag（`base+0xDB610`）和 `complete_original` 用的表项指针
-  （`base+0xDB608`）。实机已确认端点字/interval/环正确；speed/installed/table
-  是相对 manager（`base+0xDA000`）的偏移，早先漏加基址才读成代码字并让
-  precheck 全部跳过。不满足 `0x00C00584`/4/3、环非空或读失败仍只记
-  `post skipped`、不 post。所有地址由 `usb.elf` 推导，与崩溃报告的
-  `x21=base+0xDA000` 一致。
-  `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；编译出的 `uacU2Edits`
-  30 条与 manifest 一致。
+  **安装对象修正（2026-10-31 02:00 离线）**：`complete_original` 的 x0
+  不是 manager，而是从 `manager + 0x229b8`（`0x30294`/`0x302a8`）取出的
+  独立对象；`0x2f188` 用同一指针调用安装器。两份 2026-10-30 crash 的
+  `x0 - x21 = 0xa1038`，即对象在 `base + 0x17b038`。EP `0x84` 的 flag 在
+  `对象 + 0x1610`（`base + 0x17c648`），表项指针在 `对象 + 0x1608`
+  （`base + 0x17c640`）。此前 precheck 读 `base + 0xdb610`/`0xdb608` 是
+  manager 内无关字节，v3/v4 的 `installed=0/1/0x90/0xa2/0xf0` 都不能作为
+  安装判据；v6 `73becbd5…`（90174B）改为跟随指针读对象，要求
+  `installed == 1 && table != 0`，并把 manager 旧值只写日志。
+  `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；payload 仍为 29 条
+  （cave 592B），`uacU2Edits` 与 manifest 一致。
 - **端点是 `0x00C00584`，不是 `0x00C00184`**：U0d 的 `usb-config.txt` 已从设备
   读到 `ep 84 attr=05 mps=192 interval=4`（原始 `07 05 84 05 c0 00 04`）；驱动在
   `0x2fd80` 把 8 字节描述符原样拷进 endpoint 对象，A23 vendor 端点是
@@ -55,11 +61,28 @@
   报告 `private/analysis/UAC-u2-producer-20261030/replay.json`。
 - `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已改为
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
-- 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 30 条，失败即拒绝启用；
+- 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
-  再设计不触发致命拒绝路径的 post 前置检查。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+- 下一步：**实机 v6 一次**（需新的明确授权）。一次 boot；host 在 alt1 后
+  `--force-alt1 --set-rate --repeat=2 --interval-ms=1000`。预期 precheck 打印
+  `obj=0x…（base+0x17b038）`；只有 `installed=1 table!=0` 才 post。通过条件仍是
+  completion `3072/3072`、WAV 出现 1 kHz 段、无 usb fatal；失败即停、不重试、
+  读卡恢复 `52069a44…` 并安全弹出。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与 [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
+
+## U2 v6 离线修正（2026-10-31 02:10，未部署）
+
+| 项 | 结果 |
+| --- | --- |
+| 问题 | v3/v4 的 `installed` 读的是 `manager + 0x1610`，值在 0/1/0x90/0xa2/0xf0 之间跳；安装器只写 0/1，说明读错了对象 |
+| 证据 1 | `0x30294`/`0x30298` 组成 `0x229b8`，`0x302a8` 从 `[x21+0x229b8]` 取 x0，`0x302c0` 调 `complete_original`；`0x2f188` 用同一指针调安装器 |
+| 证据 2 | 崩溃 `UAC-u2-precheck2` 的 x0=`0x712cd7b038`、x21=`0x712ccda000`，差 `0xa1038`；`UAC-u2-burst2` 的 x0=`0x714857b038`、x21=`0x71484da000`，差同为 `0xa1038` |
+| 结论 | 安装对象 = `base + 0x17b038`；flag = `base + 0x17c648`；表项指针 = `base + 0x17c640`；manager 旧值仅作对照日志 |
+| 构建 | `73becbd5…`（90174B），29 条 / cave 592B，`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING` |
+| 门 | `install_ok && installed == 1 && table != 0`；不满足只记 `post skipped: install object not ready`，不 post |
+| 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
+| 状态 | **未部署、0 实机**；下一步需一次新授权的 v6 boot |
+| 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
 
 ## 最近一次 U2 v4 第三次（2026-10-31 01:47–01:49，门过但空 completion）
 
@@ -72,7 +95,7 @@
 | **completion** | **`rc=0x748c requested=0 transferred=0`（空）** |
 | WAV | 40960 frames，min=max=0，nonzero=0；detector FAIL |
 | 判定 | **门太弱**：`installed=1` 是部分安装状态，门放行后 post 成功但 completion 为空、host 无数据；无 crash |
-| 下一步 | 离线解码安装器在 `manager + 0x14d0 + index*16` 写的字节和 table tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0` |
+| 下一步 | 离线已完成：安装对象是 `[manager+0x229b8] = base+0x17b038`；v6 跟随该指针并收紧为 `installed==1 && table!=0`，见下节 |
 | 证据 | `private/runs/UAC-u2-pattern3-20261031`（日志 `7e26f53c…`、`capture.wav`）、`private/card-cycles/20261031-u2-pattern3` |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
@@ -284,12 +307,13 @@ completion `3072/3072`，无崩溃。第二次 SET_CUR 数据阶段仍报 `0x25c
 host 16/16 包数和 PCM 未测。v4 `c33d0d07…` 实机三次：第一次 alt1 但
 未发 `SET_INTERFACE(1)`、installed=0、门跳过；第二次 1→1 回读 alt0、未发
 SET_CUR；第三次 0→1 后门通过（`installed=1 table=0x800501000000`），post
-与 1kHz 填充都发生，但 completion 为空、WAV 全零、无崩溃。结论：
-`installed=1` 是部分安装状态，门还不够严；需解码安装器字节/table tag，
-要求成功回合的完整值（`0xA2`/`0xF0`）。离线已确认安装器只写 0/1；v5
-`ddd44cd4…`（90115B）同时读 manager/device 候选，并在 `installed <= 1`
-时跳过，未部署。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+与 1kHz 填充都发生，但 completion 为空、WAV 全零、无崩溃。**2026-10-31
+02:00 离线修正：v3/v4 读的 `installed`/`table` 是 `manager+0x1610/+0x1608`
+的无关字节，安装对象实际是 `[manager+0x229b8] = base+0x17b038`
+（两份 crash 的 x0−x21=0xa1038），所以“installed=1 是部分安装”的结论作废。**
+v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要求
+`installed == 1 && table != 0`；已构建、未部署。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

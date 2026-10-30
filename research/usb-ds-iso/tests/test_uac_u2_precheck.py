@@ -98,19 +98,52 @@ class UacU2PrecheckTests(unittest.TestCase):
         self.assertIn("#define UAC_U2_EP_OBJ 0xFC300ULL", self.source)
 
     def test_install_markers_derive_from_the_installer(self):
-        # 0x295d0 marks manager + 0x14d0 + index*16; 0x2a980 reads the table
-        # pointer at manager + 0x14c8 + index*16.  The module-relative offsets
-        # add the manager bias (0xDA000).
+        # 0x295d0 marks install_obj + 0x14d0 + index*16; 0x2a980 reads the
+        # table pointer at install_obj + 0x14c8 + index*16.  install_obj is
+        # not the manager: 0x30294/0x302a8 load it from manager + 0x229b8.
         manager = 0xDA000
+        ptr_off = _movz(_word(self.data, self.sections, 0x30294))
+        ptr_off |= _movk_imm(_word(self.data, self.sections, 0x30298)) << 16
+        self.assertEqual(ptr_off, 0x229B8)
+        self.assertEqual(manager + ptr_off, 0xFC9B8)
+        # 0x302a8: ldr x0, [x21, x22]; 0x302c0: bl 0x2a980.
+        self.assertEqual(_bl_target(_word(self.data, self.sections, 0x302C0),
+                                    0x302C0), 0x2A980)
         flag_base = _movz(_word(self.data, self.sections, 0x29600))
         ptr_base = _movz(_word(self.data, self.sections, 0x2A9C4))
         self.assertEqual((flag_base, ptr_base), (0x14D0, 0x14C8))
         index = _ep_index(0x84)
         self.assertEqual(index, 0x14)
-        self.assertEqual(manager + flag_base + index * 16, 0xDB610)
-        self.assertEqual(manager + ptr_base + index * 16, 0xDB608)
-        self.assertIn("#define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL", self.source)
-        self.assertIn("#define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL", self.source)
+
+        # Both 2026-10-30 crash reports have complete_original's x0 (the
+        # install object) and x21 (the manager): x0 - x21 = 0xa1038.
+        import re
+        reports = [
+            ROOT / "private/runs/UAC-u2-precheck2-20261030/crash-usb-2.log",
+            ROOT / "private/runs/UAC-u2-burst2-20261030/"
+                   "crash-usb-0100000000000006.log",
+        ]
+        reports = [p for p in reports if p.is_file()]
+        if not reports:
+            self.skipTest("missing crash reports")
+        for path in reports:
+            text = path.read_text()
+            x0 = int(re.search(r"X\[00\]:\s+([0-9a-fA-F]+)", text).group(1), 16)
+            x21 = int(re.search(r"X\[21\]:\s+([0-9a-fA-F]+)", text).group(1), 16)
+            self.assertEqual(x0 - x21, 0xA1038, path.name)
+
+        bias = 0xA1038
+        self.assertEqual(manager + bias, 0x17B038)
+        self.assertEqual(manager + bias + flag_base + index * 16, 0x17C648)
+        self.assertEqual(manager + bias + ptr_base + index * 16, 0x17C640)
+        self.assertIn("#define UAC_U2_INSTALL_OBJ_PTR_OFFSET 0xFC9B8ULL",
+                      self.source)
+        self.assertIn("#define UAC_U2_INSTALL_OBJ_OFFSET 0x17B038ULL",
+                      self.source)
+        self.assertIn("#define UAC_U2_INSTALL_FLAG_OFF 0x1610ULL",
+                      self.source)
+        self.assertIn("#define UAC_U2_INSTALL_TABLE_OFF 0x1608ULL",
+                      self.source)
 
     def test_speed_offset_derives_from_the_cave(self):
         manifest = ROOT / "private/analysis/UAC-u2-producer-20261030/manifest.json"
@@ -140,8 +173,8 @@ class UacU2PrecheckTests(unittest.TestCase):
         self.assertLess(precheck, post)  # never post before the state read
         for token in ("word != 0x00C00584u", "ep.state[6] != 4", "ep.speed != 3",
                       "ring == 0", "prod != cons", "installed=%u flag1=%u table=0x%llx",
-                      "ep.installed <= 1",
-                      "UAC U2 post skipped: endpoint not ready for the cave"):
+                      "ep.installed != 1 || ep.table_ptr == 0",
+                      "UAC U2 post skipped: install object not ready"):
             self.assertIn(token, body)
         self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)
 

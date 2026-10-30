@@ -175,15 +175,16 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn("u32 postSeq;", source)
         self.assertIn("g_uacCtx.burstPosted = true;\n    u32 seq", source)
         self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
-        self.assertIn('LOG("UAC U2 queue %s addr=0x%llx idx=%u', source)
-        self.assertIn('_uacLogQueue("obj", h, table);', source)
-        self.assertIn("ep.installed <= 1 || ep.table_ptr == 0", source)
-        self.assertIn("endpoint not installed installed=%u flag1=%u", source)
+        self.assertIn('LOG("UAC U2 install obj=0x%llx table=0x%llx', source)
+        self.assertIn('LOG("UAC U2 entry %s addr=0x%llx', source)
+        self.assertIn("ep.installed != 1 || ep.table_ptr == 0", source)
+        self.assertIn("install object not ready", source)
         self.assertIn("UAC U2 pattern 1kHz 16ms", source)
         self.assertIn("samples[i] = ((frame / 24) & 1)", source)
-        self.assertIn("ep.installed <= 1", source)
-        self.assertIn("dev_installed", source)
-        self.assertIn("UAC_U2_DEV_FLAG_OFFSET 0xD4610ULL", source)
+        self.assertIn("UAC_U2_INSTALL_OBJ_PTR_OFFSET 0xFC9B8ULL", source)
+        self.assertIn("UAC_U2_INSTALL_FLAG_OFF 0x1610ULL", source)
+        self.assertIn("UAC_U2_INSTALL_TABLE_OFF 0x1608ULL", source)
+        self.assertNotIn("dev_installed", source)
 
 
 

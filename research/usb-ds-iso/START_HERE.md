@@ -24,34 +24,27 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-30）
+## 当前边界（2026-10-31 02:10）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-30 20:26–20:29 U2 no-report 诊断（一次 boot）：首次
-  completion `rc=0 requested=3072 transferred=3072`（report 修复成立）；随后
-  第二次 SET_CUR/alt 路径 usb 崩溃（同一 map 断言）；已恢复 `52069a44…` 并
-  安全弹出。此前 15:36 安全接受版空报告后断言、14:39 retrigger 崩溃
-  （`db97b6e7…` dangerous）、14:18 第一次 U2 未 post；更早的 U1b/U1a/U0d
-  均通过；全部未测 PCM。
+- 最后实机：2026-10-31 01:47–01:49 U2 v4 第三次（一次 boot）：
+  `SET_INTERFACE(0)→(1)` 后 alt1，1 次 SET_CUR；precheck 读到
+  `installed=1 table=0x800501000000`，门通过、post `rc=0`，但 completion
+  为空 `0x748c/0/0`、WAV 全零、无 crash；已恢复 `52069a44…` 并安全弹出。
+- **2026-10-31 02:00 离线修正**：`installed/table` 读错了对象。安装器和
+  `complete_original` 用的是 `[manager+0x229b8] = base+0x17b038` 这个独立
+  对象（两份 crash 的 `x0-x21=0xa1038`），不是 manager。正确 flag 在
+  `base+0x17c648`、表项指针在 `base+0x17c640`。v3/v4 的 `installed=240/1`
+  都是无关字节，“部分安装”结论作废。
+- 当前工作：U0、U1a、U1b 通过；U2 只有一次 completion `3072/3072`
+  （no-report 轮），host 16/16 与 PCM 未测。v6 `73becbd5…`（90174B）已
+  构建：跟随上述对象读 `+0x1610/+0x1608`，门为
+  `installed==1 && table!=0`；未部署、0 实机。下一步是**一次新授权的 v6
+  boot**，host `--force-alt1 --set-rate --repeat=2 --interval-ms=1000`；
+  通过条件仍为 completion 3072/3072 + WAV 1 kHz 段 + 无 fatal。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
-  `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。
-- 当前工作：U0、U1a、U1b 通过；U2 producer 实机六次均未通过（未触发 / 崩溃 /
-  安全跳过 / post 后崩溃 / breaker 断言 / 安全接受后完成+断言），no-report
-  诊断第七次 completion 3072 通过但随后控制/alt 路径崩溃。离线已解码：fake-accept
-  让请求未真正入队，清理时区间映射重复插入 → `0x40cc` 断言，**返回 0 的绕过
-  不可行**；空报告 `0x748c` 指向无匹配/空条目。U2 实机线已暂停，继续的前提是
-  先完成 report/unmap/一次性 post 的设计与离线验证；设计草案见
-  [docs/UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)
-  （实机一次：completion 3072 通过，随后控制/alt 路径崩溃；dangerous，不再部署）；
-  queue-object 修正版 `56b7f8ee…` 实机一次：1 次 SET_CUR 未崩溃，但端点未安装
-  （`installed=0 table=0`）、completion 为空。带 installed/table 门的 v3
-  `c80fa717…` 实机一次：`--require-alt1` 拦截 alt0；`--force-alt1` 后
-  installed/table 非零，门通过，completion `3072/3072`，无崩溃；host 16/16
-  与 PCM 未测。v4 `c33d0d07…` 实机三次：alt1/installed=0 门跳过；1→1 回读
-  alt0 未发 SET_CUR；0→1 后门通过但 `installed=1` 只是部分安装，completion
-  为空、WAV 全零。需解码安装器字节收紧门；v5 `ddd44cd4…` 已构建（读
-  manager/device 候选，`installed<=1` skip），未部署。路径修正版已打包并
-  绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
+  `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
+  打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

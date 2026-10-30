@@ -2118,35 +2118,32 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    post even though word/interval/ring were correct. */
 #define UAC_U2_EP_OBJ 0xFC300ULL             /* manager + 0x22300 */
 #define UAC_U2_SPEED_OFFSET 0xFCA58ULL       /* manager + 0x22 * 0x1000 + 0xa58 */
-/* The installer (0x295d0) marks the endpoint at manager + 0x14d0 + index*16
-   with strb w21, and complete_original (0x2a980) reads the table pointer at
-   manager + 0x14c8 + index*16.  For EP 0x84, 0x3a30(0x84) = 0x14. */
-#define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL /* manager + 0x1610 */
-#define UAC_U2_INSTALL_FLAG1_OFFSET 0xDB611ULL /* manager + 0x1611 */
-#define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL    /* manager + 0x1608 */
-/* Diagnostic alternates: if the installer runs on the device object
-   (0xD3000) rather than the manager (0xDA000), the real flag/table are
-   0x7000 lower.  Read both and log which one moves. */
-#define UAC_U2_DEV_FLAG_OFFSET 0xD4610ULL     /* device + 0x1610 */
-#define UAC_U2_DEV_FLAG1_OFFSET 0xD4611ULL    /* device + 0x1611 */
-#define UAC_U2_DEV_TABLE_OFFSET 0xD4608ULL    /* device + 0x1608 */
-/* Request-queue fields used by the completion path (0x2c520/0x2c690):
-   +4 index, +8 count, entries at +0x78 with a 0x30-byte stride. */
-#define UAC_U2_QUEUE_INDEX_OFFSET 0x04ULL
-#define UAC_U2_QUEUE_COUNT_OFFSET 0x08ULL
-#define UAC_U2_ENTRY_BASE 0x78ULL
-#define UAC_U2_ENTRY_STRIDE 0x30ULL
-
+/* The installer (0x295d0) and complete_original (0x2a980) do not run on the
+   manager itself.  The completion caller loads a separate install object from
+   manager + 0x229b8 (0x30294/0x302a8: ldr x0, [x21, #0x229b8]; bl 0x2a980),
+   and the installer is invoked with that same pointer (0x2f17c/0x2f188).
+   Both 2026-10-30 crash reports pin it in x0 while x21 is the manager:
+   0x714857b038 - 0x71484da000 = 0xa1038.  For EP 0x84, 0x3a30(0x84) = 0x14,
+   so the flag is at object + 0x14d0 + 0x140 = 0x1610 and the entry pointer at
+   object + 0x14c8 + 0x140 = 0x1608.  Reading manager + 0x1610 instead returns
+   unrelated bytes (the observed 0/1/0x90/0xa2/0xf0 values). */
+#define UAC_U2_INSTALL_OBJ_PTR_OFFSET 0xFC9B8ULL /* manager + 0x229b8 */
+#define UAC_U2_INSTALL_OBJ_OFFSET 0x17B038ULL    /* manager + 0xa1038 */
+#define UAC_U2_INSTALL_FLAG_OFF 0x1610ULL
+#define UAC_U2_INSTALL_FLAG1_OFF 0x1611ULL
+#define UAC_U2_INSTALL_TABLE_OFF 0x1608ULL
 typedef struct {
     u8 state[0x48];
     u32 speed;
+    u64 install_obj;
+    bool install_ok;
     u8 installed;
     u8 installed1;
     u64 table_ptr;
-    bool dev_ok;
-    u8 dev_installed;
-    u8 dev_installed1;
-    u64 dev_table_ptr;
+    bool mgr_ok;
+    u8 mgr_installed;
+    u8 mgr_installed1;
+    u64 mgr_table_ptr;
 } UacUsbEpState;
 
 static bool _uacReadUsbState(UacUsbEpState *out)
@@ -2161,92 +2158,89 @@ static bool _uacReadUsbState(UacUsbEpState *out)
             g_uacUsbBase + UAC_U2_SPEED_OFFSET, sizeof(out->speed));
     }
     if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(&out->installed, h,
-            g_uacUsbBase + UAC_U2_INSTALL_FLAG_OFFSET, sizeof(out->installed));
-    }
-    if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(&out->installed1, h,
-            g_uacUsbBase + UAC_U2_INSTALL_FLAG1_OFFSET,
-            sizeof(out->installed1));
-    }
-    if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(&out->table_ptr, h,
-            g_uacUsbBase + UAC_U2_TABLE_PTR_OFFSET, sizeof(out->table_ptr));
+        rc = svcReadDebugProcessMemory(&out->install_obj, h,
+            g_uacUsbBase + UAC_U2_INSTALL_OBJ_PTR_OFFSET,
+            sizeof(out->install_obj));
     }
 
-    out->dev_ok = false;
-    if (R_SUCCEEDED(rc)) {
-        Result drc = svcReadDebugProcessMemory(&out->dev_installed, h,
-            g_uacUsbBase + UAC_U2_DEV_FLAG_OFFSET,
-            sizeof(out->dev_installed));
-        if (R_SUCCEEDED(drc)) {
-            drc = svcReadDebugProcessMemory(&out->dev_installed1, h,
-                g_uacUsbBase + UAC_U2_DEV_FLAG1_OFFSET,
-                sizeof(out->dev_installed1));
+    out->install_ok = false;
+    if (R_SUCCEEDED(rc) && out->install_obj) {
+        Result orc = svcReadDebugProcessMemory(&out->installed, h,
+            out->install_obj + UAC_U2_INSTALL_FLAG_OFF,
+            sizeof(out->installed));
+        if (R_SUCCEEDED(orc)) {
+            orc = svcReadDebugProcessMemory(&out->installed1, h,
+                out->install_obj + UAC_U2_INSTALL_FLAG1_OFF,
+                sizeof(out->installed1));
         }
-        if (R_SUCCEEDED(drc)) {
-            drc = svcReadDebugProcessMemory(&out->dev_table_ptr, h,
-                g_uacUsbBase + UAC_U2_DEV_TABLE_OFFSET,
-                sizeof(out->dev_table_ptr));
+        if (R_SUCCEEDED(orc)) {
+            orc = svcReadDebugProcessMemory(&out->table_ptr, h,
+                out->install_obj + UAC_U2_INSTALL_TABLE_OFF,
+                sizeof(out->table_ptr));
         }
-        out->dev_ok = R_SUCCEEDED(drc);
+        out->install_ok = R_SUCCEEDED(orc);
+        if (R_FAILED(orc)) rc = orc;
+    }
+
+    /* Keep the old manager-relative reads as a one-run diagnostic: they are
+       the values every earlier gate actually used.  They are not the install
+       state and must never decide whether to post. */
+    out->mgr_ok = false;
+    {
+        Result mrc = svcReadDebugProcessMemory(&out->mgr_installed, h,
+            g_uacUsbBase + 0xDB610ULL, sizeof(out->mgr_installed));
+        if (R_SUCCEEDED(mrc)) {
+            mrc = svcReadDebugProcessMemory(&out->mgr_installed1, h,
+                g_uacUsbBase + 0xDB611ULL, sizeof(out->mgr_installed1));
+        }
+        if (R_SUCCEEDED(mrc)) {
+            mrc = svcReadDebugProcessMemory(&out->mgr_table_ptr, h,
+                g_uacUsbBase + 0xDB608ULL, sizeof(out->mgr_table_ptr));
+        }
+        out->mgr_ok = R_SUCCEEDED(mrc);
     }
     svcCloseHandle(h);
     return R_SUCCEEDED(rc);
 }
 
-static void _uacLogQueue(const char *tag, Handle h, u64 address)
+/* The value at install_obj + 0x1608 is the request entry used by 0x2c690:
+   +0x10 IOVA, +0x20 requested, +0x28 status, +0x2c transferred. */
+static void _uacLogEntry(const char *tag, Handle h, u64 address)
 {
-    u32 index = 0, count = 0;
     u8 entry[0x30] = {0};
-    Result rc = svcReadDebugProcessMemory(&index, h, address + 0x04,
-        sizeof(index));
-    if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(&count, h, address + 0x08,
-            sizeof(count));
-    }
-    u32 prev = (index + 7) & 7;
-    if (R_SUCCEEDED(rc)) {
-        rc = svcReadDebugProcessMemory(entry, h,
-            address + 0x78 + (u64)prev * 0x30, sizeof(entry));
-    }
+    Result rc = svcReadDebugProcessMemory(entry, h, address, sizeof(entry));
     if (R_FAILED(rc)) {
-        LOG("UAC U2 queue %s addr=0x%llx rd=0x%x\n", tag,
+        LOG("UAC U2 entry %s addr=0x%llx rd=0x%x\n", tag,
             (unsigned long long)address, rc);
         return;
     }
     u32 status = 0, requested = 0, transferred = 0;
     u64 iova = 0;
-    memcpy(&status, entry + 0x28, sizeof(status));
-    memcpy(&requested, entry + 0x20, sizeof(requested));
-    memcpy(&transferred, entry + 0x2c, sizeof(transferred));
     memcpy(&iova, entry + 0x10, sizeof(iova));
-    /* GetReportData may have consumed the entry and zeroed status; read
-       count/xfer as the completion evidence, not status alone. */
-    LOG("UAC U2 queue %s addr=0x%llx idx=%u count=%u prev=%u status=%u req=%u xfer=%u iova=0x%llx\n",
-        tag, (unsigned long long)address, index, count, prev, status,
-        requested, transferred, (unsigned long long)iova);
+    memcpy(&requested, entry + 0x20, sizeof(requested));
+    memcpy(&status, entry + 0x28, sizeof(status));
+    memcpy(&transferred, entry + 0x2c, sizeof(transferred));
+    LOG("UAC U2 entry %s addr=0x%llx iova=0x%llx req=%u xfer=%u status=%u\n",
+        tag, (unsigned long long)address, (unsigned long long)iova,
+        requested, transferred, status);
 }
 
-static void _uacLogQueueState(void)
+static void _uacLogInstallState(void)
 {
     if (!g_uacUsbPid) return;
     Handle h = INVALID_HANDLE;
     if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
 
-    /* 0xFC300 is the endpoint object used by 0x302e0; the completion queue
-       lives on the table entry returned by 0x2a980
-       (manager + 0x14c8 + index*16), not on this object.  Log both. */
-    _uacLogQueue("ep", h, g_uacUsbBase + UAC_U2_EP_OBJ);
-    u64 table = 0;
-    Result rc = svcReadDebugProcessMemory(&table, h,
-        g_uacUsbBase + UAC_U2_TABLE_PTR_OFFSET, sizeof(table));
-    if (R_SUCCEEDED(rc) && table) {
-        _uacLogQueue("obj", h, table);
-    } else {
-        LOG("UAC U2 queue obj ptr rd=0x%x value=0x%llx\n", rc,
-            (unsigned long long)table);
+    u64 obj = 0, table = 0;
+    Result rc = svcReadDebugProcessMemory(&obj, h,
+        g_uacUsbBase + UAC_U2_INSTALL_OBJ_PTR_OFFSET, sizeof(obj));
+    if (R_SUCCEEDED(rc) && obj) {
+        rc = svcReadDebugProcessMemory(&table, h,
+            obj + UAC_U2_INSTALL_TABLE_OFF, sizeof(table));
     }
+    LOG("UAC U2 install obj=0x%llx table=0x%llx rd=0x%x\n",
+        (unsigned long long)obj, (unsigned long long)table, rc);
+    if (R_SUCCEEDED(rc) && table) _uacLogEntry("table", h, table);
     svcCloseHandle(h);
 }
 
@@ -2271,27 +2265,27 @@ static void _postUacBurst(void)
         memcpy(&prod, ep.state + 0x18, sizeof(prod));
         memcpy(&cons, ep.state + 0x20, sizeof(cons));
     }
-    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx installed=%u flag1=%u table=0x%llx dev_ok=%u dev_installed=%u dev_flag1=%u dev_table=0x%llx\n",
+    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx obj=0x%llx installed=%u flag1=%u table=0x%llx install_ok=%u mgr_ok=%u mgr_installed=%u mgr_flag1=%u mgr_table=0x%llx\n",
         read_ok, word, ep.state[6], ep.speed, (unsigned long long)ring,
-        (unsigned long long)prod, (unsigned long long)cons, ep.installed,
-        ep.installed1, (unsigned long long)ep.table_ptr, ep.dev_ok,
-        ep.dev_installed, ep.dev_installed1,
-        (unsigned long long)ep.dev_table_ptr);
+        (unsigned long long)prod, (unsigned long long)cons,
+        (unsigned long long)ep.install_obj, ep.installed, ep.installed1,
+        (unsigned long long)ep.table_ptr, ep.install_ok, ep.mgr_ok,
+        ep.mgr_installed, ep.mgr_installed1,
+        (unsigned long long)ep.mgr_table_ptr);
     if (!read_ok || word != 0x00C00584u || ep.state[6] != 4 || ep.speed != 3 ||
         ring == 0 || prod != cons) {
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
         return;
     }
-    /* The endpoint object can exist (word/ring valid) before the installer
-       has published the table entry used by 0x2a980.  Posting then produces
-       an empty completion because complete_original finds table[0] == NULL. */
-    /* observed 0/1 is the installer's partial state; 0xA2/0xF0 were only
-       seen when the post completed.  Skip 0/1 and log both candidate bases. */
-    if (ep.installed <= 1 || ep.table_ptr == 0) {
-        LOG("UAC U2 post skipped: endpoint not installed installed=%u flag1=%u table=0x%llx dev_ok=%u dev_installed=%u dev_flag1=%u dev_table=0x%llx\n",
-            ep.installed, ep.installed1, (unsigned long long)ep.table_ptr,
-            ep.dev_ok, ep.dev_installed, ep.dev_installed1,
-            (unsigned long long)ep.dev_table_ptr);
+    /* The installer writes exactly 1 at install_obj + 0x1610 and the
+       completion path reads the request entry from install_obj + 0x1608.
+       Posting before both are visible produces the empty 0x748c completion.
+       The manager-relative values are only logged, never gated on. */
+    if (!ep.install_ok || ep.installed != 1 || ep.table_ptr == 0) {
+        LOG("UAC U2 post skipped: install object not ready obj=0x%llx installed=%u flag1=%u table=0x%llx mgr_ok=%u mgr_installed=%u mgr_flag1=%u mgr_table=0x%llx\n",
+            (unsigned long long)ep.install_obj, ep.installed, ep.installed1,
+            (unsigned long long)ep.table_ptr, ep.mgr_ok, ep.mgr_installed,
+            ep.mgr_installed1, (unsigned long long)ep.mgr_table_ptr);
         return;
     }
 
@@ -2325,7 +2319,7 @@ static void _postUacBurst(void)
 
     if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
         LOG("UAC U2 no completion within 100ms\n");
-        _uacLogQueueState();
+        _uacLogInstallState();
         return;
     }
     eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
@@ -2333,14 +2327,14 @@ static void _postUacBurst(void)
     rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
     if (R_FAILED(rc)) {
         LOG("UAC U2 report rc=0x%x\n", rc);
-        _uacLogQueueState();
+        _uacLogInstallState();
         return;
     }
     u32 requested = 0, transferred = 0;
     Result prc = usbDsParseReportData(&report, urbId, &requested, &transferred);
     LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
         prc, requested, transferred);
-    _uacLogQueueState();
+    _uacLogInstallState();
 }
 #endif
 
