@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 436 个 Python 工具。
+共 437 个 Python 工具。
 
 ## 当前使用
 
@@ -46,6 +46,7 @@
 | `nso2elf.py` | 1 |
 | `path` | 1 |
 | `probe` | 1 |
+| `replay` | 1 |
 | `research` | 1 |
 | `validate` | 1 |
 
@@ -583,6 +584,12 @@
 | 工具 | 说明 |
 | --- | --- |
 | [probe_a23_ep0_trace.py](probe_a23_ep0_trace.py) | Instrument frozen A23 client source COPIES and export bounded simulated traces. |
+
+## replay（1）
+
+| 工具 | 说明 |
+| --- | --- |
+| [replay_uac_u2_cave.py](replay_uac_u2_cave.py) | Replay the A23 and U2 producer caves under Unicorn and compare the TRB ring. |
 
 ## research（1）
 

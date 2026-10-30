@@ -31,6 +31,10 @@
   `0x2fd80` 把 8 字节描述符原样拷进 endpoint 对象，A23 vendor 端点是
   `0x01000183`（attrs 0x01）。若按旧文档写 `0x00C00184`，hook 会走
   `reject_original`（返回 `0x1908c`），不会崩但拿不到数据。
+- **Unicorn 回放（离线）**：`tools/replay_uac_u2_cave.py` 用合成 endpoint 对象执行
+  两个 cave 的 `iso_enter`：EP0x83 接受 vendor、拒绝 UAC；EP0x84 反之；两次接受生成的
+  16 Isoch + 16 ED TRB、mailbox 与 producer 指针**逐字节相同**（ring `d50a3872…`）。
+  报告 `private/analysis/UAC-u2-producer-20261030/replay.json`。
 - `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已改为
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 30 条，失败即拒绝启用；

@@ -17,6 +17,7 @@ QUICK = [
     "test_uac_descriptor_payload.py",
     "test_uac_descriptor_integration.py",
     "test_uac_u2_producer.py",
+    "test_uac_u2_cave_replay.py",
     "test_a23_short24_path_span_package.py",
     "test_uac_pcm_ring.py",
     "test_a23_audio_cadence.py",

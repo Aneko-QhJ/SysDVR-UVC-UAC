@@ -75,8 +75,8 @@ def payload_ready(work):
     return doc
 
 
-def assemble(toolchain, out):
-    """Assemble the cave at its linker address and return (code, symbols)."""
+def assemble(toolchain, out, asm=ASM):
+    """Assemble a cave at its linker address and return (code, symbols)."""
     out.mkdir(parents=True, exist_ok=True)
     linker = out / "inject.ld"
     linker.write_text(LINKER)
@@ -88,7 +88,7 @@ def assemble(toolchain, out):
             check=True,
         )
 
-    run("gcc", "-c", ASM, "-o", obj)
+    run("gcc", "-c", asm, "-o", obj)
     run("ld", "-T", linker, obj, "-o", elf)
     run("objcopy", "-O", "binary", "--only-section=.text", elf, binary)
     symbols = {}

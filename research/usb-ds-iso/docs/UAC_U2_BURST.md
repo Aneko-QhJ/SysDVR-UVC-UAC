@@ -49,6 +49,16 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - cave 逐条 before word 与 `usb.elf`/NSO 校验；分支目标 = `0x68d54`/`0x68e9c`/`0x68fb4`。
 - cave 反汇编检查：`mov w10,#0x584` + `movk w10,#0xc0,lsl16`、`mov w1,#0x84`、
   `cmp w8,#0x84`；与 EP0x83 版本只差这 4 个字。
+- **Unicorn 回放**（[replay_uac_u2_cave.py](../tools/replay_uac_u2_cave.py)）：用合成的
+  usb:ds endpoint 对象执行两个 cave 的 `iso_enter`。EP0x83 cave 接受 vendor 描述符、
+  拒绝 UAC；EP0x84 cave 反之（拒绝路径都停在 `0x30394`，环未被写）。两次接受都生成
+  16 个 Isoch + 16 个 ED TRB（地址 `DMA+192*i`、长度 192、控制字按 MFI 公式）、
+  mailbox `ISO2` 与 producer 指针 `ring+0x200`，且**两个 cave 的结果逐字节相同**
+  （ring `d50a3872…`）。依赖 unicorn（不入库）：
+  `python3 -m venv private/venv-unicorn && private/venv-unicorn/bin/pip install unicorn &&
+  private/venv-unicorn/bin/python tools/replay_uac_u2_cave.py --out
+  private/analysis/UAC-u2-producer-20261030/replay.json`。报告
+  `private/analysis/UAC-u2-producer-20261030/replay.json`（`check_passed=true`）。
 - 编译出的 `uacU2Edits`（30×24B @ `0x20010`）逐条与 manifest 相同；cave before 为
   684 个零。
 - 默认 / descriptor / U2 基础 / U2 producer 四种配置均构建通过；基础 NSP 重建后
