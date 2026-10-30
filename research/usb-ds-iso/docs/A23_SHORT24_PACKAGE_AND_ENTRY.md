@@ -94,3 +94,35 @@ later-0001.json等，最多8次；不改原observation。尝试数与成功写�
 下一步已涉及具体硬件，见[一次短包问题卡](A23_SHORT24_ONCE_PLAN.md)。执行前须新授权与
 当次物理确认；目前没有创建真实授权记录或执行部署。按[当前规则](RESEARCH_RULES.md)保留
 探索观察与严格验收的区别，不因软件准备完成就宣布短包实机能力或持续PCM通过。
+
+## 路径修正版配套包与新 recipe 入口（2026-10-30，离线）
+
+上文 r1 配套包从旧父树生成、漏带 769B 路径修正；本轮把已审计的路径修正版
+（`A23-short24-path-span-candidate-20261027-r1`，seal `d5f18629…`）做成新配套包，
+并完成入口与审计。**没有部署、没有 USB/SD、没有消耗任何授权。**
+
+| 项 | 值 |
+| --- | --- |
+| 配套包 | `private/analysis/A23-short24-path-span-package-20261030-r1`（seal `c236e895…`） |
+| recipe | `279586c4…`（旧 r1 包为 `53560611…`） |
+| NSP | `49ec1582…`（旧 r1 包 `42e820c0…`） |
+| IPS | `b2151be8…`（与 r1 包相同：控制器/runtime 载荷未变） |
+| 回滚基线 | `67ec8288…`（`private/card-cycles/20261026-live132-q1-first-read`） |
+| 入口 | `private/analysis/A23-short24-path-span-entry-20261030-r1`（seal `0dc5ea00…`，receiver `275dcf0e…`） |
+| SDK 模型 | `private/analysis/A23-short24-path-span-sdk-20261030-r1`（seal `3205ee3e…`） |
+| 包/入口审计 | `private/analysis/A23-short24-path-span-entry-audit-20261030-r2`（seal `0ef9c47c…`） |
+
+- 打包复用 `tools/package_a23_short24.py` 的同一套校验（ELF→NSO 逐段、NPDM 程序 ID、
+  PFS 成员、IPS before word、回滚/部署副本），只把候选目录作为参数传入；
+  `tools/build_a23_short24_entry.py` 同样接受 `--package/--candidate/--sdk`。
+  默认参数保持旧 r1 流程不变。
+- 旧 SDK 模型（recipe `53560611…`）不能审计新入口：首次审计在
+  `analyze_a23_short24_session` 处报 `execution recipe mismatch`，说明审计对
+  recipe 是绑定的、会 fail-closed。失败输出保留在
+  `A23-short24-path-span-entry-audit-20261030-r1-OLDSDK-FAILED`；随后用路径修正版
+  重新生成 SDK 模型（21 注入场景、7 项关系检查）并通过。
+- 入口审计 r2：7 个 ASan/UBSan 原生运行场景、5 项持久化检查、10 类授权拒绝全部通过；
+  `--check-authorization` 只读模型记录，`--acquire-once` 拒绝执行，正式 scope 未变，
+  SDK 对象/USB/SD/部署均为 0。
+- 部署仍只替换 `exefs.nsp` 与 IPS；`boot2.flag`、`toolbox.json` 不变。
+  短包复测（513..528，一次）仍需新的明确授权与当次物理确认。

@@ -24,11 +24,11 @@ NEW = ("host/a23_short24_capture.h", "host/a23_short24_capture.m", "tests/a23_sh
        "tests/a23_short24_execution_fixture.c", "tools/analyze_a23_short24_session.py", "tools/audit_a23_short24_sdk.py")
 
 
-def run(output):
+def run(output, build=BUILD):
     output = output.resolve()
     require(not output.exists(), "fresh output required")
-    seals = {str(p): verify_tree(p) for p in (BUILD, MODELS)}
-    recipe = json.loads((BUILD / "device/recipe.json").read_text())["runtime_recipe_sha256"]
+    seals = {str(p): verify_tree(p) for p in (build, MODELS)}
+    recipe = json.loads((build / "device/recipe.json").read_text())["runtime_recipe_sha256"]
     output.mkdir(parents=True)
     commands = []
 
@@ -48,7 +48,7 @@ def run(output):
     (output / "cases").mkdir()
     command([output / "capture-fixture", MODELS, output / "cases", recipe])
     command(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-fsanitize=address,undefined",
-             "-I" + str(BUILD / "device/source/uvc"), ROOT / "tests/a23_short24_execution_fixture.c",
+             "-I" + str(build / "device/source/uvc"), ROOT / "tests/a23_short24_execution_fixture.c",
              "-o", output / "execution-fixture"])
     command([output / "execution-fixture", output / "MODEL-execution.bin", output / "MODEL-primary.bin"])
     execution, primary = (output / "MODEL-execution.bin").read_bytes(), (output / "MODEL-primary.bin").read_bytes()
@@ -172,5 +172,7 @@ def run(output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    result = run(parser.parse_args().output)
+    parser.add_argument("--build", type=Path, default=BUILD)
+    args = parser.parse_args()
+    result = run(args.output, args.build)
     print(json.dumps({k: result[k] for k in ("native_injected_scenarios", "relation_checks_passed", "hardware_verified")}))

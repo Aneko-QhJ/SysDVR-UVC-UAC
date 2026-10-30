@@ -17,7 +17,8 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
-| [CURRENT.md](CURRENT.md) | 2026-10-30 | 28K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-30 | 8K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
+| [CURRENT.md](CURRENT.md) | 2026-10-30 | 30K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
@@ -31,7 +32,6 @@
 | [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-29 | 7K | 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
 | [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-29 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 | [A23_URB_ACCOUNTING_MODEL.md](A23_URB_ACCOUNTING_MODEL.md) | 2026-10-29 | 6K | serial640 在 host 收到 5 个 URB（80 包）后仍走 busy-map leak 崩溃。这个模型只回答 |
-| [A23_URB_TRACE.md](A23_URB_TRACE.md) | 2026-10-29 | 13K | 在不改变 A23 producer 行为的前提下，从设备侧读出 **endpoint URB 表** 的真实状态： |
 
 ## 全部文档（268）
 
@@ -206,7 +206,7 @@
 | [A23_SHORT24_FIRST_LIVE.md](A23_SHORT24_FIRST_LIVE.md) | 2026-10-27 | 5K | 短包首次实测：主机观察通过，设备保存失败（2026-10-27） — 本轮已完成配套部署、唯一一次采集、关机后只读回收与分析。主机收到了连续的 |
 | [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-29 | 7K | 固定 16TD×24 字节短包候选（2026-10-27） — 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
 | [A23_SHORT24_ONCE_PLAN.md](A23_SHORT24_ONCE_PLAN.md) | 2026-10-27 | 4K | 一次24字节短包诊断问题卡（已执行并回收，次数已消耗） — 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
-| [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-27 | 6K | 短包配套包、驻留入口与写盘（2026-10-27） — 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
+| [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-30 | 8K | 短包配套包、驻留入口与写盘（2026-10-27） — 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 | [A23_SHORT24_SDK_AND_RELATION.md](A23_SHORT24_SDK_AND_RELATION.md) | 2026-10-27 | 6K | 短包 SDK 组件与设备侧录关系（2026-10-27） — 后续[NSP/IPS配套包、驻留入口与写盘](A23_SHORT24_PACKAGE_AND_ENTRY.md)已完成离线准备和 |
 | [A23_SHORT_WINDOW_SCOPE.md](A23_SHORT_WINDOW_SCOPE.md) | 2026-10-25 | 7K | 三轮节奏与128项接收窗口审查（2026-10-25） — 本次只分析封存文件，632来源及五个消费namespace保持，没有USB、SD、新SDK对象、原生编译、新授权或范围保留。结论是下一项值得实现独立的固定128 transaction候选，检验缩短接收窗口后能否仍严格… |
 | [A23_SIGINT_GUARD.md](A23_SIGINT_GUARD.md) | 2026-10-22 | 7K | A23 原生PID窗口与SIGINT暂缓对照（2026-10-22） — 后续：[子进程信号恢复与就绪门槛](A23_CHILD_SIGNAL_POLICY.md)完成579来源、两轮20场景与78测试。普通child的临时INT屏蔽在Python启动后恢复，就绪后再发送取样请求；仍不是pr… |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-30 | 28K | 当前状态（2026-10-30 10:35，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-10-30 | 30K | 当前状态（2026-10-30 10:35，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-29 | 3K | 实验分支目录与本地产物 — 当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |

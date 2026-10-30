@@ -28,21 +28,21 @@ def put(root, name, raw):
     with path.open("xb") as handle:handle.write(raw)
 
 
-def build(output):
+def build(output, candidate=BUILD, schema='A23-short24-package-1'):
     output=output.resolve();require(not output.exists(),"fresh package output required")
-    build_seal=verify_tree(BUILD)
+    build_seal=verify_tree(candidate)
     actual=json.loads(ACTUAL.read_text());snapshot=Path(actual['card_snapshot']);snapshot_seal=verify_tree(snapshot)
-    manifest=json.loads((BUILD/'controller/A/manifest.json').read_text())
+    manifest=json.loads((candidate/'controller/A/manifest.json').read_text())
     nso=validate_module((ROOT/'private/module/exefs/main').read_bytes())
     edits=manifest['edits'];patch=ips32([(int(e['address'],16),bytes.fromhex(e['after'])) for e in edits])
-    require(sha(patch)==manifest['patch_sha256'] and patch==(BUILD/'controller/A'/PATCH).read_bytes(),"short24 IPS differs")
+    require(sha(patch)==manifest['patch_sha256'] and patch==(candidate/'controller/A'/PATCH).read_bytes(),"short24 IPS differs")
     require(all(read_mapped(nso,int(e['address'],16),len(bytes.fromhex(e['before'])))==bytes.fromhex(e['before']) for e in edits),
             "controller original bytes differ")
     baseline={n:(snapshot/'card'/n).read_bytes() for n in PATHS}
     output.mkdir(parents=True)
     for name in ('full.elf','main.npdm','sysmodule.json','recipe.json'):
-        put(output,'device/'+name,(BUILD/'device'/name).read_bytes())
-    (output/'exefs').mkdir();put(output,'exefs/main.npdm',(BUILD/'device/main.npdm').read_bytes())
+        put(output,'device/'+name,(candidate/'device'/name).read_bytes())
+    (output/'exefs').mkdir();put(output,'exefs/main.npdm',(candidate/'device/main.npdm').read_bytes())
     commands=[['/opt/devkitpro/tools/bin/elf2nso',str(output/'device/full.elf'),str(output/'exefs/main')],
               ['/opt/devkitpro/tools/bin/build_pfs0',str(output/'exefs'),str(output/'exefs.nsp')]]
     for i,command in enumerate(commands):
@@ -69,8 +69,8 @@ def build(output):
     require(sha(baseline[PATCH])==old['patch_sha256'],'last recovered IPS is not the expected old A23')
     for name,image in [('MODEL-original.bin',original),('MODEL-old-IPS.bin',old_image),('MODEL-new-IPS.bin',new_image)]:
         put(output,name,image)
-    recipe=json.loads((BUILD/'device/recipe.json').read_text())['runtime_recipe_sha256']
-    report=dict(schema='A23-short24-package-1',candidate_manifest_sha256=build_seal,
+    recipe=json.loads((candidate/'device/recipe.json').read_text())['runtime_recipe_sha256']
+    report=dict(schema=schema,candidate=str(candidate),candidate_manifest_sha256=build_seal,
         last_recovered_snapshot=str(snapshot),snapshot_manifest_sha256=snapshot_seal,recipe=recipe,
         conversion=conversion,npdm=npdm_checked,commands=commands,
         exefs_nsp_sha256=sha(package),controller_ips_sha256=sha(patch),
@@ -84,5 +84,6 @@ def build(output):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)
-    result=build(parser.parse_args().output)
+    parser.add_argument('--candidate',type=Path,default=BUILD);parser.add_argument('--schema',default='A23-short24-package-1')
+    args=parser.parse_args();result=build(args.output,args.candidate,args.schema)
     print(json.dumps({k:result[k] for k in ('firmware_packaged','deployed','deployment_requires_matching_nsp_and_ips')}))

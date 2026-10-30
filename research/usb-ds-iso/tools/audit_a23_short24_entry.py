@@ -24,12 +24,12 @@ def require(v,m):
 def inventory(root):return {p.relative_to(root).as_posix():sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()} if root.exists() else None
 
 
-def run(entry,output):
+def run(entry,output,sdk=SDK):
     entry,output=entry.resolve(),output.resolve();require(not output.exists(),'fresh audit output required')
     binding=json.loads((entry/'build.json').read_text())
     for n,h in binding['source_hashes'].items():require(sha((ROOT/n).read_bytes())==h,'entry source drift: '+n)
     require(sha((entry/'short24-receiver').read_bytes())==binding['receiver_sha256'],'receiver drift')
-    parents={str(p):verify_tree(p) for p in (SDK,MODELS)}
+    parents={str(p):verify_tree(p) for p in (sdk,MODELS)}
     scope=ROOT/'private/short24-once';scope_before=inventory(scope)
     output.mkdir(parents=True);commands=[]
     def command(args,expected=0):
@@ -69,7 +69,7 @@ def run(entry,output):
     native=json.loads(command([output/'runtime-fixture',MODELS,cases,description['recipe']]))
     partial=output/'partial-write';partial.mkdir()
     partial_result=json.loads(command([output/'runtime-fixture','--partial-write',partial]))
-    ex=(SDK/'MODEL-execution.bin').read_bytes();primary=(SDK/'MODEL-primary.bin').read_bytes()
+    ex=(sdk/'MODEL-execution.bin').read_bytes();primary=(sdk/'MODEL-primary.bin').read_bytes()
 
     class PersistenceTests(unittest.TestCase):
         def test_observations_are_sealed_and_relation_remains_conditional(self):
@@ -129,5 +129,6 @@ def run(entry,output):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--entry',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    args=p.parse_args();r=run(args.entry,args.output)
+    p.add_argument('--sdk',type=Path,default=SDK)
+    args=p.parse_args();r=run(args.entry,args.output,args.sdk)
     print(json.dumps({k:r[k] for k in ('native_runtime_scenarios','persistence_checks_passed','sdk_objects_created')}))

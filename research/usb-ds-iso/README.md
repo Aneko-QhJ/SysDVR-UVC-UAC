@@ -26,7 +26,9 @@
   不是 `0x00C00184`。未部署、未实机。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
-- 离线路径修正版已存在，但未打包、未绑定接收器、未部署、未实测。
+- 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口
+  并通过包/入口审计（7 原生运行场景 + 5 持久化检查，0 USB/SD）；
+  未部署、未实测，短包复测仍需新授权。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
   alt1 bulk/ISO 一次性 burst 已由 runtime NOP patch 打通（vendor `0x83`，不是
   UAC `0x84`），UAC 仍禁用。

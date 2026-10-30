@@ -91,10 +91,24 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 ## 离线状态
 
 - 路径修正版：`private/analysis/A23-short24-path-span-candidate-20261027-r1`
+  （seal `d5f18629…`）
   - 14 对象 ELF；5 个已链接静态路径对象各 769B；短包控制器与 runtime 载荷逐字节不变。
   - 7 个 CPU/ASan 专项场景通过；未复现 Switch 内核错误。
 - 审计：`private/analysis/A23-short24-path-span-audit-20261027-r2`。
-- 未打包、未绑定接收器、未部署、未实测。
+- **配套包已生成（2026-10-30）**：`private/analysis/A23-short24-path-span-package-20261030-r1`
+  - seal `c236e895…`；recipe `279586c4…`；NSP `49ec1582…`；IPS `b2151be8…`
+    （与首测短包包相同，控制器未变）；回滚基线 `67ec8288…`（2026-10-26 卡快照）。
+  - 部署只替换 `exefs.nsp` 与 IPS；`boot2.flag`/`toolbox.json` 不变。
+- **新 recipe 入口**：`private/analysis/A23-short24-path-span-entry-20261030-r1`
+  （seal `0dc5ea00…`，receiver `275dcf0e…`）；`--describe` 绑定 513..528、16×24B、
+  recipe/NSP/IPS/基线，`max_bursts=1`。
+- **SDK 模型**：`private/analysis/A23-short24-path-span-sdk-20261030-r1`
+  （seal `3205ee3e…`；recipe `279586c4…`；21 原生场景 + 7 关系检查）。
+- **包/入口审计**：`private/analysis/A23-short24-path-span-entry-audit-20261030-r2`
+  （seal `0ef9c47c…`；7 原生运行场景、5 持久化检查、10 项授权拒绝；0 SDK 对象/USB/SD）。
+  若沿用旧 SDK 模型（recipe `53560611…`），审计以 execution recipe mismatch
+  拒绝，失败样本保留在 `...-audit-20261030-r1-OLDSDK-FAILED`。
+- **未部署、未实测**；短包复测仍需新的明确授权。
 - UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md)。
   - 描述符构建器 + lint + alt0/alt1/类请求状态机；`make check` 覆盖。
   - 设备构建通过；UAC 默认仍禁用，`_setupAudioInterfaces5x` 在默认构建未调用。
@@ -363,7 +377,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 1. **A23 10s 连续流**：serial640 复测已通过（214 post/213 complete/0 error，
    无 fatal）；下一步在标准宿主（Linux `snd-usb-audio`）接连续 PCM，验证
    跨块样本连续性、时钟/反馈和重挂；仍需新的明确授权。
-2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
+2. **路径修正版**：配套包/新 recipe 入口/包与入口审计已通过离线检查
+   （见 [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md)）；
+   剩余的是短包复测本身，需要新的明确授权。
 3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
    13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
    U2 producer 已构建（30 条，EP `0x84`/MPS192/attrs0x05，cave 684B，
@@ -384,7 +400,8 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。
-- 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
+- 实机（短包复测）：路径修正版配套包已打包/绑定/审计，一次 513..528×16×24B
+  需要新的明确授权，且不与 U2/alt1 探针混在同一轮。
 
 ## 不证明
 
