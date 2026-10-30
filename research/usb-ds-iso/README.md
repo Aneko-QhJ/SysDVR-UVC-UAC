@@ -9,9 +9,9 @@
 
 ## 现在做什么
 
-- 最近一次实机（2026-10-30 01:00）：UAC 探针 U0d **通过**——257B/4 接口配置
-  可读，macOS 绑定 `AppleUSBAudio`，出现 `SysDVR-UVC Capture` 2ch/48k 输入；
-  未测 PCM。卡已恢复 `52069a44…`。
+- U0d（2026-10-30 01:00）**通过**：257B/4 接口配置可读，macOS 绑定
+  `AppleUSBAudio`，出现 `SysDVR-UVC Capture` 2ch/48k 输入；未测 PCM。
+  卡已恢复 `52069a44…`。
 - UAC-only 隔离构建（`7ffdf733…`）仍标 dangerous，不再部署。
 - U1a **通过**（r7，13/13）：`GET_INTERFACE=0`，接口与 endpoint 的
   CUR/MIN/MAX/RES=48000，LEN=3，`SET_CUR(48000)` ACK 并回读。
@@ -19,16 +19,15 @@
   [UAC_U1_CONTROL.md](docs/UAC_U1_CONTROL.md)。
 - U1b **通过**：`SET_INTERFACE(1)` → `GET_INTERFACE=1` → `SET_INTERFACE(0)`
   均 ACK，设备日志 `action=3/4`；无 NOP、无数据 post。
-- U2 producer 实机两次（均未通过）：第一次补丁与 alt1 选择正常、触发错过窗口；
-  第二次 retrigger 构建（`db97b6e7…`）在 alt1 流启动后 **usb 崩溃**
-  （Data Abort 0x4A8；cave 以 `0x1908c` 拒绝 EP `0x84` 提交，驱动错误完成
-  递归到栈溢出）。该构建已标 dangerous。precheck 实机两次：第一次（`81625cab…`）
-  安全跳过并暴露 manager 偏移 bug；修正后 `cbfbedbb…` 第二次预检四项全过、
-  `post rc=0x0`（cave 接受），但 usb 随后在**完成/重提路径**以 `0x1908c`
-  递归崩溃。全局断路器（`0x302c0` nop）实机后触发 usb `User Break`——它同时
-  跳过了 EP0 的错误完成，已作废。替代方案“安全接受 cave”（拒绝→返回 0，
-  668B，NSP `6a27d4c8…`，89166B）实机后**收到一次 completion（空报告）**，
-  但触发风暴仍把 EP0 打崩并断言；下一步先只发 1–2 次 SET_CUR 并离线解码断言链。
+- U2 producer 实机六次均未通过：14:18 未触发（alt0）；14:39 retrigger
+  （`db97b6e7…`）被 cave 以 `0x1908c` 拒绝后错误完成递归、栈溢出（dangerous）；
+  15:08 precheck 因 manager 偏移 bug 安全跳过；15:19 precheck2 四项预检通过、
+  post 被接受，但完成/重提路径以 `0x1908c` 递归崩溃；15:27 breaker
+  （`0x302c0` nop）跳过 EP0 错误完成，未 post 即 `User Break`；15:36 安全接受
+  cave（`6a27d4c8…`，668B）首次收到 completion，但报告为空（`0x748c/0/0`），
+  触发风暴仍把 EP0 打崩并断言。离线已解码 fake-accept 的断言链（请求未真正
+  入队 → 区间映射重复插入 → `0x40cc`），**返回 0 的绕过不可行**；U2 实机线
+  暂停，待设计不绕过 driver 队列/映射簿记的提交方式。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口
