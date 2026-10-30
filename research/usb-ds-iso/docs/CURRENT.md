@@ -1,13 +1,13 @@
-# 当前状态（2026-10-30 14:50，Asia/Shanghai）
+# 当前状态（2026-10-30 15:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 14:39–14:41 的 U2 retrigger 回合（一次 boot）：
-> 设备在 alt1 流启动后 **usb 进程 Data Abort（2162-0004）**，cave 以 `0x1908c`
-> 拒绝了 EP `0x84` 的 ISO 提交，驱动的错误完成路径递归到栈溢出。
-> `db97b6e7…` 已标 dangerous，卡恢复 `52069a44…` 并安全弹出，无重试。
+> 最后一次实机是 2026-10-30 15:08–15:12 的 U2 precheck 回合（一次 boot）：
+> 设备侧 precheck 读到 `word=0x00c00584`、`int=4`、环空——**EP `0x84` 已安装**；
+> 但因为 precheck 的 speed/installed/table 偏移少加了 manager 基址，64 次触发
+> 全部安全跳过（无 post、无崩溃）。卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 14:50）
+## 当前进度（2026-10-30 15:15）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -15,7 +15,7 @@
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | 实机两次：第一次未触发，第二次 **usb 崩溃**（dangerous） | `private/runs/UAC-u2-burst2-20261030` |
+| U2 producer | 实机三次：未触发 / usb 崩溃（dangerous）/ precheck 安全跳过 | `private/runs/UAC-u2-precheck-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -27,14 +27,14 @@
   + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP（覆盖安装器
   全部 8 条 alt 循环，4 SS + 4 HS，见 `tests/test_a23_alt1_nop_coverage.py`）。
   实机用过 `703e7795…`（88676B）和 `db97b6e7…`（88669B，skip 日志）。
-  **当前离线产物 `81625cab…`（89178B）**：在 post 前用 dmnt 短暂 attach 读
+  **当前离线产物 `cbfbedbb…`（89174B）**：在 post 前用 dmnt 短暂 attach 读
   EP `0x84` 对象（`base+0xFC300`）的端点字/interval/环指针、HS 速度，以及
-  安装器写入的 flag（`base+0x1610`）和 `complete_original` 用的表项指针
-  （`base+0x1608`）。不满足 `0x00C00584`/4/3、环非空或读失败就只记
-  `UAC U2 post skipped`、不 post，避免再进 `0x1908c` 拒绝 → 驱动错误完成
-  递归的崩溃路径。对象地址由 `usb.elf` 的
-  `0x2854/0x2900/0xb44/0x302fc/0x30300/0x30304` 推导，安装标记由
-  `0x295d0`/`0x2a980`/`0x3a30` 推导，均与崩溃报告的 `x21=base+0xDA000` 一致。
+  安装器写入的 flag（`base+0xDB610`）和 `complete_original` 用的表项指针
+  （`base+0xDB608`）。实机已确认端点字/interval/环正确；speed/installed/table
+  是相对 manager（`base+0xDA000`）的偏移，早先漏加基址才读成代码字并让
+  precheck 全部跳过。不满足 `0x00C00584`/4/3、环非空或读失败仍只记
+  `post skipped`、不 post。所有地址由 `usb.elf` 推导，与崩溃报告的
+  `x21=base+0xDA000` 一致。
   `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；编译出的 `uacU2Edits`
   30 条与 manifest 一致。
 - **端点是 `0x00C00584`，不是 `0x00C00184`**：U0d 的 `usb-config.txt` 已从设备
@@ -53,6 +53,19 @@
 - 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
+## 最近一次 U2 precheck 实机（2026-10-30 15:08–15:12，安全跳过）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | precheck `81625cab…`（89178B）一次 boot；`UAC u2 patch result=0 record=29` |
+| 宿主 | 按名字解析音频设备为 `[0]`；ffmpeg 采集 5s（无游戏，仅 ~0.6s 有效帧）；`uac-control --set-rate --repeat=100 --interval-ms=20` |
+| 设备事件 | 100× SET_CUR；36× `skip alt=0`；64× precheck；**64× `post skipped`、0× post、0× fatal** |
+| precheck 结果 | `word=0x00c00584`、`int=4`、`ring=prod=cons=0x2d1d7d000` → 端点已安装、环空 |
+| 问题 | `speed=2835697652`、`installed=97`、`table=0x7100051f…` 是代码字：speed/installed/table 的偏移少加了 manager 基址 `0xDA000` |
+| 判定 | **安全跳过，无崩溃**；EP `0x84` 安装与环状态都符合 cave 的接受条件，唯一阻塞是 precheck 自身的偏移 bug |
+| 修复 | speed `0xFCA58`、installed `0xDB610`、table `0xDB608`；NSP `cbfbedbb…`（89174B） |
+| 证据 | `private/runs/UAC-u2-precheck-20261030`（`run.json`、`device-log-precheck.txt` `ec66d049…`）、`private/card-cycles/20261030-u2-precheck`；无新 crash report |
 
 ## 最近一次 U2 retrigger 实机（2026-10-30 14:39–14:41，usb 崩溃）
 
@@ -99,10 +112,11 @@
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机两次：第一次补丁与 alt1
-选择正常但触发错过窗口（无 post），第二次重建版在 alt1 流启动后 **usb 进程崩溃**
-（Data Abort 0x4A8，cave 以 `0x1908c` 拒绝 EP `0x84` 提交、驱动错误完成递归到栈溢出）。
-`db97b6e7…` 标 dangerous。AS alt1 数据路径仍未验证，PCM 未测试。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机三次：第一次触发错过窗口，
+第二次 **usb 崩溃**（cave 以 `0x1908c` 拒绝、驱动错误完成递归，`db97b6e7…` 标
+dangerous），第三次 precheck 安全跳过——设备侧读到 `word=0x00c00584`、环空，
+证明 EP `0x84` 已安装；跳过只因 precheck 偏移少加 manager 基址，已修复为
+`cbfbedbb…`。AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -197,6 +211,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   宿主 libusb claim 失败后，用户选择“标准宿主：ffmpeg 采集 + SET_CUR”继续；
   未 post，读卡记录后恢复 `52069a44…` 并安全弹出，无重试。
   证据 `private/runs/UAC-u2-burst-20261030`、`private/card-cycles/20261030-u2-burst`。
+- U2 precheck 回合由用户“授权实机”明确授权（2026-10-30 15:08），一次 boot；
+  precheck 全部安全跳过、无 post、无崩溃；读卡后恢复 `52069a44…` 并安全弹出。
+  证据 `private/runs/UAC-u2-precheck-20261030`、`private/card-cycles/20261030-u2-precheck`。
 - U2 retrigger 回合由用户“部署”授权（2026-10-30 14:39），一次 boot；设备在
   alt1 流启动后 usb 崩溃（2162-0004），读卡取回 crash report/erpt 后恢复
   `52069a44…` 并安全弹出，无重试。`db97b6e7…` 标 dangerous。
@@ -461,10 +478,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 离线（UAC 下一步）：precheck 构建 `b4252719…` 已就绪；下一步可选：
-  (a) 用 Unicorn 回放“拒绝后驱动错误完成”路径，确认是否只能靠 precheck 规避；
-  (b) 再授权一次实机，读 `UAC U2 precheck` 行判断端点是否安装/环是否就绪。
-  在 precheck 之前不得再部署 post 版构建；`db97b6e7…` 永久 dangerous。
+- 实机（UAC 下一步）：用修正后的 precheck 构建 `cbfbedbb…` 再跑一次；预期
+  `speed=3`、`installed`/`table` 可读；若全满足会真正 post 并等待 completion。
+  仍需新的明确授权；`db97b6e7…` 永久 dangerous，不再部署。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

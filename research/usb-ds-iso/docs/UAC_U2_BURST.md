@@ -12,9 +12,9 @@
   - 8 条 alt0-filter NOP（安装 alt1 端点）。
   - header：`private/analysis/UAC-u2-producer-20261030/uac_u2_payload.h`
   - NSP：`private/analysis/UAC-u2-producer-20261030/build/outputs/exefs.nsp`
-    89178 B，SHA256 `81625cabebb045a9be8229d7078f0aab4b3a16873daeddff5401996273762da7`
-    （实机用过 `703e7795…`/88676B 与 `db97b6e7…`/88669B；本版加 post 前
-    endpoint 状态 precheck 与安装标记，见下节）
+    89174 B，SHA256 `cbfbedbba6c3047eea74bc20c9a5d20ec7ada30f2ab0e70cee6f69f372582518`
+    （实机用过 `703e7795…`/88676B、`db97b6e7…`/88669B 与 `81625cab…`/89178B；
+    本版修正 precheck 的 manager 偏移，见下节）
   - defines：`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`
   - 生成工具：[tools/build_uac_u2_producer.py](../tools/build_uac_u2_producer.py)；组装源
     [patches/iso_burst_uac84.S](../patches/iso_burst_uac84.S)。`--check` 可在不组装的情况下
@@ -82,6 +82,21 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
   - `SET_INTERFACE(0)` 恢复成功，卡恢复 `52069a44…`。
 - 停止条件：无数据、post 返回 `0x1908c` 或其他错误、无完成、fatal、断连；
   读卡并恢复安全 NSP，**不重试**。
+
+## 2026-10-30 15:08–15:12 precheck 实机（安全跳过）
+
+- 部署 `81625cab…`（89178B）一次 boot；`UAC u2 patch result=0 record=29`，
+  枚举 257B/4 接口正常；无 usb fatal、无新 crash report。
+- 宿主按名字解析音频设备为 `[0]`，ffmpeg 采集 5s（无游戏，只有 ~0.6s 有效帧），
+  `uac-control --set-rate --repeat=100 --interval-ms=20` 全部成功。
+- 设备：100× SET_CUR，36× `skip alt=0`，64× precheck，**64× `post skipped`**。
+- precheck 读到 `word=0x00c00584`、`int=4`、`ring=prod=cons=0x2d1d7d000`
+  → **EP `0x84` 已安装、环为空**，cave 的接受条件成立。
+- 但 `speed=2835697652`、`installed=97`、`table=0x7100051f…` 是代码字：这三项
+  偏移漏加 manager 基址 `0xDA000`。修正为 `0xFCA58`/`0xDB610`/`0xDB608` 后
+  重建 `cbfbedbb…`（89174B）。
+- 证据：`private/runs/UAC-u2-precheck-20261030`（`run.json`、设备日志
+  `ec66d049…`）、`private/card-cycles/20261030-u2-precheck`。
 
 ## 风险与边界
 

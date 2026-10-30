@@ -2110,13 +2110,18 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    Reading this state before posting keeps a rejected submit (0x1908c,
    which the driver's error completion turns into a stack overflow) from
    ever reaching the driver. */
-#define UAC_U2_EP_OBJ 0xFC300ULL
-#define UAC_U2_SPEED_OFFSET 0x22A58ULL   /* manager + 0x22 * 0x1000 + 0xa58 */
+/* All offsets are relative to the usb module base.  The manager object sits at
+   0xDA000 (device 0xD3000 + 0x7000); reading the 2026-10-30 precheck log with
+   manager-relative values without the 0xDA000 bias returned instruction words
+   for speed/installed/table, which is why the first precheck run skipped every
+   post even though word/interval/ring were correct. */
+#define UAC_U2_EP_OBJ 0xFC300ULL             /* manager + 0x22300 */
+#define UAC_U2_SPEED_OFFSET 0xFCA58ULL       /* manager + 0x22 * 0x1000 + 0xa58 */
 /* The installer (0x295d0) marks the endpoint at manager + 0x14d0 + index*16
    with strb w21, and complete_original (0x2a980) reads the table pointer at
    manager + 0x14c8 + index*16.  For EP 0x84, 0x3a30(0x84) = 0x14. */
-#define UAC_U2_INSTALL_FLAG_OFFSET 0x1610ULL /* 0x14d0 + 0x14 * 16 */
-#define UAC_U2_TABLE_PTR_OFFSET 0x1608ULL    /* 0x14c8 + 0x14 * 16 */
+#define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL /* manager + 0x1610 */
+#define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL    /* manager + 0x1608 */
 
 typedef struct {
     u8 state[0x48];

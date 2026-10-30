@@ -99,16 +99,38 @@ class UacU2PrecheckTests(unittest.TestCase):
 
     def test_install_markers_derive_from_the_installer(self):
         # 0x295d0 marks manager + 0x14d0 + index*16; 0x2a980 reads the table
-        # pointer at manager + 0x14c8 + index*16.
+        # pointer at manager + 0x14c8 + index*16.  The module-relative offsets
+        # add the manager bias (0xDA000).
+        manager = 0xDA000
         flag_base = _movz(_word(self.data, self.sections, 0x29600))
         ptr_base = _movz(_word(self.data, self.sections, 0x2A9C4))
         self.assertEqual((flag_base, ptr_base), (0x14D0, 0x14C8))
         index = _ep_index(0x84)
         self.assertEqual(index, 0x14)
-        self.assertEqual(flag_base + index * 16, 0x1610)
-        self.assertEqual(ptr_base + index * 16, 0x1608)
-        self.assertIn("#define UAC_U2_INSTALL_FLAG_OFFSET 0x1610ULL", self.source)
-        self.assertIn("#define UAC_U2_TABLE_PTR_OFFSET 0x1608ULL", self.source)
+        self.assertEqual(manager + flag_base + index * 16, 0xDB610)
+        self.assertEqual(manager + ptr_base + index * 16, 0xDB608)
+        self.assertIn("#define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL", self.source)
+        self.assertIn("#define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL", self.source)
+
+    def test_speed_offset_derives_from_the_cave(self):
+        manifest = ROOT / "private/analysis/UAC-u2-producer-20261030/manifest.json"
+        if not manifest.is_file():
+            self.skipTest("missing cave manifest")
+        import json
+        doc = json.loads(manifest.read_text())
+        cave = bytes.fromhex(next(e["after"] for e in doc["edits"]
+                                  if int(e["address"], 16) == 0x68D54))
+        # 0x68d80: add x6, x0, #0x22, lsl #12
+        add = int.from_bytes(cave[0x68D80 - 0x68D54:][:4], "little")
+        # 0x68d84: ldr w9, [x6, #0xa58]
+        ldr = int.from_bytes(cave[0x68D84 - 0x68D54:][:4], "little")
+        self.assertEqual((add & 0xFF800000), 0x91000000)
+        imm = ((add >> 10) & 0xFFF) << (12 * ((add >> 22) & 3))
+        self.assertEqual((ldr & 0xFFC00000), 0xB9400000)
+        off = ((ldr >> 10) & 0xFFF) * 4  # LDR W scales the imm12 by 4
+        self.assertEqual((imm, off), (0x22000, 0xA58))
+        self.assertEqual(0xDA000 + imm + off, 0xFCA58)
+        self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)
 
     def test_precheck_reads_the_fields_the_cave_checks(self):
         start = self.source.index("static void _postUacBurst(void)")
@@ -120,7 +142,7 @@ class UacU2PrecheckTests(unittest.TestCase):
                       "ring == 0", "prod != cons", "installed=%u table=0x%llx",
                       "UAC U2 post skipped: endpoint not ready for the cave"):
             self.assertIn(token, body)
-        self.assertIn("#define UAC_U2_SPEED_OFFSET 0x22A58ULL", self.source)
+        self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)
 
     def test_reader_attaches_only_briefly(self):
         start = self.source.index("static bool _uacReadUsbState")
