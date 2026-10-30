@@ -2111,18 +2111,38 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    which the driver's error completion turns into a stack overflow) from
    ever reaching the driver. */
 #define UAC_U2_EP_OBJ 0xFC300ULL
-#define UAC_U2_SPEED_OFFSET 0x22A58ULL /* manager + 0x22 * 0x1000 + 0xa58 */
+#define UAC_U2_SPEED_OFFSET 0x22A58ULL   /* manager + 0x22 * 0x1000 + 0xa58 */
+/* The installer (0x295d0) marks the endpoint at manager + 0x14d0 + index*16
+   with strb w21, and complete_original (0x2a980) reads the table pointer at
+   manager + 0x14c8 + index*16.  For EP 0x84, 0x3a30(0x84) = 0x14. */
+#define UAC_U2_INSTALL_FLAG_OFFSET 0x1610ULL /* 0x14d0 + 0x14 * 16 */
+#define UAC_U2_TABLE_PTR_OFFSET 0x1608ULL    /* 0x14c8 + 0x14 * 16 */
 
-static bool _uacReadUsbState(u8 state[0x48], u32 *speed)
+typedef struct {
+    u8 state[0x48];
+    u32 speed;
+    u8 installed;
+    u64 table_ptr;
+} UacUsbEpState;
+
+static bool _uacReadUsbState(UacUsbEpState *out)
 {
     if (!g_uacUsbPid) return false;
     Handle h = INVALID_HANDLE;
     if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return false;
-    Result rc = svcReadDebugProcessMemory(state, h,
-        g_uacUsbBase + UAC_U2_EP_OBJ, 0x48);
-    if (R_SUCCEEDED(rc) && speed) {
-        rc = svcReadDebugProcessMemory(speed, h,
-            g_uacUsbBase + UAC_U2_SPEED_OFFSET, sizeof(*speed));
+    Result rc = svcReadDebugProcessMemory(out->state, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ, sizeof(out->state));
+    if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(&out->speed, h,
+            g_uacUsbBase + UAC_U2_SPEED_OFFSET, sizeof(out->speed));
+    }
+    if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(&out->installed, h,
+            g_uacUsbBase + UAC_U2_INSTALL_FLAG_OFFSET, sizeof(out->installed));
+    }
+    if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(&out->table_ptr, h,
+            g_uacUsbBase + UAC_U2_TABLE_PTR_OFFSET, sizeof(out->table_ptr));
     }
     svcCloseHandle(h);
     return R_SUCCEEDED(rc);
@@ -2139,21 +2159,21 @@ static void _postUacBurst(void)
     }
     if (g_uacCtx.burstPosted) return;
 
-    u8 state[0x48] = {0};
-    u32 speed = 0;
-    bool read_ok = _uacReadUsbState(state, &speed);
-    u32 word = (u32)state[2] | ((u32)state[3] << 8) |
-               ((u32)state[4] << 16) | ((u32)state[5] << 24);
+    UacUsbEpState ep = {0};
+    bool read_ok = _uacReadUsbState(&ep);
+    u32 word = (u32)ep.state[2] | ((u32)ep.state[3] << 8) |
+               ((u32)ep.state[4] << 16) | ((u32)ep.state[5] << 24);
     u64 ring = 0, prod = 0, cons = 0;
     if (read_ok) {
-        memcpy(&ring, state + 0x10, sizeof(ring));
-        memcpy(&prod, state + 0x18, sizeof(prod));
-        memcpy(&cons, state + 0x20, sizeof(cons));
+        memcpy(&ring, ep.state + 0x10, sizeof(ring));
+        memcpy(&prod, ep.state + 0x18, sizeof(prod));
+        memcpy(&cons, ep.state + 0x20, sizeof(cons));
     }
-    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx\n",
-        read_ok, word, state[6], speed, (unsigned long long)ring,
-        (unsigned long long)prod, (unsigned long long)cons);
-    if (!read_ok || word != 0x00C00584u || state[6] != 4 || speed != 3 ||
+    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx installed=%u table=0x%llx\n",
+        read_ok, word, ep.state[6], ep.speed, (unsigned long long)ring,
+        (unsigned long long)prod, (unsigned long long)cons, ep.installed,
+        (unsigned long long)ep.table_ptr);
+    if (!read_ok || word != 0x00C00584u || ep.state[6] != 4 || ep.speed != 3 ||
         ring == 0 || prod != cons) {
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
         return;

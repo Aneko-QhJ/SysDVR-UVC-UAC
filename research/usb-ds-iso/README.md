@@ -24,7 +24,8 @@
   （Data Abort 0x4A8；cave 以 `0x1908c` 拒绝 EP `0x84` 提交，驱动错误完成
   递归到栈溢出）。该构建已标 dangerous。precheck 构建 `b4252719…` 已就绪：
   post 前读 EP `0x84` 对象（`base+0xFC300`）的端点字/interval/环指针/速度，
-  不满足就只记 `UAC U2 post skipped`、不 post。未部署。
+  以及安装器 flag（`base+0x1610`）/表项指针（`base+0x1608`），不满足就只记
+  `UAC U2 post skipped`、不 post。未部署。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口

@@ -61,6 +61,12 @@ def _bl_target(word, pc):
     return pc + (imm << 2)
 
 
+def _ep_index(address):
+    """0x3a30: IN endpoints map to 0x10 | number."""
+    signed = address - 256 if address >= 128 else address
+    return (0x10 | (address & 0xF)) if signed < 0 else (address & 0xF)
+
+
 def _movz(word):
     assert (word & 0xFFE00000) == 0x52800000, hex(word)
     return (word >> 5) & 0xFFFF
@@ -91,14 +97,27 @@ class UacU2PrecheckTests(unittest.TestCase):
         self.assertEqual(offset, 0xFC300)
         self.assertIn("#define UAC_U2_EP_OBJ 0xFC300ULL", self.source)
 
+    def test_install_markers_derive_from_the_installer(self):
+        # 0x295d0 marks manager + 0x14d0 + index*16; 0x2a980 reads the table
+        # pointer at manager + 0x14c8 + index*16.
+        flag_base = _movz(_word(self.data, self.sections, 0x29600))
+        ptr_base = _movz(_word(self.data, self.sections, 0x2A9C4))
+        self.assertEqual((flag_base, ptr_base), (0x14D0, 0x14C8))
+        index = _ep_index(0x84)
+        self.assertEqual(index, 0x14)
+        self.assertEqual(flag_base + index * 16, 0x1610)
+        self.assertEqual(ptr_base + index * 16, 0x1608)
+        self.assertIn("#define UAC_U2_INSTALL_FLAG_OFFSET 0x1610ULL", self.source)
+        self.assertIn("#define UAC_U2_TABLE_PTR_OFFSET 0x1608ULL", self.source)
+
     def test_precheck_reads_the_fields_the_cave_checks(self):
         start = self.source.index("static void _postUacBurst(void)")
         body = self.source[start:self.source.index("\n}\n", start)]
         precheck = body.index("_uacReadUsbState")
         post = body.index("usbDsEndpoint_PostBufferAsync")
         self.assertLess(precheck, post)  # never post before the state read
-        for token in ("word != 0x00C00584u", "state[6] != 4", "speed != 3",
-                      "ring == 0", "prod != cons",
+        for token in ("word != 0x00C00584u", "ep.state[6] != 4", "ep.speed != 3",
+                      "ring == 0", "prod != cons", "installed=%u table=0x%llx",
                       "UAC U2 post skipped: endpoint not ready for the cave"):
             self.assertIn(token, body)
         self.assertIn("#define UAC_U2_SPEED_OFFSET 0x22A58ULL", self.source)
@@ -107,7 +126,7 @@ class UacU2PrecheckTests(unittest.TestCase):
         start = self.source.index("static bool _uacReadUsbState")
         body = self.source[start:self.source.index("\n}\n", start)]
         self.assertIn("svcDebugActiveProcess(&h, g_uacUsbPid)", body)
-        self.assertIn("svcReadDebugProcessMemory(state, h,", body)
+        self.assertIn("svcReadDebugProcessMemory(out->state, h,", body)
         self.assertIn("svcCloseHandle(h)", body)
         # The patch applier must not keep the session open.
         patch = self.source[self.source.index("static bool _applyUacPatch("):]

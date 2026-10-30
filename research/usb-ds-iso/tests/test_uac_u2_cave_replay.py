@@ -31,14 +31,20 @@ class UacU2CaveReplayTests(unittest.TestCase):
         self.assertTrue(self.report["check_passed"])
         self.assertTrue(self.report["ring_identical"])
 
+    def test_rejection_matrix_matches_the_precheck(self):
+        cases = self.report["cases"]
+        self.assertEqual(cases["u2/accept"]["outcome"], "accept")
+        self.assertEqual(cases["a23/accept"]["outcome"], "accept")
+        rejects = [name for name in cases if "/reject-" in name]
+        self.assertEqual(len(rejects), 5)  # word, size, interval, speed, ring
+        for name in rejects:
+            self.assertEqual(cases[name]["outcome"], "reject", name)
+            self.assertEqual(cases[name]["w0"], 0x1908C, name)
+
     def test_endpoint_ownership_is_exact(self):
         cases = self.report["cases"]
-        self.assertEqual(cases["vendor-a23/vendor"]["outcome"], "accept")
-        self.assertEqual(cases["u2/uac"]["outcome"], "accept")
-        self.assertEqual(cases["vendor-a23/uac"]["outcome"], "reject")
-        self.assertEqual(cases["u2/vendor"]["outcome"], "reject")
-        for name in ("vendor-a23/uac", "u2/vendor"):
-            self.assertEqual(cases[name]["pc"], 0x30394)
+        self.assertEqual(cases["u2/accept"]["descriptor"], "8405c000")
+        self.assertEqual(cases["u2/reject-word"]["descriptor"], "83010001")
 
     def test_replay_records_no_hardware_access(self):
         self.assertEqual(

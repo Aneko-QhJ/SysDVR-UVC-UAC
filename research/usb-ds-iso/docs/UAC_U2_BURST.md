@@ -12,9 +12,9 @@
   - 8 条 alt0-filter NOP（安装 alt1 端点）。
   - header：`private/analysis/UAC-u2-producer-20261030/uac_u2_payload.h`
   - NSP：`private/analysis/UAC-u2-producer-20261030/build/outputs/exefs.nsp`
-    89090 B，SHA256 `b4252719fd5c66135cc29ed01caf6df9625033b31c34631bad26c079ee8957e5`
+    89178 B，SHA256 `81625cabebb045a9be8229d7078f0aab4b3a16873daeddff5401996273762da7`
     （实机用过 `703e7795…`/88676B 与 `db97b6e7…`/88669B；本版加 post 前
-    endpoint 状态 precheck，见下节）
+    endpoint 状态 precheck 与安装标记，见下节）
   - defines：`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`
   - 生成工具：[tools/build_uac_u2_producer.py](../tools/build_uac_u2_producer.py)；组装源
     [patches/iso_burst_uac84.S](../patches/iso_burst_uac84.S)。`--check` 可在不组装的情况下
@@ -52,8 +52,9 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - cave 反汇编检查：`mov w10,#0x584` + `movk w10,#0xc0,lsl16`、`mov w1,#0x84`、
   `cmp w8,#0x84`；与 EP0x83 版本只差这 4 个字。
 - **Unicorn 回放**（[replay_uac_u2_cave.py](../tools/replay_uac_u2_cave.py)）：用合成的
-  usb:ds endpoint 对象执行两个 cave 的 `iso_enter`。EP0x83 cave 接受 vendor 描述符、
-  拒绝 UAC；EP0x84 cave 反之（拒绝路径都停在 `0x30394`，环未被写）。两次接受都生成
+  usb:ds endpoint 对象执行两个 cave 的 `iso_enter`，并跑完整拒绝矩阵：端点字、
+  长度、interval、速度、环非空五类输入都以真实 `reject_original` 返回 `0x1908c`
+  且不写环；接受路径生成
   16 个 Isoch + 16 个 ED TRB（地址 `DMA+192*i`、长度 192、控制字按 MFI 公式）、
   mailbox `ISO2` 与 producer 指针 `ring+0x200`，且**两个 cave 的结果逐字节相同**
   （ring `d50a3872…`）。依赖 unicorn（不入库）：
@@ -132,10 +133,10 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
   `52069a44…` 并安全弹出，无重试。
 - 下一次尝试前必须先离线解决：
   1. **已完成**：post 前用 dmnt 短暂 attach 读 endpoint 对象（`base+0xFC300`）
-     的端点字/interval/环指针与 HS 速度；不满足 `0x00C00584`/4/3、环非空或读
-     失败就只记 `UAC U2 post skipped`、不 post。对象地址由 `usb.elf` 推导，
-     与崩溃报告 `x21=base+0xDA000` 一致；`tests/test_uac_u2_precheck.py` 从
-     ELF 指令重新算出 `0xFC300`。
+     的端点字/interval/环指针、HS 速度，以及安装器 flag（`base+0x1610`）和
+     `complete_original` 的表项指针（`base+0x1608`）；不满足条件就只记
+     `UAC U2 post skipped`、不 post。所有地址都由 `usb.elf` 指令推导，
+     `tests/test_uac_u2_precheck.py` 重新算出 `0xFC300`/`0x1610`/`0x1608`。
   2. **已确认（静态）**：`reject_original`（`0x30394/0x30398`）返回 `0x1908c`，
      提交调用方（`0x30290` 的 `cbz w0`、`0x302c0` 的 `bl 0x2a980`）对任何非零
      结果都会调用 `complete_original`——即拒绝必然进入崩溃报告里那条递归路径。

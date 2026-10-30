@@ -22,10 +22,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+from build_uac_descriptor_payload import load_elf_sections
 from build_uac_u2_producer import CAVE, assemble, sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOOLCHAIN = Path("/opt/devkitpro/devkitA64/bin")
+ELF = ROOT / "private/module/usb.elf"
 ASM_A = ROOT / "patches/iso_burst_patch.S"
 ASM_B = ROOT / "patches/iso_burst_uac84.S"
 
@@ -44,6 +46,7 @@ RET = b"\xc0\x03\x5f\xd6"
 
 VENDOR = bytes([7, 5, 0x83, 0x01, 0x00, 0x01, 4, 0])   # 0x01000183, interval 4
 UAC = bytes([7, 5, 0x84, 0x05, 0xC0, 0x00, 4, 0])      # 0x00C00584, interval 4
+UAC_INT1 = bytes([7, 5, 0x84, 0x05, 0xC0, 0x00, 1, 0])  # same, bInterval 1
 BURST_BYTES = 16 * 192
 MFI_VALUE = 0x12340
 
@@ -64,8 +67,8 @@ def load_unicorn():
         import unicorn
         from unicorn import UC_ARCH_ARM64, UC_HOOK_CODE, UC_MODE_ARM, Uc
         from unicorn.arm64_const import (
-            UC_ARM64_REG_SP, UC_ARM64_REG_X0, UC_ARM64_REG_X1,
-            UC_ARM64_REG_X2, UC_ARM64_REG_X3,
+            UC_ARM64_REG_PC, UC_ARM64_REG_SP, UC_ARM64_REG_X0,
+            UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_X3,
         )
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise SystemExit(
@@ -74,50 +77,67 @@ def load_unicorn():
         ) from exc
     return dict(unicorn=unicorn, Uc=Uc, UC_ARCH_ARM64=UC_ARCH_ARM64,
                 UC_MODE_ARM=UC_MODE_ARM, UC_HOOK_CODE=UC_HOOK_CODE,
-                SP=UC_ARM64_REG_SP, X0=UC_ARM64_REG_X0, X1=UC_ARM64_REG_X1,
+                PC=UC_ARM64_REG_PC, SP=UC_ARM64_REG_SP, X0=UC_ARM64_REG_X0,
+                X1=UC_ARM64_REG_X1,
                 X2=UC_ARM64_REG_X2, X3=UC_ARM64_REG_X3)
 
 
-def state(descriptor):
+def driver_bytes(address, size):
+    """Real usb:ds code for a stub address (reject_original), else zeros."""
+    if ELF.is_file():
+        data, sections = load_elf_sections(ELF)
+        for sec in sections.values():
+            if sec["type"] != 8 and sec["addr"] <= address < sec["addr"] + sec["size"]:
+                off = sec["offset"] + address - sec["addr"]
+                return data[off:off + size]
+    return bytes(size)
+
+
+def state(descriptor, prod=RING, cons=RING):
     """One synthetic endpoint object and the driver fields iso_enter reads."""
     ep = bytearray(0x1000)
     ep[0:8] = descriptor
     struct.pack_into("<Q", ep, 0x10, RING)          # TRB ring base
-    struct.pack_into("<Q", ep, 0x18, RING)          # producer pointer (empty)
-    struct.pack_into("<Q", ep, 0x20, RING)          # produced pointer (empty)
+    struct.pack_into("<Q", ep, 0x18, prod)          # producer pointer
+    struct.pack_into("<Q", ep, 0x20, cons)          # produced pointer
     struct.pack_into("<Q", ep, 0x28, RING + 0xF70)  # retained link slot
     ep[0x40] = 1                                     # cycle state
     return bytes(ep)
 
 
-def run_case(uni, cave, descriptor):
+def run_case(uni, cave, descriptor, transfer_size=BURST_BYTES, speed=3,
+             prod=RING, cons=RING):
     Uc = uni["Uc"]
     uc = Uc(uni["UC_ARCH_ARM64"], uni["UC_MODE_ARM"])
     for address, size in REGIONS:
         uc.mem_map(address, size)
     uc.mem_write(CAVE, cave)
     uc.mem_write(DOORBELL_TAIL, RET)
-    uc.mem_write(REJECT_ORIGINAL, RET)
+    uc.mem_write(REJECT_ORIGINAL, driver_bytes(REJECT_ORIGINAL, 16))
     uc.mem_write(SENTINEL, RET)
 
-    uc.mem_write(ENDPOINT, state(descriptor))
-    uc.mem_write(MANAGER + 0x22 * 0x1000 + 0xA58, struct.pack("<I", 3))  # HS
+    uc.mem_write(ENDPOINT, state(descriptor, prod, cons))
+    uc.mem_write(MANAGER + 0x22 * 0x1000 + 0xA58, struct.pack("<I", speed))
     uc.mem_write(MANAGER + 0x22 * 0x1000 + 8, struct.pack("<Q", MFI))
     uc.mem_write(MFI + 0x48, struct.pack("<I", MFI_VALUE))
-    uc.mem_write(STACK + 0x8000 - 16, bytes(16))
+    # x30 under the cave's frame is the reject return address.
+    uc.mem_write(STACK + 0x8000, bytes(8) + struct.pack("<Q", SENTINEL))
 
     uc.reg_write(uni["X0"], MANAGER)
     uc.reg_write(uni["X1"], ENDPOINT)
     uc.reg_write(uni["X2"], DMA)
-    uc.reg_write(uni["X3"], BURST_BYTES)
+    uc.reg_write(uni["X3"], transfer_size)
     uc.reg_write(uni["SP"], STACK + 0x8000)
 
-    stopped = {"pc": None, "steps": 0}
+    stopped = {"pc": None, "steps": 0, "w0": None}
+    trace = []
 
-    def on_code(uc_, address, size, user):
+    def on_code(uc_, address, size_, user):
         stopped["steps"] += 1
-        if address in (DOORBELL_TAIL, REJECT_ORIGINAL):
+        trace.append(address)
+        if address == DOORBELL_TAIL:
             stopped["pc"] = address
+            stopped["w0"] = uc_.reg_read(uni["X0"]) & 0xFFFFFFFF
             uc_.emu_stop()
 
     hook = uc.hook_add(uni["UC_HOOK_CODE"], on_code)
@@ -129,16 +149,22 @@ def run_case(uni, cave, descriptor):
     finally:
         uc.hook_del(hook)
 
+    if stopped["pc"] is None:  # reject path returns to the sentinel
+        stopped["pc"] = uc.reg_read(uni["PC"]) & 0xFFFFFFFF
+        stopped["w0"] = uc.reg_read(uni["X0"]) & 0xFFFFFFFF
+
     ring = bytes(uc.mem_read(RING, 0x1000))
     endpoint = bytes(uc.mem_read(ENDPOINT, 0x100))
     return {
         "descriptor": descriptor[2:6].hex(),
         "outcome": ("accept" if stopped["pc"] == DOORBELL_TAIL
-                    else "reject" if stopped["pc"] == REJECT_ORIGINAL
+                    else "reject" if stopped["w0"] == 0x1908C
                     else "error"),
         "pc": stopped["pc"],
+        "w0": stopped["w0"],
         "steps": stopped["steps"],
         "error": error,
+        "trace": [hex(a) for a in trace[-8:]],
         "ring_sha256": sha256(ring),
         "ring": ring,
         "endpoint": endpoint,
@@ -200,31 +226,43 @@ def replay(toolchain=DEFAULT_TOOLCHAIN, asm_a=ASM_A, asm_b=ASM_B):
     if len(cave_a) != len(cave_b):
         raise SystemExit("cave sizes differ")
 
+    matrix = {
+        "accept": {},
+        "reject-word": {"descriptor": VENDOR},
+        "reject-size": {"transfer_size": 1024},
+        "reject-interval": {"descriptor": UAC_INT1},
+        "reject-speed": {"speed": 2},
+        "reject-ring": {"prod": RING, "cons": RING + 0x10},
+    }
     cases = {}
-    for name, cave in (("vendor-a23", cave_a), ("u2", cave_b)):
-        for label, descriptor in (("vendor", VENDOR), ("uac", UAC)):
-            cases[f"{name}/{label}"] = run_case(uni, cave, descriptor)
+    for name, kwargs in matrix.items():
+        descriptor = kwargs.pop("descriptor", UAC)
+        cases[f"u2/{name}"] = run_case(uni, cave_b, descriptor, **kwargs)
+    cases["a23/accept"] = run_case(uni, cave_a, VENDOR)
 
     problems = []
-    expected = {
-        "vendor-a23/vendor": "accept",
-        "vendor-a23/uac": "reject",
-        "u2/uac": "accept",
-        "u2/vendor": "reject",
-    }
-    for name, want in expected.items():
-        case = cases[name]
-        if case["outcome"] != want:
-            problems.append(f"{name}: outcome {case['outcome']} != {want} (pc={case['pc']}, error={case['error']})")
+    for name, case in cases.items():
         if case["error"]:
             problems.append(f"{name}: unicorn error {case['error']}")
-    accepted = [cases["vendor-a23/vendor"], cases["u2/uac"]]
-    if accepted[0]["ring_sha256"] != accepted[1]["ring_sha256"]:
-        problems.append("accepted runs build different TRB rings")
+    accepted = cases["u2/accept"]
+    reference = cases["a23/accept"]
+    if accepted["outcome"] != "accept":
+        problems.append(f"u2/accept: {accepted['outcome']} "
+                        f"(pc={accepted['pc']}, w0={accepted['w0']})")
     else:
-        problems.extend(check_ring(accepted[1]))
-    for name in ("vendor-a23/uac", "u2/vendor"):
-        if any(cases[name]["ring"]):
+        problems.extend(check_ring(accepted))
+    if reference["outcome"] != "accept":
+        problems.append(f"a23/accept: {reference['outcome']} (w0={reference['w0']})")
+    elif reference["ring_sha256"] != accepted["ring_sha256"]:
+        problems.append("accepted runs build different TRB rings")
+    for name, case in cases.items():
+        if name.endswith("/accept"):
+            continue
+        if case["outcome"] != "reject":
+            problems.append(f"{name}: outcome {case['outcome']} (pc={case['pc']}, w0={case['w0']})")
+        elif case["w0"] != 0x1908C:
+            problems.append(f"{name}: reject code {case['w0']:#x} != 0x1908c")
+        if any(case["ring"]):
             problems.append(f"{name}: rejected run wrote the ring")
 
     report = {
@@ -236,12 +274,12 @@ def replay(toolchain=DEFAULT_TOOLCHAIN, asm_a=ASM_A, asm_b=ASM_B):
             "u2": {"asm": str(asm_b.relative_to(ROOT)), "sha256": sha256(cave_b),
                    "bytes": len(cave_b)},
         },
-        "ring_identical": accepted[0]["ring_sha256"] == accepted[1]["ring_sha256"],
-        "ring_sha256": accepted[1]["ring_sha256"],
+        "ring_identical": reference["ring_sha256"] == accepted["ring_sha256"],
+        "ring_sha256": accepted["ring_sha256"],
         "cases": {
-            name: {k: case[k] for k in ("descriptor", "outcome", "pc", "steps",
-                                        "error", "ring_sha256", "producer",
-                                        "cycle", "mailbox")}
+            name: {k: case[k] for k in ("descriptor", "outcome", "pc", "w0",
+                                        "steps", "error", "ring_sha256",
+                                        "producer", "cycle", "mailbox")}
             for name, case in cases.items()
         },
         "problems": problems,
