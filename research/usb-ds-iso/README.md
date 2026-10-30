@@ -22,9 +22,10 @@
 - U2 producer 实机两次（均未通过）：第一次补丁与 alt1 选择正常、触发错过窗口；
   第二次 retrigger 构建（`db97b6e7…`）在 alt1 流启动后 **usb 崩溃**
   （Data Abort 0x4A8；cave 以 `0x1908c` 拒绝 EP `0x84` 提交，驱动错误完成
-  递归到栈溢出）。该构建已标 dangerous。precheck 实机一次（`81625cab…`）
-  安全跳过：设备侧读到 EP `0x84` 已安装、环空，但 speed/installed/table 偏移
-  漏加 manager 基址；修正后的 `cbfbedbb…`（89174B）待再次授权。
+  递归到栈溢出）。该构建已标 dangerous。precheck 实机两次：第一次（`81625cab…`）
+  安全跳过并暴露 manager 偏移 bug；修正后 `cbfbedbb…` 第二次预检四项全过、
+  `post rc=0x0`（cave 接受），但 usb 随后在**完成/重提路径**以 `0x1908c`
+  递归崩溃。下一步先离线解码重提参数，并准备 `0x302c0` 断路器候选。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口

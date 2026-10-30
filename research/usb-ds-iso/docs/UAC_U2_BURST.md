@@ -98,6 +98,25 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - 证据：`private/runs/UAC-u2-precheck-20261030`（`run.json`、设备日志
   `ec66d049…`）、`private/card-cycles/20261030-u2-precheck`。
 
+## 2026-10-30 15:19–15:22 precheck2 实机（post 被接受后崩溃）
+
+- 部署 `cbfbedbb…`（89174B）一次 boot；补丁 `record=29`，枚举正常。
+- 预检四项全过：`word=0x00c00584`、`int=4`、`speed=3`、
+  `ring=prod=cons=0x712cd7d000`（`installed=144`、`table=0x800501000003`）。
+- `UAC U2 post rc=0x0 urb=388 size=3072` —— **cave 接受了提交**，没有 `post skipped`。
+- 随后 usb 崩溃（Data Abort `0x4A8`）：PC `0x2a980`、LR `0x302c4`、`x1=0x84`、
+  `x2=0x1908c`，栈 `0x2c84c→0x2a9fc→0x302c4` 递归。即崩溃发生在
+  **完成/重提路径**：`0x2c690` 的 vtable 回调（`[obj]+136`）再次进入 `0x302e0`，
+  被只认 3072 的 cave 拒绝，错误完成再次递归。
+- 宿主无游戏，流反复重启/abort；崩溃后 97 次 SET_CUR `NO_DEVICE`。
+- 证据：`private/runs/UAC-u2-precheck2-20261030`（设备日志 `99e84785…`、
+  `crash-usb-2.log` `c014c780…`）、`private/card-cycles/20261030-u2-precheck2`。
+- 下一步候选：
+  1. 离线解码 `0x2c690` 传给 vtable 的提交参数（大小/缓冲），确认重提为什么被拒；
+  2. 断路器：把 `0x302c0` 的 `bl 0x2a980` 改成 `nop`，让被拒的重提只返回错误、
+     不再进入递归；
+  3. 实机在**有游戏/稳定音频流**时进行，避免主机反复 abort 触发重提。
+
 ## 风险与边界
 
 - 8 条 NOP 是全局的：Configured 时所有接口/速度的 alt 端点都会安装。UAC build 只有
