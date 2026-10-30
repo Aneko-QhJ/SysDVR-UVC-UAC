@@ -1,4 +1,13 @@
-/* One bounded UAC AS alt1 ISO burst reader (EP 0x84, 16 x 192 B). */
+/* One bounded UAC AS alt1 ISO burst reader (EP 0x84, 16 x 192 B).
+ *
+ * Order matters: claim interface 3, set alt1, submit the ISO transfer first,
+ * then send one SET_CUR(48000) trigger.  The U2 producer builds its 16
+ * Isoch+ED TDs when the device posts the URB from that request, so a trigger
+ * sent before submit would land outside the host polling window (uac-burst
+ * originally did that; iso-probe has always submitted first).
+ *
+ * Defaults: one 16-packet transfer, --trigger-delay-ms 10 (1..500).
+ */
 #include <libusb.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -83,11 +92,21 @@ int main(int argc, char **argv)
     unsigned packets = 0, bad = 0, gaps = 0, transfers = 0;
     unsigned wanted = TRANSFERS;
     unsigned per_transfer = PACKETS;
+    unsigned trigger_delay_ms = 10;
     for (int arg = 1; arg < argc; ++arg) {
         if (!strcmp(argv[arg], "--transfers") && arg + 1 < argc)
             wanted = (unsigned)strtoul(argv[++arg], NULL, 10);
         else if (!strcmp(argv[arg], "--packets") && arg + 1 < argc)
             per_transfer = (unsigned)strtoul(argv[++arg], NULL, 10);
+        else if (!strcmp(argv[arg], "--trigger-delay-ms") && arg + 1 < argc) {
+            char *end = NULL;
+            unsigned long n = strtoul(argv[++arg], &end, 10);
+            if (*end || n < 1 || n > 500) {
+                fprintf(stderr, "trigger delay must be 1..500 ms\n");
+                goto cleanup;
+            }
+            trigger_delay_ms = (unsigned)n;
+        }
     }
     for (unsigned n = 0; n < wanted; ++n) {
         struct libusb_transfer *transfer = libusb_alloc_transfer((int)per_transfer);
@@ -101,24 +120,29 @@ int main(int argc, char **argv)
             (int)per_transfer, on_transfer, NULL, (int)per_transfer + 2000);
         libusb_set_iso_packet_lengths(transfer, PACKET);
         done = false;
-        if (n == 0) {
-            /* UAC trigger: set the sampling rate after alt1.  A U2 build with
-               the producer posts one 3072-byte URB from this request. */
-            uint8_t rate[3] = {0x80, 0xBB, 0x00};
-            int crc = libusb_control_transfer(device, 0x22, 0x01, 0x0100, EP,
-                rate, sizeof(rate), 1000);
-            if (crc < 0) {
-                fprintf(stderr, "UAC SET_CUR trigger failed: %d\n", crc);
-                libusb_free_transfer(transfer);
-                free(buffer);
-                break;
-            }
-        }
         if (libusb_submit_transfer(transfer)) {
             fprintf(stderr, "submit failed at %u\n", n);
             libusb_free_transfer(transfer);
             free(buffer);
             break;
+        }
+        if (n == 0) {
+            /* UAC trigger: set the sampling rate once the host pipe is live.
+               A U2 build posts one 3072-byte URB from this request, and the
+               producer schedules its TDs at post time, so the transfer must
+               already be submitted (the A23 host does the same). */
+            usleep(trigger_delay_ms * 1000);
+            uint8_t rate[3] = {0x80, 0xBB, 0x00};
+            int crc = libusb_control_transfer(device, 0x22, 0x01, 0x0100, EP,
+                rate, sizeof(rate), 1000);
+            if (crc < 0) {
+                fprintf(stderr, "UAC SET_CUR trigger failed: %d\n", crc);
+                libusb_cancel_transfer(transfer);
+                while (!done && libusb_handle_events(ctx) == 0) {}
+                libusb_free_transfer(transfer);
+                free(buffer);
+                break;
+            }
         }
         while (!done) {
             if (libusb_handle_events(ctx) < 0) break;

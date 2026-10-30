@@ -9,7 +9,7 @@
 #include "iso_probe_protocol.h"
 #endif
 #if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH) || \
-    defined(UAC_U2_BASE_PATCH)
+    defined(UAC_U2_BASE_PATCH) || defined(UAC_U2_PATCH)
 #include "iso_runtime_patch.h"
 #endif
 #ifdef ISO_RUNTIME_PATCH
@@ -21,6 +21,9 @@
 #endif
 #ifdef UAC_U2_BASE_PATCH
 #include "uac_u2_base_payload.h"
+#endif
+#ifdef UAC_U2_PATCH
+#include "uac_u2_payload.h"
 #endif
 
 // USB class codes not defined in libnx
@@ -54,7 +57,7 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 static UvcDeviceContext g_uvcCtx;
 
 #if defined(ISO_RUNTIME_PATCH) || defined(UAC_DESCRIPTOR_PATCH) || \
-    defined(UAC_U2_BASE_PATCH)
+    defined(UAC_U2_BASE_PATCH) || defined(UAC_U2_PATCH)
 typedef struct { Handle debug; u64 base; Result last_result; } IsoPatchContext;
 static int _isoPatchRead(void *context, uint32_t offset, void *bytes, size_t size)
 {
@@ -70,7 +73,8 @@ static int _isoPatchWrite(void *context, uint32_t offset, void *bytes, size_t si
 }
 #endif
 
-#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH)
+#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH) || \
+    defined(UAC_U2_PATCH)
 /* Apply a bounded usb:ds runtime payload.  Fail closed: a build that requires
    a patch must not enable the device with an unpatched module. */
 static bool _applyUacPatch(const IsoRuntimeEdit *edits, size_t edit_count,
@@ -144,6 +148,15 @@ static bool _applyUacU2BasePatch(void)
     return _applyUacPatch(uacU2BaseEdits,
         sizeof(uacU2BaseEdits) / sizeof(uacU2BaseEdits[0]),
         uacU2BaseBuildId, "u2-base");
+}
+#endif
+
+#ifdef UAC_U2_PATCH
+static bool _applyUacU2Patch(void)
+{
+    return _applyUacPatch(uacU2Edits,
+        sizeof(uacU2Edits) / sizeof(uacU2Edits[0]),
+        uacU2BuildId, "u2");
 }
 #endif
 
@@ -658,6 +671,10 @@ static struct {
     UsbDsInterface* acInterface;    // Audio Control
     UsbDsInterface* asInterface;    // Audio Streaming
     UsbDsEndpoint* audioEndpointIn;
+
+#ifdef UAC_U2_PATCH
+    bool burstPosted;               // U2: one bounded URB per boot
+#endif
 
     Mutex audioMutex;
 } g_uacCtx;
@@ -1218,12 +1235,16 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
     mutexInit(&g_uacCtx.audioMutex);
 
     if (hosversionAtLeast(5, 0, 0)) {
-#if defined(UAC_DESCRIPTOR_PATCH) && defined(UAC_U2_BASE_PATCH)
+#if (defined(UAC_DESCRIPTOR_PATCH) + defined(UAC_U2_BASE_PATCH) + \
+    defined(UAC_U2_PATCH)) > 1
 #error "define only one UAC usb patch payload"
 #endif
-#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH)
+#if defined(UAC_DESCRIPTOR_PATCH) || defined(UAC_U2_BASE_PATCH) || \
+    defined(UAC_U2_PATCH)
         bool patch_ok;
-#ifdef UAC_U2_BASE_PATCH
+#if defined(UAC_U2_PATCH)
+        patch_ok = _applyUacU2Patch();
+#elif defined(UAC_U2_BASE_PATCH)
         patch_ok = _applyUacU2BasePatch();
 #else
         patch_ok = _applyUacDescriptorPatch();
@@ -2060,6 +2081,48 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 }
 #endif
 
+#ifdef UAC_U2_PATCH
+/* U2: one bounded 3072-byte URB (16 x 192 B) on AS alt1 EP 0x84.  usb:ds has
+   no working ISO submit path of its own (the original branch returns
+   0x1908c), so the runtime cave builds the 16 Isoch+ED TRBs and rings the
+   doorbell.  The host must already be polling: uac-burst submits its ISO
+   transfer before sending this SET_CUR trigger.  Post exactly once per boot;
+   a timeout is reported, never retried or cancelled here. */
+#define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16)
+static void _postUacBurst(void)
+{
+    if (!g_uacCtx.audioEndpointIn || g_uacStd.alt_setting != 1) return;
+    if (g_uacCtx.burstPosted) return;
+
+    memset(g_audioEndpointBuffer, 0, UAC_U2_BURST_BYTES);
+    armDCacheFlush(g_audioEndpointBuffer, UAC_U2_BURST_BYTES);
+    eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+
+    u32 urbId = 0;
+    Result rc = usbDsEndpoint_PostBufferAsync(g_uacCtx.audioEndpointIn,
+        g_audioEndpointBuffer, UAC_U2_BURST_BYTES, &urbId);
+    LOG("UAC U2 post rc=0x%x urb=%u size=%u\n", rc, urbId, UAC_U2_BURST_BYTES);
+    if (R_FAILED(rc)) return;
+    g_uacCtx.burstPosted = true;
+
+    if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
+        LOG("UAC U2 no completion within 100ms\n");
+        return;
+    }
+    eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+    UsbDsReportData report;
+    rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
+    if (R_FAILED(rc)) {
+        LOG("UAC U2 report rc=0x%x\n", rc);
+        return;
+    }
+    u32 requested = 0, transferred = 0;
+    Result prc = usbDsParseReportData(&report, urbId, &requested, &transferred);
+    LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
+        prc, requested, transferred);
+}
+#endif
+
 // UAC1 standard/class control requests.  SET_CUR sampling frequency carries a
 // 3-byte OUT data stage; read it before deciding ACK vs STALL.
 // usb:ds may signal the same setup on several interfaces' SetupEvents, so this
@@ -2133,6 +2196,11 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
             return;
         }
         _ctrlAck(iface);
+#ifdef UAC_U2_PATCH
+        /* alt1 SET_CUR is the U2 trigger; ACK is already queued, so the
+           bounded completion wait cannot delay the control status stage. */
+        _postUacBurst();
+#endif
         return;
     }
 

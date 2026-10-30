@@ -1,28 +1,40 @@
-# 当前状态（2026-10-30 10:15，Asia/Shanghai）
+# 当前状态（2026-10-30 10:35，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
 > 最后一次实机是 2026-10-30 01:55 的 U1b；U1a/U1b 均通过，卡已恢复
-> `52069a44…` 并安全弹出。此后只做 U2 离线基础（26 条 payload + uac-burst），
-> 未部署。
+> `52069a44…` 并安全弹出。此后只做 U2 离线：基础 26 条与 producer 30 条
+> payload 均已构建，**未部署**。
 
-## 当前进度（2026-10-30 10:15）
+## 当前进度（2026-10-30 10:35）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
 | U0 枚举 | **通过**（257B/4 接口，音频设备） | `private/runs/UAC-u0d-20261030` |
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
-| U2 基础 | 已构建，**未部署** | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | **未实现** | A23 producer 硬编码 EP 0x83/MPS256 |
+| U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
+| U2 producer | **已构建，未部署**（30 条，cave 684B） | `private/analysis/UAC-u2-producer-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u1b-alt` |
 
-- U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）；U2 基础在其上追加 8 条 alt0-filter
-  NOP，共 26 条编辑，NSP `abdaff61…`（87461B）。
-- `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已编译，但没有
-  producer 时不会通过，不能当作 U2 数据路径证据。
-- 下一步：把 A23 producer 从 EP `0x83`/MPS256 迁到 EP `0x84`/MPS192，
-  生成 30 条 U2 payload，再做一次有界 burst。详见
+- U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
+  alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
+  U2 producer 取代。producer 工作使源码行号变化，重建后的基础 NSP 为
+  `4e112f7b…`（87461B）：用 HEAD 源码重建作对照，text 段逐字节相同，
+  只有 GNU build-id note 随源码行号变化。
+- U2 producer payload：30 条编辑 = 684B cave（`0x68d54..0x69000`，正好填满）
+  + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP。
+  NSP `703e7795…`（88676B），`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；
+  编译出的 `uacU2Edits` 表 30 条与 manifest 一致。
+- **端点是 `0x00C00584`，不是 `0x00C00184`**：AS alt1 描述符的
+  `bmAttributes=0x05`（ISO + async），驱动在 `0x2fd80` 把 8 字节描述符原样
+  拷进 endpoint 对象；A23 vendor 端点是 `0x01000183`（attrs 0x01）。若按旧文档
+  写 `0x00C00184`，hook 会走 `reject_original`（返回 `0x1908c`），不会崩但拿不到数据。
+- `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已改为
+  **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
+- 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 30 条，失败即拒绝启用；
+  alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
+- 下一步：一次有界 U2 burst（需新的明确授权）。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
 ## 一句话
@@ -30,11 +42,11 @@
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）；U2 基础（26 条：18 描述符 + 8 NOP，
-NSP `abdaff61…`）已构建未部署。AS alt1 尚未 post 数据，producer 迁移到
-EP `0x84`/MPS192 未实现，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-卡已恢复安全 `52069a44…` 并安全弹出。最近一次短包实机（2026-10-27）主机侧
-通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 producer（30 条，cave 684B，
+NSP `703e7795…`）已构建未部署。AS alt1 尚未 post 数据，PCM 未测试。
+UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
+未打包/未部署。
 
 ## 最近一次 U1a 实机（2026-10-30，通过）
 
@@ -353,10 +365,11 @@ EP `0x84`/MPS192 未实现，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST
 2. **路径修正版**：能否通过配套包/入口检查，并做一次短包复测？需要新的明确授权。
 3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
    13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   U2 基础已备：26 条 payload（18 描述符 + 8 NOP）与 host `uac-burst`；
-   producer 迁移到 EP 0x84/MPS192 尚未实现。完成后才做一次有界 ISO burst。
+   U2 producer 已构建（30 条，EP `0x84`/MPS192/attrs0x05，cave 684B，
+   NSP `703e7795…`）；host `uac-burst` 已改为先提交再触发。
+   下一步是有界 ISO burst，验证 alt1 端点安装与 16×192B，需要新授权。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
-   Linux 10s host 入口/检查器已备，但 AS `0x84` 仍无 ISO producer，10s PCM 未就绪。
+   Linux 10s host 入口/检查器已备，但 10s PCM 仍未就绪（先过 U2）。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
    当前自定义接收器的 47ms 不作为产品下限。
 5. **失败分类**：主机 `E00002ED/E000400E` 空前缀（raw 正确）与设备 `CC23/bitmap000F`
@@ -364,13 +377,13 @@ EP `0x84`/MPS192 未实现，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST
 
 ## 下一步（未授权）
 
-- 离线（UAC 下一步）：U2 基础已备——26 条 payload（18 描述符 + 8 NOP，
-  NSP `abdaff61…`，87461B）与 host `uac-burst` 入口；producer 尚未迁移
-  （A23 硬编码 EP 0x83/MPS256）。见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+- 实机（UAC 下一步）：一次有界 U2 burst——一次 boot、一次 alt1、一次
+  16×192B 读；通过条件与停止条件见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+  需要新的明确授权，且不与 alt1 探针/路径修正版混在同一轮。
+- 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
-  模型已备，但接真实数据要等 AS `0x84` producer 与 alt1 选择。
+  模型已备，但接真实数据要等 U2 通过。
 - 离线：路径修正版打包 + 新 recipe 入口 + 包/入口审计。
-- 实机：另定范围与授权；标准 UAC、alt1 探针、路径修正版不要混在同一轮变量里。
 
 ## 不证明
 
