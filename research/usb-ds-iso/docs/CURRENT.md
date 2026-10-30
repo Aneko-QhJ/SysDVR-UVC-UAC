@@ -24,6 +24,7 @@
 | U2 v4 方波 burst | 实机三次：alt1/installed=0；1→1 回读 0；0→1 门过但 completion 空、WAV 零 | `private/runs/UAC-u2-pattern3-20261031` |
 | U2 v5 候选读取 | 已构建，未部署；被 v6 取代 | `private/analysis/UAC-u2-v5-20261031` |
 | U2 v6 安装对象门 | **实机一次**：obj=`0x40e57b038`、`installed=1`、table 非零、门过、post rc=0，completion 空、WAV 零、无崩溃 | `private/runs/UAC-u2-v6-20261031` |
+| U2 v7 report 诊断 | 已构建（`4db0adcc…`，90280B），未部署、0 实机；打印 report count/entries | `private/analysis/UAC-u2-v7-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v6` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -59,14 +60,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线）：解释“安装对象/门已正确、post `rc=0`，completion 仍为空
-  `0x748c/0/0`”。优先查三件事：(1) `obj+0x1608` 指向的是否真是 driver 的
-  request entry（本轮日志是 `iova=0x1 req=0 xfer=0 status=0`，且读点在
-  `GetReportData` 之后，可能已被消费/清零）；(2) driver 的 report 生成路径
-  为什么给出 `count=0`/匹配失败；(3) host 在 alt1 上是否真的提交了 ISO
-  传输（WAV 全零不证明）。先离线补模型/静态证据，再谈下一次实机；U2 实机线
-  再次暂停，需新的明确授权。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与 [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
+- 下一步：**v7 一次授权 boot**（已离线构建 `4db0adcc…`，90280B）。v7 在
+  `GetReportData` 后、`ParseReportData` 前打印 `report.report_count` 和每条
+  `{id, req, xfer, status}`，用来区分“driver 根本没生成 report（count=0）”
+  和“有 report 但 urbId 不匹配（parse 拒绝）”。一次 boot、最多 2 次 SET_CUR；
+  只读诊断，不改 cave。失败即停、不重试、恢复 `52069a44…`。U2 实机线暂停中，
+  需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+  [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
 

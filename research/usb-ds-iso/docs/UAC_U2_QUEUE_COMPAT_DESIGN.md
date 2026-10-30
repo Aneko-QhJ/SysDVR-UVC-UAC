@@ -538,5 +538,6 @@ payload / cave 592B）。
 - **实机结果**：`obj=0x40e57b038`、`installed=1`、`table=0x40e5796f0`，
   门通过、post `rc=0`，但 completion 仍为空 `0x748c/0/0`，WAV 全零，
   无 crash。门/对象地址不是剩余阻塞；下一步离线查 report `count=0`、
-  `0x1608` 表项语义和 host 是否真在 alt1 提交 ISO。U2 实机线暂停，需新的
-  明确授权。
+  `0x1608` 表项语义和 host 是否真在 alt1 提交 ISO。v7 `4db0adcc…`
+  （90280B）已构建：打印 `report.report_count` 与每条 entry，用来区分
+  count=0 和 urbId 不匹配；未部署、0 实机。U2 实机线暂停，需新的明确授权。

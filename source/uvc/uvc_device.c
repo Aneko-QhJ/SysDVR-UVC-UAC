@@ -2331,6 +2331,12 @@ static void _postUacBurst(void)
         return;
     }
     u32 requested = 0, transferred = 0;
+    LOG("UAC U2 report data count=%u urb=%u\n", report.report_count, urbId);
+    for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+        LOG("UAC U2 report[%u] id=%u req=%u xfer=%u status=%u\n", i,
+            report.report[i].id, report.report[i].requestedSize,
+            report.report[i].transferredSize, report.report[i].urb_status);
+    }
     Result prc = usbDsParseReportData(&report, urbId, &requested, &transferred);
     LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
         prc, requested, transferred);

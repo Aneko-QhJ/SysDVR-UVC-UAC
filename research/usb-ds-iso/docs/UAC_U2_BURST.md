@@ -361,3 +361,14 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 证据：`private/analysis/UAC-u2-v6-20261031`、
   `private/runs/UAC-u2-v6-20261031`（日志 `e0bf3606…`、`capture.wav`
   `849f4edd…`）、`private/card-cycles/20261031-u2-v6`。
+
+## 2026-10-31 02:18 v7：report-data 诊断（离线，未部署）
+
+- v6 已确认安装对象/门正确，但 completion 仍空。v7 只改应用侧日志：
+  `GetReportData` 成功后、`ParseReportData` 前打印 `report.report_count`
+  和最多 8 条 `{id, requested, transferred, urb_status}`。
+- 用途：区分 `count=0`（driver 没有生成 report）与 `count>0` 但
+  `urbId` 不匹配（parse 拒绝）；两者对应完全不同的下一步。
+- NSP `4db0adcc…`（90280B，29 条 / cave 592B），未部署、0 实机；
+  下一次一次新授权 boot，host 计划同 v6。
+- 证据：`private/analysis/UAC-u2-v7-20261031`（`build-notes.txt`、`SHA256SUMS`）。

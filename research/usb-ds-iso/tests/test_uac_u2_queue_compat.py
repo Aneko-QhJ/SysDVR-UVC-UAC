@@ -177,6 +177,8 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
         self.assertIn('LOG("UAC U2 install obj=0x%llx table=0x%llx', source)
         self.assertIn('LOG("UAC U2 entry %s addr=0x%llx', source)
+        self.assertIn('LOG("UAC U2 report data count=%u urb=%u', source)
+        self.assertIn('LOG("UAC U2 report[%u] id=%u req=%u xfer=%u status=%u', source)
         self.assertIn("ep.installed != 1 || ep.table_ptr == 0", source)
         self.assertIn("install object not ready", source)
         self.assertIn("UAC U2 pattern 1kHz 16ms", source)

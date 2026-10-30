@@ -37,10 +37,11 @@
   `installed==1 && table!=0` 门在实机成立。v3/v4 的 `installed=240/1` 是
   manager 内无关字节，“部分安装”结论作废。门/对象地址**不是**剩余阻塞。
 - 当前工作：U0、U1a、U1b 通过；U2 只有一次 completion `3072/3072`
-  （no-report 轮），host 16/16 与 PCM 未测。v6 已经用掉一次授权；下一步
-  **离线**解释“post 被接受但 report 为空”：`obj+0x1608` 表项语义、
-  report `count=0`、host 是否真在 alt1 提交 ISO。U2 实机线再次暂停，需新的
-  明确授权。
+  （no-report 轮），host 16/16 与 PCM 未测。v6 已经用掉一次授权；v7
+  `4db0adcc…`（90280B）已离线构建：在 `GetReportData` 后、
+  `ParseReportData` 前打印 `report.report_count` 和每条
+  `{id, req, xfer, status}`，用于区分 count=0 与 urbId 不匹配。下一步是
+  **一次新授权的 v7 boot**；U2 实机线暂停中。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
