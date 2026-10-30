@@ -245,9 +245,10 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `--require-alt1` 先拦截 alt0；`--force-alt1` 显式 `SET_INTERFACE(1)` 后
   `installed=240 table=0xfc0101000027`，门通过，completion `3072/3072`，
   无崩溃。host 16/16 包数与 PCM 未测；第二次 SET_CUR 数据阶段仍 `0x25c8c`。
-- v4 `c33d0d07…`（89772B）已构建、未部署：一次性 3072B 改为 16 ms/1 kHz
-  方波；下一轮 `--force-alt1 --set-rate --repeat=1`，host 录 WAV，用
-  `tools/check_uac_burst_wav.py` 查找该段。
+- v4 `c33d0d07…`（89772B）实机一次：host 已经看到 alt1，`--force-alt1`
+  因而不发 `SET_INTERFACE(1)`；precheck `installed=0 table=0`，门跳过、
+  0 post，WAV 全零、无崩溃。结论：alt1 状态本身不等于安装器已运行；
+  `--force-alt1` 已改为**总是**发 `SET_INTERFACE(1)`，待重测。
 
 ## 风险与边界
 

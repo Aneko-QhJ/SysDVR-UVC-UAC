@@ -57,6 +57,10 @@ class UacU2RetriggerTests(unittest.TestCase):
         force = self.host.index("SET_INTERFACE(1) force")
         set_cur = self.host.index("SET_CUR rate 48k (ep)")
         self.assertLess(force, set_cur)
+        # v4 showed that alt1 selected by the OS is not enough: always
+        # issue SET_INTERFACE(1), not only when GET_INTERFACE reads 0.
+        self.assertNotIn("force_alt1 && (rc != 1", self.host)
+        self.assertIn("if (force_alt1) {", self.host)
 
     def test_binary_rejects_force_alt1_with_alt_only(self):
         if not BINARY.is_file():

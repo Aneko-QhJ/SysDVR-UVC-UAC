@@ -108,7 +108,11 @@ int main(int argc, char **argv)
     }
 
     rc = ctrl(h, 0x81, 0x0A, 0, AS_INTERFACE, data, 1, "GET_INTERFACE(AS)");
-    if (force_alt1 && (rc != 1 || data[0] != 1)) {
+    if (force_alt1) {
+        /* Always issue SET_INTERFACE(1), even if GET_INTERFACE already
+           reads 1: the device installer runs on this control request, and
+           an alt1 state selected by the macOS audio driver alone leaves
+           installed/table at 0 (2026-10-31 v4 run). */
         rc = ctrl(h, 0x01, 0x0B, 1, AS_INTERFACE, NULL, 0,
                   "SET_INTERFACE(1) force");
         if (rc != 0) ++failures;
