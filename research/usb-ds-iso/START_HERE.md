@@ -24,24 +24,24 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 02:16）
+## 当前边界（2026-10-31 02:24）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 02:08–02:10 U2 v6（一次 boot）：
-  `SET_INTERFACE(0)→(1)` 后 alt1，2 次 SET_CUR；precheck 首次确认
-  `obj=0x40e57b038`（manager `0x40e4da000` + `0xa1038`）、`installed=1`、
-  `table=0x40e5796f0`，门通过、post `rc=0`，但 completion 仍为空
-  `0x748c/0/0`、WAV 全零、无 crash；已恢复 `52069a44…` 并安全弹出。
-- **已确认**：安装对象不是 manager；v6 的
-  `[manager+0x229b8] = base+0x17b038` 和
-  `installed==1 && table!=0` 门在实机成立。v3/v4 的 `installed=240/1` 是
-  manager 内无关字节，“部分安装”结论作废。门/对象地址**不是**剩余阻塞。
-- 当前工作：U0、U1a、U1b 通过；U2 只有一次 completion `3072/3072`
-  （no-report 轮），host 16/16 与 PCM 未测。v6 已经用掉一次授权；v7
-  `4db0adcc…`（90280B）已离线构建：在 `GetReportData` 后、
-  `ParseReportData` 前打印 `report.report_count` 和每条
-  `{id, req, xfer, status}`，用于区分 count=0 与 urbId 不匹配。下一步是
-  **一次新授权的 v7 boot**；U2 实机线暂停中。
+- 最后实机：2026-10-31 02:19–02:21 U2 v7（一次 boot）：
+  `SET_INTERFACE(0)→(1)` 后 alt1，2 次 SET_CUR；precheck
+  `obj=0x13f737b038`（manager `0x13f736d000` + `0xa1038`）、`installed=1`、
+  `table=0x13f73796f0`，门通过；report count=1/id=388/3072/3072/status=3，
+  complete `rc=0 3072/3072`；但 WAV 全零、无 crash。已恢复 `52069a44…`
+  并安全弹出。
+- **已确认**：安装对象 `[manager+0x229b8] = base+0x17b038` 和
+  `installed==1 && table!=0` 门成立；设备侧 completion 已在 v3/v7 两次
+  通过，v6 的空报告未复现（v7 仅多日志）。门/对象/report 生成**不是**
+  剩余阻塞。
+- 当前工作：U0、U1a、U1b 通过；U2 的 host 16/16 与 PCM 未测，WAV 仍全零。
+  下一步是**离线 host 侧**：当前先启动 ffmpeg（alt0）再强制 alt1，
+  AppleUSBAudio 可能没有迁移 ISO 流；准备“先 alt1 再采集”的顺序实验，
+  并用 `log stream`/`ioreg` 查 alt1 端点活动。设备侧暂不需要新构建；
+  下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

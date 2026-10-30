@@ -535,9 +535,11 @@ payload / cave 592B）。
 - manager 旧值 `0xdb610/0xdb608` 只写日志，绝不参与门；
 - 超时/无完成/报错时读 `[obj+0x1608]` 的表项：`+0x10` IOVA、`+0x20`
   requested、`+0x28` status、`+0x2c` transferred；
-- **实机结果**：`obj=0x40e57b038`、`installed=1`、`table=0x40e5796f0`，
-  门通过、post `rc=0`，但 completion 仍为空 `0x748c/0/0`，WAV 全零，
-  无 crash。门/对象地址不是剩余阻塞；下一步离线查 report `count=0`、
-  `0x1608` 表项语义和 host 是否真在 alt1 提交 ISO。v7 `4db0adcc…`
-  （90280B）已构建：打印 `report.report_count` 与每条 entry，用来区分
-  count=0 和 urbId 不匹配；未部署、0 实机。U2 实机线暂停，需新的明确授权。
+- **v6 实机**：`obj=0x40e57b038`、`installed=1`、`table=0x40e5796f0`，
+  门通过、post `rc=0`，但 completion 为空 `0x748c/0/0`，WAV 全零，无 crash。
+- **v7 实机（只加 report 日志）**：同一对象/门，
+  `report count=1 id=388 req=3072 xfer=3072 status=3`、
+  `complete rc=0 3072/3072`，v6 空报告未复现；但 WAV 仍全零。
+  设备侧 completion 已两次通过；剩余缺口是 host 侧 alt1 ISO 交付/采集。
+  下一步离线准备“先 alt1 再启动 ffmpeg”的顺序实验和 host 端点活动证据；
+  U2 实机线暂停，需新的明确授权。

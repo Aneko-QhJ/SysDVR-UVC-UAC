@@ -362,13 +362,20 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `private/runs/UAC-u2-v6-20261031`（日志 `e0bf3606…`、`capture.wav`
   `849f4edd…`）、`private/card-cycles/20261031-u2-v6`。
 
-## 2026-10-31 02:18 v7：report-data 诊断（离线，未部署）
+## 2026-10-31 02:19–02:21 v7：report-data 诊断（实机一次，3072/3072）
 
 - v6 已确认安装对象/门正确，但 completion 仍空。v7 只改应用侧日志：
   `GetReportData` 成功后、`ParseReportData` 前打印 `report.report_count`
   和最多 8 条 `{id, requested, transferred, urb_status}`。
-- 用途：区分 `count=0`（driver 没有生成 report）与 `count>0` 但
-  `urbId` 不匹配（parse 拒绝）；两者对应完全不同的下一步。
-- NSP `4db0adcc…`（90280B，29 条 / cave 592B），未部署、0 实机；
-  下一次一次新授权 boot，host 计划同 v6。
-- 证据：`private/analysis/UAC-u2-v7-20261031`（`build-notes.txt`、`SHA256SUMS`）。
+- **实机结果**：precheck `obj=0x13f737b038`（manager `0x13f736d000` +
+  `0xa1038`）、`installed=1 table=0x13f73796f0`，门通过；
+  `report data count=1 urb=388`、`report[0] id=388 req=3072 xfer=3072
+  status=3`、`complete rc=0 requested=3072 transferred=3072`。
+  **设备侧 completion 通过**；v6 的空报告未复现（v7 仅多日志）。
+- 但 WAV 41472 frames 全零、detector FAIL、无 crash。剩余缺口是
+  **host 侧 alt1 ISO 交付/采集**：当前先启动 ffmpeg（alt0）再强制 alt1，
+  AppleUSBAudio 可能没有迁移流。下一步离线准备“先 alt1 再采集”的顺序
+  实验，并用 `log stream`/`ioreg` 查 alt1 端点活动；下一次实机需新授权。
+- 证据：`private/analysis/UAC-u2-v7-20261031`、
+  `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav`
+  `8e59a0da…`）、`private/card-cycles/20261031-u2-v7`。
