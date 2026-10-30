@@ -492,8 +492,10 @@ tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0`，然后�
   门通过（installed=1）但 completion 为空、WAV 全零。**v3/v4 的 installed
   值读错了对象（manager+0x1610），不是安装状态；安装对象是
   `[manager+0x229b8]=base+0x17b038`，见 §11。** v6 `73becbd5…` 改为跟随
-  对象读 `+0x1610/+0x1608`，门收紧为 `installed==1 && table!=0`；已构建、
-  未部署。拒绝路径仍待单独解决。
+  对象读 `+0x1610/+0x1608`，门收紧为 `installed==1 && table!=0`；02:08
+  实机一次门通过（`obj=0x40e57b038`，`installed=1`，table 非零）但
+  completion 仍为空。空报告问题与门无关，下一步离线查 report/表项/host
+  alt1 ISO。拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。
@@ -526,11 +528,15 @@ flag 和完成路径都挂在**独立安装对象**上，不是 manager。
 “`installed=1` 是部分安装”结论作废；成功回合的 `installed=240` 也只是
 碰巧非零，不能当判据。
 
-v6（已构建，未部署）：`73becbd5…`（90174B，同一 29 条 payload / cave 592B）。
+v6（2026-10-31 02:08 实机一次）：`73becbd5…`（90174B，同一 29 条
+payload / cave 592B）。
 - 先读 `[manager + 0x229b8]` 得到对象指针，再读 `+0x1610/+0x1611/+0x1608`；
 - 门：`install_ok && installed == 1 && table != 0`；
 - manager 旧值 `0xdb610/0xdb608` 只写日志，绝不参与门；
 - 超时/无完成/报错时读 `[obj+0x1608]` 的表项：`+0x10` IOVA、`+0x20`
   requested、`+0x28` status、`+0x2c` transferred；
-- 实机计划：一次 boot，host `--force-alt1 --set-rate --repeat=2
-  --interval-ms=1000`；需新的明确授权。
+- **实机结果**：`obj=0x40e57b038`、`installed=1`、`table=0x40e5796f0`，
+  门通过、post `rc=0`，但 completion 仍为空 `0x748c/0/0`，WAV 全零，
+  无 crash。门/对象地址不是剩余阻塞；下一步离线查 report `count=0`、
+  `0x1608` 表项语义和 host 是否真在 alt1 提交 ISO。U2 实机线暂停，需新的
+  明确授权。

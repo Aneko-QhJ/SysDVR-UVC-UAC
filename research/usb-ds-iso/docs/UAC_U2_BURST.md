@@ -333,7 +333,7 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   3. 证据：`private/runs/UAC-u2-burst2-20261030`（`run.json`、`device-log-u2b.txt`
      `b457421d…`、`crash-usb-0100000000000006.log` `ead11166…`、`erpt-a0311816.txt`）。
 
-## 2026-10-31 02:10 v6：安装对象修正（离线，未部署）
+## 2026-10-31 02:10 v6：安装对象修正（02:08 实机一次）
 
 - 之前 precheck 把 `0x295d0`/`0x2a980` 的表基址当成 manager；实际两者都用
   `[manager + 0x229b8]` 这个独立安装对象。`0x30294`/`0x30298` 组成
@@ -347,9 +347,17 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - v6 NSP `73becbd5…`（90174B，29 条 / cave 592B）：
   - 先读 `[manager+0x229b8]`，再读对象 `+0x1610/+0x1611/+0x1608`；
   - 门：`install_ok && installed == 1 && table != 0`；
-  - 旧 manager 值只写日志；超时/无完成/报错时读表项 `+0x10/+0x20/+0x28/+0x2c`；
-  - 未部署、0 实机，设备/卡状态不推定。
-- 下一次（需新授权）：一次 boot，host `--force-alt1 --set-rate --repeat=2
-  --interval-ms=1000`。通过条件：completion `3072/3072`、WAV 出现 1 kHz
-  16 ms 段、无 usb fatal；失败即停、不重试、恢复 `52069a44…` 并安全弹出。
-- 证据：`private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`）。
+  - 旧 manager 值只写日志；超时/无完成/报错时读表项 `+0x10/+0x20/+0x28/+0x2c`。
+- **02:08–02:10 实机一次**（一次 boot，2 次 SET_CUR，失败不重试）：
+  precheck `obj=0x40e57b038`（manager `0x40e4da000` + `0xa1038`）、
+  `installed=1 flag1=0 table=0x40e5796f0 install_ok=1`，门通过；
+  `post rc=0 urb=388 size=3072`；但 `complete rc=0x748c requested=0
+  transferred=0`，WAV 39424 frames 全零，无 crash、无 fatal。表项日志
+  `iova=0x1 req=0 xfer=0 status=0` 读点在 `GetReportData` 之后，可能已消费。
+  读卡后恢复 `52069a44…`、删日志、安全弹出。
+- 结论：安装对象/门已在实机确认，**空 completion 不是门太弱造成的**。
+  下一次先离线解释 report `count=0`、`0x1608` 表项语义和 host 是否真在
+  alt1 提交 ISO；U2 实机线再次暂停，需新的明确授权。
+- 证据：`private/analysis/UAC-u2-v6-20261031`、
+  `private/runs/UAC-u2-v6-20261031`（日志 `e0bf3606…`、`capture.wav`
+  `849f4edd…`）、`private/card-cycles/20261031-u2-v6`。

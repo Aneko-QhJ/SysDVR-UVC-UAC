@@ -24,24 +24,23 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 02:10）
+## 当前边界（2026-10-31 02:16）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 01:47–01:49 U2 v4 第三次（一次 boot）：
-  `SET_INTERFACE(0)→(1)` 后 alt1，1 次 SET_CUR；precheck 读到
-  `installed=1 table=0x800501000000`，门通过、post `rc=0`，但 completion
-  为空 `0x748c/0/0`、WAV 全零、无 crash；已恢复 `52069a44…` 并安全弹出。
-- **2026-10-31 02:00 离线修正**：`installed/table` 读错了对象。安装器和
-  `complete_original` 用的是 `[manager+0x229b8] = base+0x17b038` 这个独立
-  对象（两份 crash 的 `x0-x21=0xa1038`），不是 manager。正确 flag 在
-  `base+0x17c648`、表项指针在 `base+0x17c640`。v3/v4 的 `installed=240/1`
-  都是无关字节，“部分安装”结论作废。
+- 最后实机：2026-10-31 02:08–02:10 U2 v6（一次 boot）：
+  `SET_INTERFACE(0)→(1)` 后 alt1，2 次 SET_CUR；precheck 首次确认
+  `obj=0x40e57b038`（manager `0x40e4da000` + `0xa1038`）、`installed=1`、
+  `table=0x40e5796f0`，门通过、post `rc=0`，但 completion 仍为空
+  `0x748c/0/0`、WAV 全零、无 crash；已恢复 `52069a44…` 并安全弹出。
+- **已确认**：安装对象不是 manager；v6 的
+  `[manager+0x229b8] = base+0x17b038` 和
+  `installed==1 && table!=0` 门在实机成立。v3/v4 的 `installed=240/1` 是
+  manager 内无关字节，“部分安装”结论作废。门/对象地址**不是**剩余阻塞。
 - 当前工作：U0、U1a、U1b 通过；U2 只有一次 completion `3072/3072`
-  （no-report 轮），host 16/16 与 PCM 未测。v6 `73becbd5…`（90174B）已
-  构建：跟随上述对象读 `+0x1610/+0x1608`，门为
-  `installed==1 && table!=0`；未部署、0 实机。下一步是**一次新授权的 v6
-  boot**，host `--force-alt1 --set-rate --repeat=2 --interval-ms=1000`；
-  通过条件仍为 completion 3072/3072 + WAV 1 kHz 段 + 无 fatal。
+  （no-report 轮），host 16/16 与 PCM 未测。v6 已经用掉一次授权；下一步
+  **离线**解释“post 被接受但 report 为空”：`obj+0x1608` 表项语义、
+  report `count=0`、host 是否真在 alt1 提交 ISO。U2 实机线再次暂停，需新的
+  明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
