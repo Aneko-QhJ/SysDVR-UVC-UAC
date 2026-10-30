@@ -16,6 +16,7 @@
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
 | U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
+| U2 no-report 诊断 | 已构建（29 条，cave 592B），未部署 | `private/analysis/UAC-u2-noreport-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -169,7 +170,9 @@ U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机六次：触发�
 precheck 安全跳过、post 后完成路径崩溃、breaker 断言、以及安全接受版**收到一次
 completion（空报告）后仍因控制路径断言**。已知 cave 能接受首次 3072B 提交，
 安全接受版能避免递归崩溃；但 completion 没有携带 3072B 传输，控制路径在
-连续 SET_CUR 下不稳定。AS alt1 数据路径仍未验证，PCM 未测试。
+连续 SET_CUR 下不稳定。离线已证明 completion 传的是 3072、full 路径会调用一次 unmap，
+空报告来自 `iso_report` 覆盖；no-report 诊断版已构建（29 条，592B，
+NSP `4fc0247f…`），未部署、未实机。AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -542,16 +545,16 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   设计草案进一步定位到 `iso_report` 覆盖了 driver 已生成的 report。下一次若继续
   诊断，需打印 `report_count` 与各 entry 的 `id/urb_status`（或先删 hook 再看
   driver 原报告）。
-- 实机：**暂停 U2 线**。设计与离线验证（report 覆盖、一次性 post、
-  unmap/entry 判别）完成前不恢复；恢复需要新的明确授权。
+- 实机：**暂停 U2 线**。no-report 诊断版已构建，但未部署；恢复实机需要
+  新的明确授权。
 - 设计草案：[UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
   最确定的缺陷是 `iso_report` 覆盖了 driver 刚生成的 report；completion 已传
   3072，不需要改。离线 Unicorn 回放已完成（五组 completion + report：full
   路径会调用一次 unmap 并清 count，partial_no_force 才会重提；report 在无
-  hook 时 count=1/id=388/requested=3072/transferred=3072/status=3）。下一步删
-  report hook、post 前置位 `burstPosted`、完成后读 `ep+4/+8` 与 entry 的
-  `+16/+32/+40/+44`，再区分“第二次 post”与“真实 unmap miss”；payload 未构建、
-  未授权实机。
+  hook 时 count=1/id=388/requested=3072/transferred=3072/status=3）。
+  no-report 诊断 NSP `4fc0247f…`（89445B，29 条，cave 592/684B）已构建：
+  删除 `iso_report`、post 前置位 `burstPosted`、完成后读 `ep+4/+8` 与 entry
+  的 `+16/+32/+40/+44`；未部署、未授权实机。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

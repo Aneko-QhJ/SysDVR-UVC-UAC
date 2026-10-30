@@ -48,10 +48,12 @@ REPORT_HOOK = 0x2CBE0         # report epilogue -> iso_report
 ENDPOINT_WORD = 0x00C00584    # addr 0x84, attrs 0x05 (ISO|async), MPS 192
 BURST_BYTES = 16 * 192
 EDITS_COUNT = 1 + 3 + len(DESCRIPTOR_EDITS) + len(NOP_EDITS)
+EDITS_COUNT_NO_REPORT = 1 + 2 + len(DESCRIPTOR_EDITS) + len(NOP_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
 EDITS_COUNT_BREAKER = EDITS_COUNT + 1
+EDITS_COUNT_NO_REPORT_BREAKER = EDITS_COUNT_NO_REPORT + 1
 
 LINKER = (
     "SECTIONS { . = 0x68d54; .text : { *(.text.iso) } }\n"
@@ -72,7 +74,9 @@ def payload_ready(work):
     if not header.is_file() or not manifest_path.is_file():
         raise SystemExit(f"missing payload under {work}; run build_uac_u2_producer.py")
     doc = json.loads(manifest_path.read_text())
-    if doc["edit_count"] not in (EDITS_COUNT, EDITS_COUNT_BREAKER):
+    if doc["edit_count"] not in (
+            EDITS_COUNT, EDITS_COUNT_BREAKER,
+            EDITS_COUNT_NO_REPORT, EDITS_COUNT_NO_REPORT_BREAKER):
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
@@ -81,7 +85,7 @@ def payload_ready(work):
     return doc
 
 
-def assemble(toolchain, out, asm=ASM):
+def assemble(toolchain, out, asm=ASM, require_report=True):
     """Assemble a cave at its linker address and return (code, symbols)."""
     out.mkdir(parents=True, exist_ok=True)
     linker = out / "inject.ld"
@@ -105,13 +109,16 @@ def assemble(toolchain, out, asm=ASM):
         parts = line.split()
         if len(parts) == 3:
             symbols[parts[2]] = int(parts[0], 16)
-    for required in ("iso_enter", "iso_event", "iso_report"):
-        if required not in symbols:
-            raise ValueError(f"assembler lost symbol {required}")
+    required = ("iso_enter", "iso_event")
+    if require_report:
+        required += ("iso_report",)
+    for name in required:
+        if name not in symbols:
+            raise ValueError(f"assembler lost symbol {name}")
     return binary.read_bytes(), symbols
 
 
-def build_edits(nso, code, symbols, breaker=False):
+def build_edits(nso, code, symbols, breaker=False, report=True):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -142,12 +149,13 @@ def build_edits(nso, code, symbols, breaker=False):
         branch(EVENT_HOOK, symbols["iso_event"], link=True),
         "filter transfer events for the producer mailbox",
     )
-    edit(
-        REPORT_HOOK,
-        bytes.fromhex("60420091"),
-        branch(REPORT_HOOK, symbols["iso_report"]),
-        "diagnostics only for the empty report payload",
-    )
+    if report:
+        edit(
+            REPORT_HOOK,
+            bytes.fromhex("60420091"),
+            branch(REPORT_HOOK, symbols["iso_report"]),
+            "diagnostics only for the empty report payload",
+        )
     for address, before, after in DESCRIPTOR_EDITS:
         edit(
             address,
@@ -165,7 +173,7 @@ def build_edits(nso, code, symbols, breaker=False):
     if breaker:
         edit(BREAKER_HOOK, BREAKER_BEFORE, BREAKER_AFTER,
              "break the completion/retry recursion: skip the ISO submit error completion")
-    expected = EDITS_COUNT_BREAKER if breaker else EDITS_COUNT
+    expected = (EDITS_COUNT if report else EDITS_COUNT_NO_REPORT) + (1 if breaker else 0)
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -198,7 +206,7 @@ def render(edits):
     return "\n".join(lines) + "\n"
 
 
-def manifest(edits, code, symbols, breaker=False, asm=ASM):
+def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True):
     return {
         "schema": "UAC-u2-producer-payload-1",
         "assembly": str(asm.relative_to(ROOT)),
@@ -214,11 +222,13 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM):
                      "attributes": "0x05", "max_packet": 192, "interval": 4},
         "burst_bytes": BURST_BYTES,
         "edit_count": len(edits),
-        "counts": {"cave": 1, "branch": 3 + (1 if breaker else 0),
+        "counts": {"cave": 1, "branch": (3 if report else 2) + (1 if breaker else 0),
                    "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)},
         "breaker": bool(breaker),
+        "report_hook": bool(report),
         "symbols": {name: hex(symbols[name])
-                    for name in ("iso_enter", "iso_event", "iso_report")},
+                    for name in (("iso_enter", "iso_event", "iso_report")
+                                 if report else ("iso_enter", "iso_event"))},
         "edits": [
             {"address": hex(address), "before": before.hex(),
              "after": after.hex(), "reason": reason}
@@ -238,11 +248,15 @@ def check(nso, work):
     asm = ROOT / doc["assembly"]
     if doc["assembly_sha256"] != sha256(asm.read_bytes()):
         raise SystemExit(f"payload is stale: {doc['assembly']} changed")
-    expected = {"cave": 1, "branch": 3 + (1 if doc.get("breaker") else 0),
+    report = doc.get("report_hook", True)
+    expected = {"cave": 1,
+                "branch": (3 if report else 2) + (1 if doc.get("breaker") else 0),
                 "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)}
     if doc["counts"] != expected:
         raise SystemExit("unexpected edit counts")
-    if doc["edit_count"] not in (EDITS_COUNT, EDITS_COUNT_BREAKER):
+    allowed = (EDITS_COUNT if report else EDITS_COUNT_NO_REPORT,
+               EDITS_COUNT_BREAKER if report else EDITS_COUNT_NO_REPORT_BREAKER)
+    if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
         address = int(entry["address"], 16)
@@ -256,12 +270,12 @@ def check(nso, work):
     code = bytes.fromhex(cave["after"])
     if len(code) != doc["cave_bytes"] or sha256(code) != doc["cave_sha256"]:
         raise SystemExit("cave bytes/hash mismatch")
-    if not endpoint_constants_ok(code):
+    if not endpoint_constants_ok(code, require_report=report):
         raise SystemExit("cave does not encode endpoint 0x84 / MPS192 / attrs 0x05")
     print(f"ok: {len(doc['edits'])} edits, cave {len(code)}/{doc['cave_limit']} B")
 
 
-def endpoint_constants_ok(code):
+def endpoint_constants_ok(code, require_report=True):
     """The ported cave must build 0x00C00584, complete and report 0x84."""
     words = struct.unpack_from(f"<{len(code) // 4}I", code, 0)
     low = high = False
@@ -275,11 +289,12 @@ def endpoint_constants_ok(code):
                     and (nxt >> 5) & 0xFFFF == 0x00C0
                     and (nxt >> 21) & 0x3 == 1
                 )
+    report_word = 0x7102111F in words  # cmp w8, #0x84 (iso_report only)
     return (
         low
         and high
         and 0x52801081 in words  # mov w1, #0x84
-        and 0x7102111F in words  # cmp w8, #0x84
+        and (report_word or not require_report)
     )
 
 
@@ -293,6 +308,8 @@ def main():
                         help="add the 0x302c0 error-completion breaker edit")
     parser.add_argument("--asm", type=Path, default=ASM,
                         help="cave assembly (default patches/iso_burst_uac84.S)")
+    parser.add_argument("--no-report", action="store_true",
+                        help="omit the 0x2cbe0 report hook (driver report builder)")
     args = parser.parse_args()
     work = args.work.resolve()
     args.asm = args.asm.resolve()
@@ -302,10 +319,13 @@ def main():
         check(nso, work)
         return
 
-    code, symbols = assemble(args.toolchain, work / "asm", args.asm)
-    edits = build_edits(nso, code, symbols, breaker=args.breaker)
+    report = not args.no_report
+    code, symbols = assemble(args.toolchain, work / "asm", args.asm,
+                             require_report=report)
+    edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report)
     header = render(edits)
-    doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm)
+    doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
+                   report=report)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)

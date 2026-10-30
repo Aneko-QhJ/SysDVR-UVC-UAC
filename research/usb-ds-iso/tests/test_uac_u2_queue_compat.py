@@ -6,6 +6,8 @@ transferred size to entry+44, 0x2cbe0 is the report epilogue) and the cave's
 completion arguments.  The replay class runs the real 0x2c690 under Unicorn
 when it is installed; it skips otherwise.
 """
+import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -13,11 +15,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+from build_patch import CAVE, validate_module
 from build_uac_descriptor_payload import load_elf_sections
-from build_uac_u2_producer import REPORT_HOOK
+from build_uac_u2_producer import (
+    REPORT_HOOK, build_edits, endpoint_constants_ok, payload_ready, render,
+)
 
 ELF = ROOT / "private/module/usb.elf"
 ASM_SAFE = ROOT / "patches/iso_burst_uac84_safe.S"
+ASM_NOREPORT = ROOT / "patches/iso_burst_uac84_noreport.S"
+NSO = ROOT / "private/module/exefs/main"
+WORK_NOREPORT = ROOT / "private/analysis/UAC-u2-noreport-20261030"
 
 
 def _word(data, sections, address):
@@ -107,6 +115,66 @@ class UacU2QueueCompatStaticTests(unittest.TestCase):
         self.assertIn("mov w2, #0", tail)
         self.assertIn("mov w3, #1", tail)
         self.assertIn("mov w5, #1", tail)
+
+
+class UacU2NoReportPayloadTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK_NOREPORT / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK_NOREPORT}")
+        if not NSO.is_file():
+            raise unittest.SkipTest(f"missing {NSO}")
+        cls.doc = payload_ready(WORK_NOREPORT)
+        cls.nso = validate_module(NSO.read_bytes())
+        cls.cave = bytes.fromhex(
+            next(e["after"] for e in cls.doc["edits"]
+                 if int(e["address"], 16) == CAVE)
+        )
+        cls.symbols = {k: int(v, 16) for k, v in cls.doc["symbols"].items()}
+
+    def test_payload_drops_only_the_report_hook(self):
+        self.assertFalse(self.doc["report_hook"])
+        self.assertEqual(self.doc["edit_count"], 29)
+        self.assertEqual(self.doc["counts"],
+                         {"cave": 1, "branch": 2, "descriptor": 18, "nop": 8})
+        addresses = {int(e["address"], 16) for e in self.doc["edits"]}
+        self.assertNotIn(REPORT_HOOK, addresses)
+        self.assertNotIn("iso_report", self.doc["symbols"])
+        self.assertLess(self.doc["cave_bytes"], 684)
+        self.assertTrue(endpoint_constants_ok(self.cave, require_report=False))
+
+    def test_assembly_has_no_report_function(self):
+        text = ASM_NOREPORT.read_text()
+        self.assertNotIn("\niso_report:", text)
+        self.assertNotIn("b report_epilogue", text)
+        self.assertIn("iso_enter:", text)
+        self.assertIn("iso_event:", text)
+
+    def test_edits_match_the_elf_and_render(self):
+        edits = build_edits(self.nso, self.cave, self.symbols, report=False)
+        self.assertEqual(render(edits), (WORK_NOREPORT / "uac_u2_payload.h").read_text())
+        self.assertEqual(
+            [(e["address"], e["before"], e["after"]) for e in self.doc["edits"]],
+            [(hex(a), b.hex(), c.hex()) for a, b, c, _r in edits],
+        )
+
+    def test_build_result_matches_the_payload(self):
+        build = json.loads((WORK_NOREPORT / "build-result.json").read_text())
+        self.assertEqual(build["payload"]["edit_count"], 29)
+        self.assertEqual(build["payload"]["cave_bytes"], 592)
+        self.assertEqual(build["payload"]["cave_sha256"], self.doc["cave_sha256"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+
+    def test_app_has_one_shot_and_queue_diagnostics(self):
+        source = (ROOT.parents[1] / "source/uvc/uvc_device.c").read_text()
+        self.assertIn("u32 postSeq;", source)
+        self.assertIn("g_uacCtx.burstPosted = true;\n    u32 seq", source)
+        self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
+        self.assertIn('LOG("UAC U2 queue idx=%u count=%u', source)
+
 
 
 class UacU2CompletionReplayTests(unittest.TestCase):

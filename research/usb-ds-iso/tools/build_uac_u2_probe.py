@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the U2 probe: UAC alt1 producer (30 edits) with the burst trigger.
+"""Build the U2 probe: the UAC alt1 producer payload with the burst trigger.
 
 Requires the payload from tools/build_uac_u2_producer.py.  The build is
 UAC_HOST_PROBE + UAC_U2_PATCH + FILE_LOGGING; the host entry is host/uac-burst.
@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build_uac_u2_producer import CAVE_END, EDITS_COUNT, WORK, payload_ready
+from build_uac_u2_producer import CAVE_END, WORK, payload_ready
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
@@ -54,7 +54,7 @@ def main():
 
     nsp = outputs / "exefs.nsp"
     elf = outputs / "exefs.elf"
-    for marker in (b"UAC U2 post", b"UAC U2 complete"):
+    for marker in (b"UAC U2 post", b"UAC U2 complete", b"UAC U2 queue"):
         if marker not in elf.read_bytes():
             raise SystemExit(f"missing compile-time marker {marker!r}")
 
@@ -63,7 +63,7 @@ def main():
         "payload": {
             "header": str(args.work / "uac_u2_payload.h"),
             "header_sha256": entry["header_sha256"],
-            "edit_count": EDITS_COUNT,
+            "edit_count": entry["edit_count"],
             "cave_bytes": entry["cave_bytes"],
             "cave_limit": CAVE_END - 0x68D54,
             "cave_sha256": entry["cave_sha256"],

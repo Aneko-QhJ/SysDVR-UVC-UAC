@@ -1,7 +1,7 @@
 # UAC U2 队列兼容的 ISO 提交设计（2026-10-30）
 
-> 状态：**离线设计草案**；completion/report 回放已做，payload 未实现、
-> 未构建、未实机。地址均来自
+> 状态：**离线设计草案**；completion/report 回放已做，no-report 诊断
+> payload 已构建、未部署/未实机。地址均来自
 > `private/module/usb.elf` 的当前 BuildID；所有“预期”都不是实机结论。
 >
 > 结论：不要再伪造“拒绝→返回 0”。driver 已经在 `0x2c520` 里完成 map 和
@@ -235,9 +235,20 @@ LOG("UAC U2 post begin seq=%u\n", seq);
 
 ### 6.6 预算
 
-当前 cave 668/684B。删除 `iso_report`（约 80B）后，report 修复和
-completion 不变；拒绝路径和一次性 guard 在 app 侧。预计仍有几十字节
-余量；以实际 `build_uac_u2_producer.py` 的 `cave_bytes` 为准。
+原 cave 668/684B；删除 `iso_report` 后的 no-report cave 为 **592/684B**，
+余 92B。completion 不变；拒绝路径和一次性 guard 在 app 侧。
+
+### 6.7 诊断 payload（已构建）
+
+- 汇编：`patches/iso_burst_uac84_noreport.S`（safe cave 去掉 `iso_report`
+  和 `0x2cbe0` hook）；
+- payload：29 条（cave + 2 分支 + 18 descriptor + 8 NOP），cave 592/684B；
+- NSP：`4fc0247f…`（89445B），工作目录
+  `private/analysis/UAC-u2-noreport-20261030`；
+- app：`postSeq`、post 前 `burstPosted`、完成后读 `ep+4/+8` 与 entry
+  `+16/+32/+40/+44`（`UAC U2 queue` 日志）；
+- 边界：`fail_accept` 仍是 safe-accept（返回 0），本版只验证 report 覆盖和
+  一次性 post，不是最终拒绝策略；未部署。
 
 ## 7. 离线验证
 
@@ -348,8 +359,8 @@ cave 里手工拼 report。
 
 ## 10. 决策
 
-- **采用 A**：§7.1/§7.2/§7.3 已完成；下一步删 report hook、修一次性、
-  加 entry/队列读取，再构建诊断 payload。
+- **采用 A**：§7.1/§7.2/§7.3 已完成；no-report 诊断 payload `4fc0247f…`
+  已构建。下一步先审离线结果，再决定是否申请实机；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

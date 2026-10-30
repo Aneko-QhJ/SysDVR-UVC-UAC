@@ -688,6 +688,7 @@ static struct {
 
 #ifdef UAC_U2_PATCH
     bool burstPosted;               // U2: one bounded URB per boot
+    u32 postSeq;                    // U2: diagnostic post sequence
 #endif
 
     Mutex audioMutex;
@@ -2122,6 +2123,12 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    manager + 0x14c8 + index*16.  For EP 0x84, 0x3a30(0x84) = 0x14. */
 #define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL /* manager + 0x1610 */
 #define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL    /* manager + 0x1608 */
+/* Request-queue fields used by the completion path (0x2c520/0x2c690):
+   +4 index, +8 count, entries at +0x78 with a 0x30-byte stride. */
+#define UAC_U2_QUEUE_INDEX_OFFSET 0x04ULL
+#define UAC_U2_QUEUE_COUNT_OFFSET 0x08ULL
+#define UAC_U2_ENTRY_BASE 0x78ULL
+#define UAC_U2_ENTRY_STRIDE 0x30ULL
 
 typedef struct {
     u8 state[0x48];
@@ -2151,6 +2158,46 @@ static bool _uacReadUsbState(UacUsbEpState *out)
     }
     svcCloseHandle(h);
     return R_SUCCEEDED(rc);
+}
+
+static void _uacLogQueueState(void)
+{
+    if (!g_uacUsbPid) return;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
+    u32 index = 0, count = 0;
+    u8 entry[0x30] = {0};
+    Result rc = svcReadDebugProcessMemory(&index, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_QUEUE_INDEX_OFFSET,
+        sizeof(index));
+    if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(&count, h,
+            g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_QUEUE_COUNT_OFFSET,
+            sizeof(count));
+    }
+    u32 prev = (index + 7) & 7;
+    if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(entry, h,
+            g_uacUsbBase + UAC_U2_EP_OBJ + UAC_U2_ENTRY_BASE +
+                (u64)prev * UAC_U2_ENTRY_STRIDE,
+            sizeof(entry));
+    }
+    if (R_SUCCEEDED(rc)) {
+        u32 status = 0, requested = 0, transferred = 0;
+        u64 iova = 0;
+        memcpy(&status, entry + 0x28, sizeof(status));
+        memcpy(&requested, entry + 0x20, sizeof(requested));
+        memcpy(&transferred, entry + 0x2c, sizeof(transferred));
+        memcpy(&iova, entry + 0x10, sizeof(iova));
+        /* GetReportData may have consumed the entry and zeroed status; read
+           count/xfer as the completion evidence, not status alone. */
+        LOG("UAC U2 queue idx=%u count=%u prev=%u status=%u req=%u xfer=%u iova=0x%llx\n",
+            index, count, prev, status, requested, transferred,
+            (unsigned long long)iova);
+    } else {
+        LOG("UAC U2 queue read rc=0x%x\n", rc);
+    }
+    svcCloseHandle(h);
 }
 
 static void _postUacBurst(void)
@@ -2184,6 +2231,10 @@ static void _postUacBurst(void)
         return;
     }
 
+    g_uacCtx.burstPosted = true;
+    u32 seq = ++g_uacCtx.postSeq;
+    LOG("UAC U2 post begin seq=%u\n", seq);
+
     memset(g_audioEndpointBuffer, 0, UAC_U2_BURST_BYTES);
     armDCacheFlush(g_audioEndpointBuffer, UAC_U2_BURST_BYTES);
     eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
@@ -2191,12 +2242,13 @@ static void _postUacBurst(void)
     u32 urbId = 0;
     Result rc = usbDsEndpoint_PostBufferAsync(g_uacCtx.audioEndpointIn,
         g_audioEndpointBuffer, UAC_U2_BURST_BYTES, &urbId);
-    LOG("UAC U2 post rc=0x%x urb=%u size=%u\n", rc, urbId, UAC_U2_BURST_BYTES);
+    LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
+        rc, urbId, UAC_U2_BURST_BYTES, seq);
     if (R_FAILED(rc)) return;
-    g_uacCtx.burstPosted = true;
 
     if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
         LOG("UAC U2 no completion within 100ms\n");
+        _uacLogQueueState();
         return;
     }
     eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
@@ -2204,12 +2256,14 @@ static void _postUacBurst(void)
     rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
     if (R_FAILED(rc)) {
         LOG("UAC U2 report rc=0x%x\n", rc);
+        _uacLogQueueState();
         return;
     }
     u32 requested = 0, transferred = 0;
     Result prc = usbDsParseReportData(&report, urbId, &requested, &transferred);
     LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
         prc, requested, transferred);
+    _uacLogQueueState();
 }
 #endif
 

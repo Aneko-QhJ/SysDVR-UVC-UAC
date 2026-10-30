@@ -438,7 +438,7 @@
 | [build_uac_descriptor_probe.py](build_uac_descriptor_probe.py) | Build the UAC enumeration probe with the descriptor-only runtime patch. |
 | [build_uac_u2_base_payload.py](build_uac_u2_base_payload.py) | Build the U2 base payload: 18 descriptor edits + 8 alt0-filter NOPs. |
 | [build_uac_u2_base_probe.py](build_uac_u2_base_probe.py) | Build the U2 base probe: 18 descriptor edits + 8 alt0-filter NOPs. |
-| [build_uac_u2_probe.py](build_uac_u2_probe.py) | Build the U2 probe: UAC alt1 producer (30 edits) with the burst trigger. |
+| [build_uac_u2_probe.py](build_uac_u2_probe.py) | Build the U2 probe: the UAC alt1 producer payload with the burst trigger. |
 | [build_uac_u2_producer.py](build_uac_u2_producer.py) | Build the U2 payload: UAC AS alt1 ISO producer plus the 26-edit base. |
 
 ## check（1）
