@@ -1,13 +1,13 @@
-# 当前状态（2026-10-30 15:35，Asia/Shanghai）
+# 当前状态（2026-10-30 15:45，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 15:27–15:30 的 U2 breaker 回合（一次 boot）：
-> 全局断路器把 `0x302c0` 的错误完成也跳过了，EP0 控制传输因此不完成，
-> usb 触发 `User Break` 断言（不是之前的递归）；**断路器无效**。
+> 最后一次实机是 2026-10-30 15:36–15:41 的 U2 安全接受版回合（一次 boot）：
+> 预检通过、`post rc=0x0`，**首次收到 completion**（`rc=0x748c requested=0
+> transferred=0`，空报告），随后触发风暴导致 EP0 数据阶段 `0xf601`、usb `User Break`。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 15:35）
+## 当前进度（2026-10-30 15:45）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -15,7 +15,7 @@
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | 实机五次：未触发 / 崩溃 / 安全跳过 / post 后崩溃 / breaker 断言 | `private/runs/UAC-u2-breaker-20261030` |
+| U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -53,6 +53,19 @@
 - 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
+## 最近一次 U2 安全接受版实机（2026-10-30 15:36–15:41，完成+断言）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | 安全接受 cave `6a27d4c8…`（89166B，668B）一次 boot；`record=29` |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x4b01b7d000`（环空） |
+| post | `UAC U2 post rc=0x0 urb=388 size=3072` |
+| **completion** | **`UAC U2 complete rc=0x748c requested=0 transferred=0`** —— 首次收到完成事件，但报告为空/解析失败，没有 3072B 的传输 |
+| 崩溃 | 触发风暴后 EP0 数据阶段 `0x25c8c→0xea01→0xf601`、`GetSetupPacket failed 0xf601`，usb `User Break`（PC `0x1927c`、LR `0x9668`、栈 `0x944c→…→0x9560`） |
+| 判定 | 安全接受版**避免了递归完成崩溃并交付了一次 completion**；但完成报告为空，且控制路径在 100 次连续 SET_CUR 下退化并触发断言 |
+| 证据 | `private/runs/UAC-u2-safecave-20261030`（设备日志 `98852e6a…`、`crash-usb-safecave.log` `2a98c2b8…`）、`private/card-cycles/20261030-u2-safecave` |
+| 收尾 | 恢复 `52069a44…`、清日志、安全弹出；无重试 |
 
 ## 最近一次 U2 breaker 实机（2026-10-30 15:27–15:30，User Break，断路器无效）
 
@@ -152,11 +165,11 @@ cave 拒绝；候选修法是把 `0x302c0` 的 `bl 0x2a980`（错误完成）改
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机五次：触发错过窗口、usb 崩溃、
-precheck 安全跳过、post 被接受后完成路径崩溃、以及全局 breaker 触发 usb
-`User Break`。已知 cave 能接受首次 3072B 提交；崩溃来自完成后的重提。
-安全接受版 cave（`6a27d4c8…`，668B，拒绝时返回 0）已离线就绪并回放通过。
-AS alt1 数据路径仍未验证，PCM 未测试。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机六次：触发错过窗口、usb 崩溃、
+precheck 安全跳过、post 后完成路径崩溃、breaker 断言、以及安全接受版**收到一次
+completion（空报告）后仍因控制路径断言**。已知 cave 能接受首次 3072B 提交，
+安全接受版能避免递归崩溃；但 completion 没有携带 3072B 传输，控制路径在
+连续 SET_CUR 下不稳定。AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -521,11 +534,11 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：安全接受版 `6a27d4c8…`（89166B，668B cave，拒绝→0）
-  做一轮；预期 `post rc=0x0` 之后要么 `complete`、要么 `no completion`，
-  **不再崩溃**。有游戏/稳定音频流更稳；需要新授权。
-- 离线（可选）：把安全接受版与 precheck 结果结合，确认被拒的重提不会在上层
-  队列里反复触发。
+- 离线（优先）：解码 `0x944c→0x9514→0x9534→0x9560→0x40d0` 的断言调用链，以及
+  completion 的 `0x748c`/`requested=0` 来源；判断断言是触发风暴（100×SET_CUR）
+  压垮 EP0，还是安全接受版留下的请求状态导致。
+- 实机（暂停，需新授权）：下一次先只发 **1–2 次** SET_CUR（不跑 100 次风暴），
+  把“cave/完成”与“控制路径风暴”分开观察。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

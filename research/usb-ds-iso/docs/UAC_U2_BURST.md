@@ -124,7 +124,7 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 > EP0 控制传输也走它；跳过它会让失败的 control submit 永不完成并断言。
 > 该方案作废，改用下面的“安全接受 cave”。
 
-## 安全接受 cave（离线就绪，待实机）
+## 安全接受 cave（已实机：完成但上报为空，随后断言）
 
 ISO 提交被拒时，cave 直接返回 0（不建 TRB、不跳 `reject_original`）；调用方
 `cbz w0` 跳过错误完成，而 EP0 控制传输根本不经过 cave，所以两条路径都不受影响。
@@ -171,6 +171,20 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   并从 `usb.elf` 解码上面的重提参数；
 - 边界：这是诊断用断路器——被拒的重提不再触发完成，driver 的请求项不会被完成/
   上报，调用方忽略返回值；目的是先避免 usb 崩溃并观察首次 URB 是否完成。
+
+## 2026-10-30 15:36–15:41 安全接受版实机（完成+断言）
+
+- `6a27d4c8…`（89166B）一次 boot；预检 `word=0x00c00584 int=4 speed=3`、环空。
+- `UAC U2 post rc=0x0 urb=388 size=3072`；**`UAC U2 complete rc=0x748c
+  requested=0 transferred=0`** —— 首次收到完成事件，但报告为空/解析失败。
+- 随后触发风暴把 EP0 控制路径打崩：`data stage failed 0x25c8c → 0xea01 →
+  0xf601`、`GetSetupPacket failed 0xf601`，usb `User Break`（PC `0x1927c`、
+  LR `0x9668`、栈 `0x944c→0x9514→0x9534→0x9560`）。
+- 结论：安全接受版避免了递归完成崩溃并交付 completion，但没有 3072B 传输；
+  控制路径在连续 SET_CUR 下退化。下一次应先只发 1–2 次 SET_CUR，把“完成”
+  与“风暴”分开；同时离线解码断言链与 `0x748c`。
+- 证据：`private/runs/UAC-u2-safecave-20261030`（日志 `98852e6a…`、崩溃
+  `2a98c2b8…`）、`private/card-cycles/20261030-u2-safecave`。
 
 ## 风险与边界
 
