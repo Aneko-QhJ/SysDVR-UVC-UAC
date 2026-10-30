@@ -18,13 +18,13 @@
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-30 | 8K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-30 | 43K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-10-30 | 45K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
-| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 19K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-30 | 16K | U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 20K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-30 | 17K | U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
 | [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-29 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-29 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-30 | 43K | 当前状态（2026-10-30 15:45，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-10-30 | 45K | 当前状态（2026-10-30 20:35，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-29 | 3K | 实验分支目录与本地产物 — 当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |
@@ -304,5 +304,5 @@
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U1 控制请求验证准备（2026-10-30，离线） — U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
-| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 19K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备） — **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-30 | 16K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 20K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备） — **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-30 | 17K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |

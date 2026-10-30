@@ -1,13 +1,14 @@
-# 当前状态（2026-10-30 15:45，Asia/Shanghai）
+# 当前状态（2026-10-30 20:35，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 15:36–15:41 的 U2 安全接受版回合（一次 boot）：
-> 预检通过、`post rc=0x0`，**首次收到 completion**（`rc=0x748c requested=0
-> transferred=0`，空报告），随后触发风暴导致 EP0 数据阶段 `0xf601`、usb `User Break`。
+> 最后一次实机是 2026-10-30 20:26–20:29 的 U2 no-report 诊断回合（一次 boot）：
+> 预检通过、`post rc=0x0`，**首次收到带 3072B 的 completion**（`rc=0x0
+> requested=3072 transferred=3072`，report 修复生效）；随后第二次 SET_CUR 数据
+> 阶段 `0xea01`、`EP0 write 0xf601`，usb `User Break`（同一 map 断言签名）。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 15:45）
+## 当前进度（2026-10-30 20:35）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -16,8 +17,8 @@
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
 | U2 producer | 实机六次：未触发 / 崩溃 / 跳过 / post 后崩溃 / breaker 断言 / safe-cave 完成+断言 | `private/runs/UAC-u2-safecave-20261030` |
-| U2 no-report 诊断 | 已构建（29 条，cave 592B），未部署 | `private/analysis/UAC-u2-noreport-20261030` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
+| U2 no-report 诊断 | 实机一次：completion 3072 通过，随后控制/alt 路径 usb 崩溃（dangerous） | `private/runs/UAC-u2-noreport-20261030` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-noreport` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -54,6 +55,20 @@
 - 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
   再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
+## 最近一次 U2 no-report 诊断实机（2026-10-30 20:26–20:29，completion 后崩溃）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | no-report `4fc0247f…`（89445B，29 条，cave 592/684B）一次 boot；`UAC u2 patch result=0 record=28`（29 条的最后一个索引） |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x59c0f7d000`（环空） |
+| post | `UAC U2 post begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| **completion** | **`rc=0x0 requested=3072 transferred=3072`** —— report 修复生效，首次拿到完整 3072B 报告 |
+| queue 日志 | `idx=262336 count=0 ...` —— 读错了对象；`0xFC300+4` 是 endpoint 对象，不是 completion 用的 table entry，不能用于判断队列 |
+| 崩溃 | completion 后 `SET_INTERFACE(0)/(1)`，第二次 SET_CUR 数据阶段 `0xea01`、`EP0 write 0xf601`，usb `User Break`（PC `0x1927c`、LR `0x9668`、栈 `0x944c→…→0x2c584`） |
+| 判定 | **部分通过**：report/3072B completion 已证明；但随后控制/alt 路径仍崩溃，整体不为通过；构建标 dangerous，不再部署 |
+| 证据 | `private/runs/UAC-u2-noreport-20261030`（日志 `748fa0f2…`、崩溃 `489fa94e…`）、`private/card-cycles/20261030-u2-noreport` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 安全接受版实机（2026-10-30 15:36–15:41，完成+断言）
 
@@ -168,12 +183,11 @@ cave 拒绝；候选修法是把 `0x302c0` 的 `bl 0x2a980`（错误完成）改
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
 U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机六次：触发错过窗口、usb 崩溃、
 precheck 安全跳过、post 后完成路径崩溃、breaker 断言、以及安全接受版**收到一次
-completion（空报告）后仍因控制路径断言**。已知 cave 能接受首次 3072B 提交，
-安全接受版能避免递归崩溃；但 completion 没有携带 3072B 传输，控制路径在
-连续 SET_CUR 下不稳定。离线已证明 completion 传的是 3072、full 路径会调用一次 unmap，
-空报告来自 `iso_report` 覆盖；no-report 诊断版已构建（29 条，592B，
-NSP `4fc0247f…`），未部署、未实机。AS alt1 数据路径仍未验证，PCM 未测试。
-UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+completion（空报告）后仍因控制路径断言**。no-report 诊断版实机一次：首次
+completion `rc=0 requested=3072 transferred=3072`（report 修复生效），但随后
+第二次 SET_CUR/alt 切换触发 usb 崩溃（同一 map 断言）。因此 U2 只验证了
+**一次 3072B completion**，没有 host 16/16 计数，PCM 未测；控制/alt 路径仍
+不稳定。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -263,6 +277,11 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U2 no-report 诊断回合由用户“授权，部署”明确授权（2026-10-30 20:24），一次 boot；
+  只发 2 次 SET_CUR；首次 completion `rc=0 requested=3072 transferred=3072` 后
+  usb 崩溃；读卡取回日志/崩溃报告后恢复 `52069a44…` 并安全弹出，无重试。
+  `4fc0247f…` 标 dangerous。证据 `private/runs/UAC-u2-noreport-20261030`、
+  `private/card-cycles/20261030-u2-noreport`。
 - U2 producer 回合由用户“授权实机，部署”明确授权（2026-10-30 14:18），一次 boot；
   宿主 libusb claim 失败后，用户选择“标准宿主：ffmpeg 采集 + SET_CUR”继续；
   未 post，读卡记录后恢复 `52069a44…` 并安全弹出，无重试。
@@ -545,16 +564,20 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   设计草案进一步定位到 `iso_report` 覆盖了 driver 已生成的 report。下一次若继续
   诊断，需打印 `report_count` 与各 entry 的 `id/urb_status`（或先删 hook 再看
   driver 原报告）。
-- 实机：**暂停 U2 线**。no-report 诊断版已构建，但未部署；恢复实机需要
-  新的明确授权。
+- 实机：**暂停 U2 线**。no-report 诊断版已实机一次：completion 3072 通过，
+  但随后控制/alt 路径崩溃；标 dangerous，不再部署。恢复实机需要新的明确授权。
 - 设计草案：[UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
   最确定的缺陷是 `iso_report` 覆盖了 driver 刚生成的 report；completion 已传
   3072，不需要改。离线 Unicorn 回放已完成（五组 completion + report：full
   路径会调用一次 unmap 并清 count，partial_no_force 才会重提；report 在无
   hook 时 count=1/id=388/requested=3072/transferred=3072/status=3）。
-  no-report 诊断 NSP `4fc0247f…`（89445B，29 条，cave 592/684B）已构建：
-  删除 `iso_report`、post 前置位 `burstPosted`、完成后读 `ep+4/+8` 与 entry
-  的 `+16/+32/+40/+44`；未部署、未授权实机。
+  no-report 诊断 NSP `4fc0247f…`（89445B，29 条，cave 592/684B）已实机一次：
+  删除 `iso_report` 后 completion 报出 3072/3072，report 修复成立；但随后
+  第二次 SET_CUR/alt 路径崩溃，且 queue 日志读错对象（`0xFC300+4` 是 endpoint
+  对象，不是 completion 的 table entry）。该 build 标 dangerous，不再部署。
+  下一步离线：把 queue 读取改到 `0x2a980` 用的
+  `[manager+0x14c8+index*16]` 对象；再用一次 SET_CUR 分离 completion 与控制/
+  alt 路径。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

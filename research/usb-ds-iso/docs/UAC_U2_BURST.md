@@ -222,6 +222,22 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   已经传 3072，不需要改。见
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
+## 2026-10-30 20:26–20:29 no-report 诊断实机（completion 后崩溃）
+
+- 构建 `4fc0247f…`（89445B，29 条，cave 592/684B）一次 boot；`UAC u2 patch
+  result=0 record=28` 是 29 条的最后一个索引。
+- 首次 completion **`rc=0 requested=3072 transferred=3072`**：去掉
+  `iso_report` hook 后 report 修复成立。
+- 随后 `SET_INTERFACE(0)/(1)`，第二次 SET_CUR 数据阶段 `0xea01`、`EP0 write
+  failed 0xf601`，usb `User Break`（PC `0x1927c`、LR `0x9668`、栈
+  `0x2c584→0x3ce0→0x40d0`）。
+- `UAC U2 queue idx=262336` 是读错对象：`0xFC300+4` 是 endpoint 对象，
+  不是 completion 的 table entry，queue 结论作废。
+- 判定：**部分通过**；build 标 dangerous，不再部署；恢复 `52069a44…` 并
+  安全弹出，无重试。
+- 证据：`private/runs/UAC-u2-noreport-20261030`（日志 `748fa0f2…`、崩溃
+  `489fa94e…`）、`private/card-cycles/20261030-u2-noreport`。
+
 ## 风险与边界
 
 - 8 条 NOP 是全局的：Configured 时所有接口/速度的 alt 端点都会安装。UAC build 只有

@@ -27,9 +27,10 @@
   cave（`6a27d4c8…`，668B）首次收到 completion，但报告为空（`0x748c/0/0`），
   触发风暴仍把 EP0 打崩并断言。离线已解码 fake-accept 的断言链（请求未真正
   入队 → 区间映射重复插入 → `0x40cc`），**返回 0 的绕过不可行**；U2 实机线
-  暂停，待完成 report 覆盖与 unmap/一次性 post 的设计和离线验证。设计草案见
-  [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)
-  （未实现、未授权）。
+  暂停，待完成 report 覆盖与 unmap/一次性 post 的设计和离线验证。no-report
+  诊断 `4fc0247f…` 实机一次：`complete rc=0 requested=3072 transferred=3072`
+  （report 修复成立），但随后控制/alt 路径仍 usb 崩溃；已标 dangerous、不再部署。
+  设计草案见 [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口

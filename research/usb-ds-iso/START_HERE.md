@@ -27,21 +27,23 @@
 ## 当前边界（2026-10-30）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-30 15:36–15:41 U2 安全接受 cave（一次 boot）：首次收到
-  completion，但报告为空（`0x748c/0/0`）；随后触发风暴把 EP0 打崩（`0xf601`），
-  usb `User Break`；已恢复 `52069a44…` 并安全弹出。此前 14:39 retrigger 崩溃
-  （`db97b6e7…` 标 dangerous）、14:18 第一次 U2 未 post；更早的 U1b/U1a/U0d
+- 最后实机：2026-10-30 20:26–20:29 U2 no-report 诊断（一次 boot）：首次
+  completion `rc=0 requested=3072 transferred=3072`（report 修复成立）；随后
+  第二次 SET_CUR/alt 路径 usb 崩溃（同一 map 断言）；已恢复 `52069a44…` 并
+  安全弹出。此前 15:36 安全接受版空报告后断言、14:39 retrigger 崩溃
+  （`db97b6e7…` dangerous）、14:18 第一次 U2 未 post；更早的 U1b/U1a/U0d
   均通过；全部未测 PCM。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。
-- 当前工作：U0、U1a、U1b 通过；U2 实机六次均未通过（未触发 / 崩溃 / 安全跳过 /
-  post 后崩溃 / breaker 断言 / 安全接受后完成+断言）。离线已解码：fake-accept
+- 当前工作：U0、U1a、U1b 通过；U2 producer 实机六次均未通过（未触发 / 崩溃 /
+  安全跳过 / post 后崩溃 / breaker 断言 / 安全接受后完成+断言），no-report
+  诊断第七次 completion 3072 通过但随后控制/alt 路径崩溃。离线已解码：fake-accept
   让请求未真正入队，清理时区间映射重复插入 → `0x40cc` 断言，**返回 0 的绕过
   不可行**；空报告 `0x748c` 指向无匹配/空条目。U2 实机线已暂停，继续的前提是
   先完成 report/unmap/一次性 post 的设计与离线验证；设计草案见
   [docs/UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)
-  （未实现、未授权）；路径修正版已打包并绑定新 recipe 入口、通过包/入口审计，
-  短包复测同样需要新授权。
+  （实机一次：completion 3072 通过，随后控制/alt 路径崩溃；dangerous，不再部署）；
+  路径修正版已打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

@@ -1,7 +1,8 @@
 # UAC U2 队列兼容的 ISO 提交设计（2026-10-30）
 
-> 状态：**离线设计草案**；completion/report 回放已做，no-report 诊断
-> payload 已构建、未部署/未实机。地址均来自
+> 状态：**离线设计草案 + 一次实机**；completion/report 回放已做，no-report
+> 诊断 payload 实机一次：report 修复成立，但随后控制/alt 路径崩溃，build
+> 标 dangerous。地址均来自
 > `private/module/usb.elf` 的当前 BuildID；所有“预期”都不是实机结论。
 >
 > 结论：不要再伪造“拒绝→返回 0”。driver 已经在 `0x2c520` 里完成 map 和
@@ -248,7 +249,10 @@ LOG("UAC U2 post begin seq=%u\n", seq);
 - app：`postSeq`、post 前 `burstPosted`、完成后读 `ep+4/+8` 与 entry
   `+16/+32/+40/+44`（`UAC U2 queue` 日志）；
 - 边界：`fail_accept` 仍是 safe-accept（返回 0），本版只验证 report 覆盖和
-  一次性 post，不是最终拒绝策略；未部署。
+  一次性 post，不是最终拒绝策略；
+- **实机一次（2026-10-30 20:29）**：`complete rc=0 requested=3072
+  transferred=3072`，report 修复成立；随后第二次 SET_CUR/alt 路径 usb 崩溃
+  （同一 map 断言）。build 标 dangerous，已恢复 `52069a44…`。
 
 ## 7. 离线验证
 
@@ -329,9 +333,22 @@ cave 里手工拼 report。
 - `make -C research/usb-ds-iso check` 绿；
 - 不访问 USB/SD/硬件。
 
-## 8. 实机验证（未授权）
+## 8. 实机验证（2026-10-30 20:26–20:29，已执行一次）
 
-只有在 §7 全部通过、且用户明确授权后才做：
+本轮在用户明确“授权，部署”下执行一次：
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `4fc0247f…`（89445B，29 条，cave 592B）；`record=28` 是最后一个索引 |
+| precheck | `ok=1 word=0x00c00584 int=4 speed=3 ring=0x59c0f7d000` |
+| post | `begin seq=1`、`rc=0x0 urb=388 size=3072` |
+| **complete** | **`rc=0x0 requested=3072 transferred=3072`** |
+| queue 日志 | `idx=262336` —— 读错对象；`0xFC300+4` 不是 completion 的 table entry，作废 |
+| 崩溃 | completion 后 `SET_INTERFACE(0)/(1)`、第二次 SET_CUR 数据阶段 `0xea01`、`EP0 write 0xf601`、usb `User Break`（栈 `0x2c584→0x3ce0→0x40d0`） |
+| 判定 | **部分通过**：report/3072B completion 成立；控制/alt 路径仍崩溃，整体不通过 |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+原计划（已执行）：
 
 - 一次 boot、一次 alt1、**1–2 次** SET_CUR（不再跑 100 次风暴）；
 - 通过条件：
@@ -344,8 +361,10 @@ cave 里手工拼 report。
 
 ## 9. 开放问题
 
-1. **第二次 map 的来源**：H1、H2 还是 H3？用 §6.5 的 post/控制计数和
-   entry/队列读取区分。
+1. **第二次 map 的来源**：H1、H2 还是 H3？本轮只有 1 次 post，H1（app
+   第二次 post）未出现；崩溃在 completion 之后，H2/H3 更可疑。queue 读取
+   用错了对象（`0xFC300+4` 不是 completion table entry），需改到
+   `0x2a980` 的 `[manager+0x14c8+index*16]` 对象再测。
 2. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
    同样静默泄漏。若 miss，先修 unmap 参数，再谈 completion。
 3. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
@@ -360,7 +379,9 @@ cave 里手工拼 report。
 ## 10. 决策
 
 - **采用 A**：§7.1/§7.2/§7.3 已完成；no-report 诊断 payload `4fc0247f…`
-  已构建。下一步先审离线结果，再决定是否申请实机；拒绝路径仍待单独解决。
+  已实机一次：report 修复成立（3072/3072），但 completion 后控制/alt 路径
+  仍崩溃，build 标 dangerous、不再部署。下一步离线修正 queue 读取对象并
+  用“一次 SET_CUR”分离 completion 与控制/alt 路径；拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。
