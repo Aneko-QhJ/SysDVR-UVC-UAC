@@ -1,6 +1,7 @@
 # UAC U2 队列兼容的 ISO 提交设计（2026-10-30）
 
-> 状态：**离线设计草案**，未实现、未构建、未实机。地址均来自
+> 状态：**离线设计草案**；completion/report 回放已做，payload 未实现、
+> 未构建、未实机。地址均来自
 > `private/module/usb.elf` 的当前 BuildID；所有“预期”都不是实机结论。
 >
 > 结论：不要再伪造“拒绝→返回 0”。driver 已经在 `0x2c520` 里完成 map 和
@@ -240,20 +241,21 @@ completion 不变；拒绝路径和一次性 guard 在 app 侧。预计仍有几
 
 ## 7. 离线验证
 
-### 7.1 静态测试
+### 7.1 静态测试（已完成，除第 4 项）
 
-新增 `tests/test_uac_u2_queue_compat.py`，从 `usb.elf` 解码并断言：
+已实现 `tests/test_uac_u2_queue_compat.py`，从 `usb.elf` 解码并断言：
 
 1. `0x2c520` 在 `blr [vtable+136]` 之前写入 entry（`+32`/`+40`/`+16`）；
-2. `0x2c690` 用 `w4` 累加 `entry+44` 并与 `entry+32` 比较；
+2. `0x2c690` 把 transferred 参数加到 `entry+44` 并与 `entry+32` 比较；
 3. `0x2cbe0` 是 report 收尾，`iso_report` hook 会覆盖 `x20+16`；
-4. 新 payload 不再包含 `0x2cbe0` 编辑；
+4. 当前 payload 仍包含 `0x2cbe0` 编辑；删 hook 后同一测试应改为断言不存在
+   （待 patch）；
 5. completion 的 `w4` 来自 `[x5+20] + 192`，等于 3072；
 6. `0x2a8b0` 对 attrs `0x05` 返回 0（无 ZLP）。
 
-### 7.2 Unicorn 完成路径仿真
+### 7.2 Unicorn 完成路径仿真（已完成）
 
-新增 `tools/replay_uac_u2_completion.py`：
+`tools/replay_uac_u2_completion.py`：
 
 - 映射 `usb.elf` 的代码段和合成的 endpoint/entry 对象；
 - stub `0x30c0`（domain）、`0x4c70`（unmap）、`0x2a8b0`（ZLP 检查）、
@@ -272,21 +274,47 @@ completion 不变；拒绝路径和一次性 guard 在 app 侧。预计仍有几
 - 如果 `0x4c70` 返回 miss 或 `entry+40` 仍是 2，把结果写进报告，先修
   unmap 再谈 live。
 
-### 7.3 report 仿真
+**结果（2026-10-30）**：五组全部通过，报告
+`private/analysis/UAC-u2-queue-compat-20261030/completion-replay.json`：
 
-用同一个合成 entry ring 跑 `0x2cbe0` 前的 report 构造，断言：
+| 组 | transferred | status | unmap | submit | count |
+| --- | --- | --- | --- | --- | --- |
+| full_force | 3072 | 3 | 1 | 0 | 0 |
+| full_no_force | 3072 | 3 | 1 | 0 | 0 |
+| partial_force | 192 | 3 | 1 | 0 | 0 |
+| partial_retry | 192 | 2 | 0 | 1（2880B） | 1 |
+| empty_queue | 0 | 2 | 0 | 0 | 0 |
 
-- `count == 1`；
-- `id == entry+0`；
-- `requested == 3072`；
-- `transferred == 3072`；
-- `urb_status` 在 done 集合内；
-- 不再执行 `iso_report` 覆盖。
+结论：`0x2c690` 的 full 路径会调用一次 `0x4c70`（地址 = `entry+16`）并把
+`count` 清零；partial+force 也会 unmap；只有 partial+no-force 会重提。
+因此 H2 只剩“真实 `0x4c70` 在区间树里 miss”这一种可能，需要在下一轮
+诊断里单独确认，不能再用“completion 不 unmap”解释。
+
+注意：回放把 entry 初始 status 设为 2（已提交）；`0x2c520` 入队时写的是
+1（queued）。full/force 路径不依赖初值（都会写到 3），partial_retry 的
+status 保持初值，所以这一组只用于分支判别，不代表真实入队状态。
+
+### 7.3 report 仿真（已完成）
+
+`tools/replay_uac_u2_completion.py --report` 执行真实的 report builder
+`0x2c930`（`x0=endpoint`、`x1=report buffer`），用一个已完成 entry：
+
+- `entry+0 id=388`、`+32 requested=3072`、`+44 transferred=3072`、
+  `+40 status=3`；
+- report buffer 清零后调用，结果：
+  `count=1`、`id=388`、`requested=3072`、`transferred=3072`、`status=3`；
+- builder 复制后把 entry status 清 0（`entry_status_after=0`）。
+
+报告：`private/analysis/UAC-u2-queue-compat-20261030/report-replay.json`。
+结论：**删掉 `iso_report` hook 后，driver 自己生成的 report 正是 app 需要的
+`{id, requestedSize, transferredSize, urb_status}` + count=1**；不需要在
+cave 里手工拼 report。
 
 ### 7.4 构建与回归
 
 - `tools/build_uac_u2_producer.py --check` 复核 cave 大小/编辑数；
 - 新 payload 的 `cave_bytes` 必须 ≤ 684；
+- `tests/test_uac_u2_queue_compat.py` 已加入 quick suite（22 个文件）；
 - `make -C research/usb-ds-iso check` 绿；
 - 不访问 USB/SD/硬件。
 
@@ -320,8 +348,8 @@ completion 不变；拒绝路径和一次性 guard 在 app 侧。预计仍有几
 
 ## 10. 决策
 
-- **采用 A**：先删 report hook、修一次性、加 entry/队列读取；用 §7.2/§7.3
-  的离线仿真确认 completion/unmap/report。
+- **采用 A**：§7.1/§7.2/§7.3 已完成；下一步删 report hook、修一次性、
+  加 entry/队列读取，再构建诊断 payload。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

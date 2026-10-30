@@ -546,9 +546,12 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   unmap/entry 判别）完成前不恢复；恢复需要新的明确授权。
 - 设计草案：[UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
   最确定的缺陷是 `iso_report` 覆盖了 driver 刚生成的 report；completion 已传
-  3072，不需要改。下一步先删 report hook、post 前置位 `burstPosted`、完成后读
-  `ep+4/+8` 与 entry 的 `+16/+32/+40/+44`，用离线 Unicorn 区分“第二次 post”
-  与“unmap miss”；未实现、未构建、未授权实机。
+  3072，不需要改。离线 Unicorn 回放已完成（五组 completion + report：full
+  路径会调用一次 unmap 并清 count，partial_no_force 才会重提；report 在无
+  hook 时 count=1/id=388/requested=3072/transferred=3072/status=3）。下一步删
+  report hook、post 前置位 `burstPosted`、完成后读 `ep+4/+8` 与 entry 的
+  `+16/+32/+40/+44`，再区分“第二次 post”与“真实 unmap miss”；payload 未构建、
+  未授权实机。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。
