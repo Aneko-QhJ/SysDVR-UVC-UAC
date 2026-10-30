@@ -24,7 +24,8 @@
   `4e112f7b…`（87461B）：用 HEAD 源码重建作对照，text 段逐字节相同，
   只有 GNU build-id note 随源码行号变化。
 - U2 producer payload：30 条编辑 = 684B cave（`0x68d54..0x69000`，正好填满）
-  + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP。
+  + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP（覆盖安装器
+  全部 8 条 alt 循环，4 SS + 4 HS，见 `tests/test_a23_alt1_nop_coverage.py`）。
   实机用过 `703e7795…`（88676B）和 `db97b6e7…`（88669B，skip 日志）。
   **当前离线产物 `81625cab…`（89178B）**：在 post 前用 dmnt 短暂 attach 读
   EP `0x84` 对象（`base+0xFC300`）的端点字/interval/环指针、HS 速度，以及

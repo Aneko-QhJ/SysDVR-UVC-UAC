@@ -131,11 +131,13 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - **结论**：`db97b6e7…` 标 dangerous，不再部署；cave 拒绝原因（端点字/interval/
   环非空/长度）与 EP `0x84` 的 endpoint 对象是否安装都还未确定。读卡后恢复
   `52069a44…` 并安全弹出，无重试。
-- 安装路径补充（静态）：`0x295d0` 的 SS 循环在 `0x296b0` 要求端点后跟 SS companion
-  （`[desc+8] == 0x30`），而 HS 循环（`0x29a84`）没有这个检查，只要 alt 过滤被 NOP
-  就会安装任何 type-5 端点（`0x29ae0` 的 callback 以 `x2 = 0` 调用）。因此 HS 下
-  EP `0x84` 应当会被安装；若 precheck 仍读到错误端点字，说明问题不在 HS 安装循环。
-  这一点要等 precheck 实机日志确认。
+- 安装路径补充（静态）：安装器 `0x295d0..0x2a04c` 共有 **8 条**描述符遍历循环
+  （4 个接口 × SS/HS）。SS 循环要求端点后跟 SS companion（`[desc+8] == 0x30`），
+  HS 循环没有这个检查，只要 alt 过滤被 NOP 就安装任何 type-5 端点（callback 以
+  `x2 = 0` 调用）。8 条循环的 alt 过滤（`cbnz w9`）正好就是 payload 的 8 条 NOP；
+  `tests/test_a23_alt1_nop_coverage.py` 从 `usb.elf` 重新找出 8 个站点、4 SS + 4 HS，
+  与 `NOP_EDITS` 逐项相等。因此 HS 下 AS alt1 的 EP `0x84` 理应被安装；若 precheck
+  仍读到 `word=0`，问题不在安装循环覆盖，而在该接口的循环是否被调用/配置是否进 HS。
 - 下一次尝试前必须先离线解决：
   1. **已完成**：post 前用 dmnt 短暂 attach 读 endpoint 对象（`base+0xFC300`）
      的端点字/interval/环指针、HS 速度，以及安装器 flag（`base+0x1610`）和
