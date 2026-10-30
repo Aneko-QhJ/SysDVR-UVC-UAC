@@ -258,6 +258,11 @@ LOG("UAC U2 post begin seq=%u\n", seq);
   `obj`（`0xDB608` 的 table entry）。只发 1 次 SET_CUR，设备未崩溃；但
   `installed=0 table=0`，端点未安装，completion 为空、obj 指针为零——数据
   路径没有被走到。下一步需要把 `installed != 0 && table != 0` 加进 precheck。
+- **v3 installed 门（已构建，未部署）**：`c80fa717…`（89725B，同一 29 条
+  payload）；precheck 在 `installed == 0 || table_ptr == 0` 时只记
+  `post skipped: endpoint not installed ...` 并返回。实机计划（需新授权）：
+  游戏/稳定音频流，等端点安装，最多 2 次 SET_CUR、间隔 1s；门会跳过未安装
+  的第一次，`burstPosted` 保证最多一次 post。
 
 ## 7. 离线验证
 
@@ -377,9 +382,10 @@ cave 里手工拼 report。
 | 判定 | **安全但未触发数据路径**：端点未安装，driver 请求/完成路径没走到；precheck 缺 `installed`/`table` 门 |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
-下一步（v3，未构建）：precheck 增加 `installed != 0 && table != 0`，在
-游戏/稳定音频流下等端点安装后只发 1 次 SET_CUR；如果装好后一次仍崩，
-再回到 completion/unmap。
+下一步（v3，已构建、未部署）：precheck 已增加
+`installed != 0 && table != 0`；在游戏/稳定音频流下等端点安装，最多发
+2 次 SET_CUR、间隔 1s（第一次未安装则跳过，第二次若已安装则 post）。
+如果装好后一次仍崩，再回到 completion/unmap。
 
 ## 9. 开放问题
 
@@ -405,8 +411,9 @@ cave 里手工拼 report。
   no-report 已实机一次：report 修复成立（3072/3072），但 completion 后
   控制/alt 路径仍崩溃，build 标 dangerous、不再部署。queue-object 修正版
   `56b7f8ee…` 实机一次：1 SET_CUR 未崩，但端点未安装（installed=0/table=0），
-  空报告，数据路径未走到。下一步构建带 `installed/table` 门的 v3，再测一次
-  SET_CUR；拒绝路径仍待单独解决。
+  空报告，数据路径未走到。v3 `c80fa717…` 已构建（带 `installed/table` 门），
+  未部署；下一轮最多 2 次 SET_CUR（间隔 1s），门会跳过未安装的触发。
+  拒绝路径仍待单独解决。
 - B 仅作为 A 被证伪后的后备；C 不在本轮范围。
 - 不恢复 `0x302c0` breaker，不再使用 fake-accept。
 - U2 实机线保持暂停；恢复需要新的明确授权。

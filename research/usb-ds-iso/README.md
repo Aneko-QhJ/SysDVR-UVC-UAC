@@ -31,8 +31,8 @@
   诊断 `4fc0247f…` 实机一次：`complete rc=0 requested=3072 transferred=3072`
   （report 修复成立），但随后控制/alt 路径仍 usb 崩溃；已标 dangerous、不再部署。
   queue-object 修正版 `56b7f8ee…` 实机一次：1 次 SET_CUR 未崩溃，但
-  `installed=0 table=0`、端点未安装、completion 为空；需给 precheck 加
-  installed/table 门。设计草案见
+  `installed=0 table=0`、端点未安装、completion 为空。带 installed/table 门
+  的 v3 `c80fa717…` 已构建、未部署。设计草案见
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。

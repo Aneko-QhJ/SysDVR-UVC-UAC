@@ -2245,6 +2245,14 @@ static void _postUacBurst(void)
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
         return;
     }
+    /* The endpoint object can exist (word/ring valid) before the installer
+       has published the table entry used by 0x2a980.  Posting then produces
+       an empty completion because complete_original finds table[0] == NULL. */
+    if (ep.installed == 0 || ep.table_ptr == 0) {
+        LOG("UAC U2 post skipped: endpoint not installed installed=%u table=0x%llx\n",
+            ep.installed, (unsigned long long)ep.table_ptr);
+        return;
+    }
 
     g_uacCtx.burstPosted = true;
     u32 seq = ++g_uacCtx.postSeq;

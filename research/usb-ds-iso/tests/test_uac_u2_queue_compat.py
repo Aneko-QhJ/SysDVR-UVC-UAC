@@ -27,6 +27,7 @@ ASM_NOREPORT = ROOT / "patches/iso_burst_uac84_noreport.S"
 NSO = ROOT / "private/module/exefs/main"
 WORK_NOREPORT = ROOT / "private/analysis/UAC-u2-noreport-20261030"
 WORK_V2 = ROOT / "private/analysis/UAC-u2-noreport2-20261030"
+WORK_V3 = ROOT / "private/analysis/UAC-u2-v3-20261031"
 
 
 def _word(data, sections, address):
@@ -176,6 +177,8 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
         self.assertIn('LOG("UAC U2 queue %s addr=0x%llx idx=%u', source)
         self.assertIn('_uacLogQueue("obj", h, table);', source)
+        self.assertIn("ep.installed == 0 || ep.table_ptr == 0", source)
+        self.assertIn("endpoint not installed installed=%u table=0x%llx", source)
 
 
 
@@ -188,6 +191,26 @@ class UacU2QueueObjectBuildTests(unittest.TestCase):
         cls.build = json.loads((WORK_V2 / "build-result.json").read_text())
 
     def test_build_uses_the_same_no_report_payload(self):
+        self.assertEqual(self.build["payload"]["edit_count"], 29)
+        self.assertEqual(self.build["payload"]["cave_bytes"], 592)
+        self.assertEqual(self.build["payload"]["cave_sha256"],
+                         self.doc["cave_sha256"])
+        nsp = Path(self.build["output"]["nsp"])
+        if nsp.is_file():
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             self.build["output"]["sha256"])
+
+
+
+class UacU2InstalledGateBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK_V3 / "build-result.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK_V3}")
+        cls.doc = payload_ready(WORK_V3)
+        cls.build = json.loads((WORK_V3 / "build-result.json").read_text())
+
+    def test_build_uses_the_gated_no_report_payload(self):
         self.assertEqual(self.build["payload"]["edit_count"], 29)
         self.assertEqual(self.build["payload"]["cave_bytes"], 592)
         self.assertEqual(self.build["payload"]["cave_sha256"],

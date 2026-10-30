@@ -240,8 +240,9 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 修正版（实机一次，2026-10-31 00:51）：`56b7f8ee…`（89714B，同一 29 条
   payload）同时记录 `ep`（0xFC300）和 `obj`（`0xDB608` 的 table entry）。
   只发 1 次 SET_CUR，设备未崩溃；但 `installed=0 table=0`，端点未安装，
-  completion 为空（`0x748c/0/0`），数据路径未走到。precheck 需要增加
-  `installed != 0 && table != 0` 门。
+  completion 为空（`0x748c/0/0`），数据路径未走到。带
+  `installed != 0 && table != 0` 门的 v3 `c80fa717…`（89725B）已构建、
+  未部署；下一轮最多 2 次 SET_CUR、间隔 1s，门会跳过未安装的触发。
 
 ## 风险与边界
 
