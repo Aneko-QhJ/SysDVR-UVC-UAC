@@ -372,10 +372,17 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `report data count=1 urb=388`、`report[0] id=388 req=3072 xfer=3072
   status=3`、`complete rc=0 requested=3072 transferred=3072`。
   **设备侧 completion 通过**；v6 的空报告未复现（v7 仅多日志）。
-- 但 WAV 41472 frames 全零、detector FAIL、无 crash。剩余缺口是
-  **host 侧 alt1 ISO 交付/采集**：当前先启动 ffmpeg（alt0）再强制 alt1，
-  AppleUSBAudio 可能没有迁移流。下一步离线准备“先 alt1 再采集”的顺序
-  实验，并用 `log stream`/`ioreg` 查 alt1 端点活动；下一次实机需新授权。
+- 但 WAV 41472 frames 全零、detector FAIL、无 crash。主机内核日志显示
+  **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
+  （`kIOReturnNotResponding` / transaction error）完成**（02:20:05.496–
+  02:20:08.051，abort 29/31/16 个请求），错误在 post 前已开始：
+  **host 确实在 alt1 提交了 ISO，设备端点没有应答**。cave 的 3072 是
+  16×192 记账，不是 host 收到数据。剩余阻塞是 EP `0x84` 的 ISO
+  端点/ED/TRB 配置。
+- 下一步离线对比 A23 已工作的 vendor EP `0x83` 与 UAC EP `0x84` 的
+  DCI/type/MPS/interval/frame/doorbell，确认安装器是否把 EP `0x84` 的
+  控制器上下文置为 ISO；先定位，不直接上硬件。下一次实机需新授权。
 - 证据：`private/analysis/UAC-u2-v7-20261031`、
   `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav`
-  `8e59a0da…`）、`private/card-cycles/20261031-u2-v7`。
+  `8e59a0da…`、内核 `kernel-usb-0x84.txt` `6b98ba9b…`）、
+  `private/card-cycles/20261031-u2-v7`。

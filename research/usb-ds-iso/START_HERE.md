@@ -38,10 +38,13 @@
   通过，v6 的空报告未复现（v7 仅多日志）。门/对象/report 生成**不是**
   剩余阻塞。
 - 当前工作：U0、U1a、U1b 通过；U2 的 host 16/16 与 PCM 未测，WAV 仍全零。
-  下一步是**离线 host 侧**：当前先启动 ffmpeg（alt0）再强制 alt1，
-  AppleUSBAudio 可能没有迁移 ISO 流；准备“先 alt1 再采集”的顺序实验，
-  并用 `log stream`/`ioreg` 查 alt1 端点活动。设备侧暂不需要新构建；
-  下一次实机需新的明确授权。
+  主机内核显示 **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
+  （transaction error / not responding）完成**，错误在 post 前已开始：
+  host 确实在 alt1 提交了 ISO，但设备端点没有应答；cave 的 3072 是
+  16×192 记账，不是 host 收到数据。下一步是**离线对比 A23 已工作的
+  EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB（DCI/type/MPS/interval/
+  frame/doorbell）**，确认安装器是否把 EP `0x84` 的控制器上下文置为
+  ISO；先定位，不直接上硬件。下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

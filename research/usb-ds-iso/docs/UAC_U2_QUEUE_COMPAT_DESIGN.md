@@ -540,6 +540,10 @@ payload / cave 592B）。
 - **v7 实机（只加 report 日志）**：同一对象/门，
   `report count=1 id=388 req=3072 xfer=3072 status=3`、
   `complete rc=0 3072/3072`，v6 空报告未复现；但 WAV 仍全零。
-  设备侧 completion 已两次通过；剩余缺口是 host 侧 alt1 ISO 交付/采集。
-  下一步离线准备“先 alt1 再启动 ffmpeg”的顺序实验和 host 端点活动证据；
+- **host 内核（v7）**：143 个 EP `0x84` IsochronousRequest 以
+  `0xe00002ed`（transaction error / not responding）完成，abort 29/31/16
+  个请求，错误在 post 前已开始。host 确实在 alt1 提交了 ISO，设备端点
+  没有应答；cave 的 3072 是 16×192 记账，不是 host 数据。剩余阻塞是
+  EP `0x84` 的 ISO 端点/ED/TRB 配置。下一步离线对比 A23 已工作的
+  EP `0x83` 与 UAC EP `0x84` 的 DCI/type/MPS/interval/frame/doorbell；
   U2 实机线暂停，需新的明确授权。

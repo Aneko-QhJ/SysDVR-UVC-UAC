@@ -6,8 +6,12 @@
 > 安装对象 `obj=0x13f737b038`（manager `0x13f736d000` + `0xa1038`）、
 > `installed=1`、`table=0x13f73796f0`，门通过；**report count=1、
 > id=388、req/xfer=3072/3072、status=3，complete `rc=0`**；但 WAV
-> 41472 frames 全零。v7 只比 v6 多了 report 日志，v6 的空报告未复现。
-> 结论：**设备侧 completion 已通过**，剩余缺口在 host 侧 ISO 交付/采集。
+> 41472 frames 全零。主机内核日志同时显示：02:20:05.496–02:20:08.051
+> 有 **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
+> （`kIOReturnNotResponding` / transaction error）完成**，abort 29/31/16 个
+> 请求；错误在 post 之前就开始。**host 确实在 alt1 上提交了 ISO，但设备
+> 端点没有应答**；设备侧 3072 是 cave 的 16×192 记账，不是 host 收到数据。
+> 剩余阻塞是 EP `0x84` 的 ISO 端点/ED/TRB 配置。v6 的空报告未复现。
 > 卡恢复 `52069a44…` 并安全弹出，无重试。
 
 ## 当前进度（2026-10-31 02:24）
@@ -61,12 +65,12 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线优先）：解释“设备侧 3072/3072 completion 已通过，但 host WAV
-  仍全零”。优先查 host 是否真的在 alt1 上提交/接收 ISO：当前流程是先启动
-  ffmpeg（打开 alt0），再用 `uac-control` 强制 alt1；AppleUSBAudio 可能没有
-  迁移流。离线准备 host 侧顺序实验（先把 alt1 设好再启动采集，或增加
-  `--hold` / 分步触发），并用 `log stream`/`ioreg` 确认 alt1 的 ISO 端点活动。
-  设备侧暂不需要新构建；下一次实机需新的明确授权。详见
+- 下一步（离线优先）：解释“host 在 EP `0x84` 上持续提交 ISO，但每个事务都
+  以 `0xe00002ed` 失败；同时 cave 按 16×192 报 completion”。优先对比 A23
+  已工作的 vendor EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB 字段：DCI、
+  endpoint type、MPS、interval、frame ID、doorbell 目标是否随 0x84 正确变化；
+  检查安装器是否真的把 EP `0x84` 的控制器上下文置为 ISO。先离线定位，
+  不直接上硬件；下一次实机需新的明确授权。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
@@ -84,7 +88,7 @@
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
 
-## 最近一次 U2 v7 实机（2026-10-31 02:19–02:21，设备侧 3072/3072，host WAV 全零）
+## 最近一次 U2 v7 实机（2026-10-31 02:19–02:21，cave 记账 3072/3072，host ISO 事务全失败）
 
 | 项 | 结果 |
 | --- | --- |
@@ -94,10 +98,11 @@
 | post | `UAC U2 post begin seq=1`、`pattern 1kHz 16ms`、`rc=0x0 urb=388 size=3072` |
 | **report** | **`count=1 urb=388`、`report[0] id=388 req=3072 xfer=3072 status=3`** |
 | **completion** | **`rc=0x0 requested=3072 transferred=3072`** |
+| host 内核 | **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`（`kIOReturnNotResponding` / transaction error）完成**（02:20:05.496–02:20:08.051），abort 29/31/16 个请求；错误在 post 前已开始 |
 | WAV | 41472 frames，min=max=0，nonzero=0；detector FAIL |
-| 判定 | **设备侧一次 burst 通过**（第二次实机确认，v3 后再次）；报告/完成路径正常。**host 侧仍无数据**：WAV 全零，说明 ISO 数据没有到达/没有被采集。v6 的空报告未复现（v7 仅多日志） |
-| 下一步 | 离线查 host alt1 ISO：当前先开 ffmpeg（alt0）再强制 alt1，AppleUSBAudio 可能不迁移流；准备“先 alt1 再采集”的顺序实验并加 host 侧端点活动证据 |
-| 证据 | `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav` `8e59a0da…`）、`private/card-cycles/20261031-u2-v7` |
+| 判定 | **cave/驱动侧 3072 记账通过，host ISO 事务全部失败**：host 确实在 alt1 提交了请求，但设备 EP `0x84` 没有应答；WAV 全零。v6 的空报告未复现（v7 仅多日志）。设备侧 completion 不能当作 host 收数证据 |
+| 下一步 | 离线对比 A23 已工作的 EP `0x83` 与 UAC EP `0x84` 的端点/ED/TRB（DCI、type、MPS、interval、frame、doorbell），确认安装器是否把 EP `0x84` 的控制器上下文置为 ISO；先定位，不直接上硬件 |
+| 证据 | `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav` `8e59a0da…`、内核 `kernel-usb-0x84.txt` `6b98ba9b…`）、`private/card-cycles/20261031-u2-v7` |
 | 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v6 实机（2026-10-31 02:08–02:10，对象门通过但空 completion）
@@ -349,10 +354,12 @@ v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要�
 但 completion 为空 `0x748c/0/0`、WAV 全零、无 crash。v7 `4db0adcc…`
 （90280B，仅多 report 日志）**02:19–02:21 实机一次**：同一对象/门，
 `report count=1 id=388 req=3072 xfer=3072 status=3`、complete `rc=0
-3072/3072`，v6 的空报告未复现；但 WAV 仍全零。因此设备侧 completion 已在
-v3/v7 两次确认，**剩余缺口在 host 侧 alt1 ISO 交付/采集**，不是门或 report
-生成。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
-并安全弹出。
+3072/3072`，v6 的空报告未复现。但主机内核日志显示 143 个 EP `0x84`
+IsochronousRequest 均以 `0xe00002ed`（transaction error / not responding）完成，
+WAV 全零：**host 确实在 alt1 提交了 ISO，设备端点没有应答**；cave 的 3072
+是 16×192 记账，不是 host 收到数据。剩余阻塞是 EP `0x84` 的 ISO 端点/ED/TRB
+配置，不是门或 report 生成。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复
+安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
