@@ -2122,7 +2122,14 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    with strb w21, and complete_original (0x2a980) reads the table pointer at
    manager + 0x14c8 + index*16.  For EP 0x84, 0x3a30(0x84) = 0x14. */
 #define UAC_U2_INSTALL_FLAG_OFFSET 0xDB610ULL /* manager + 0x1610 */
+#define UAC_U2_INSTALL_FLAG1_OFFSET 0xDB611ULL /* manager + 0x1611 */
 #define UAC_U2_TABLE_PTR_OFFSET 0xDB608ULL    /* manager + 0x1608 */
+/* Diagnostic alternates: if the installer runs on the device object
+   (0xD3000) rather than the manager (0xDA000), the real flag/table are
+   0x7000 lower.  Read both and log which one moves. */
+#define UAC_U2_DEV_FLAG_OFFSET 0xD4610ULL     /* device + 0x1610 */
+#define UAC_U2_DEV_FLAG1_OFFSET 0xD4611ULL    /* device + 0x1611 */
+#define UAC_U2_DEV_TABLE_OFFSET 0xD4608ULL    /* device + 0x1608 */
 /* Request-queue fields used by the completion path (0x2c520/0x2c690):
    +4 index, +8 count, entries at +0x78 with a 0x30-byte stride. */
 #define UAC_U2_QUEUE_INDEX_OFFSET 0x04ULL
@@ -2134,7 +2141,12 @@ typedef struct {
     u8 state[0x48];
     u32 speed;
     u8 installed;
+    u8 installed1;
     u64 table_ptr;
+    bool dev_ok;
+    u8 dev_installed;
+    u8 dev_installed1;
+    u64 dev_table_ptr;
 } UacUsbEpState;
 
 static bool _uacReadUsbState(UacUsbEpState *out)
@@ -2153,8 +2165,31 @@ static bool _uacReadUsbState(UacUsbEpState *out)
             g_uacUsbBase + UAC_U2_INSTALL_FLAG_OFFSET, sizeof(out->installed));
     }
     if (R_SUCCEEDED(rc)) {
+        rc = svcReadDebugProcessMemory(&out->installed1, h,
+            g_uacUsbBase + UAC_U2_INSTALL_FLAG1_OFFSET,
+            sizeof(out->installed1));
+    }
+    if (R_SUCCEEDED(rc)) {
         rc = svcReadDebugProcessMemory(&out->table_ptr, h,
             g_uacUsbBase + UAC_U2_TABLE_PTR_OFFSET, sizeof(out->table_ptr));
+    }
+
+    out->dev_ok = false;
+    if (R_SUCCEEDED(rc)) {
+        Result drc = svcReadDebugProcessMemory(&out->dev_installed, h,
+            g_uacUsbBase + UAC_U2_DEV_FLAG_OFFSET,
+            sizeof(out->dev_installed));
+        if (R_SUCCEEDED(drc)) {
+            drc = svcReadDebugProcessMemory(&out->dev_installed1, h,
+                g_uacUsbBase + UAC_U2_DEV_FLAG1_OFFSET,
+                sizeof(out->dev_installed1));
+        }
+        if (R_SUCCEEDED(drc)) {
+            drc = svcReadDebugProcessMemory(&out->dev_table_ptr, h,
+                g_uacUsbBase + UAC_U2_DEV_TABLE_OFFSET,
+                sizeof(out->dev_table_ptr));
+        }
+        out->dev_ok = R_SUCCEEDED(drc);
     }
     svcCloseHandle(h);
     return R_SUCCEEDED(rc);
@@ -2236,10 +2271,12 @@ static void _postUacBurst(void)
         memcpy(&prod, ep.state + 0x18, sizeof(prod));
         memcpy(&cons, ep.state + 0x20, sizeof(cons));
     }
-    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx installed=%u table=0x%llx\n",
+    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx installed=%u flag1=%u table=0x%llx dev_ok=%u dev_installed=%u dev_flag1=%u dev_table=0x%llx\n",
         read_ok, word, ep.state[6], ep.speed, (unsigned long long)ring,
         (unsigned long long)prod, (unsigned long long)cons, ep.installed,
-        (unsigned long long)ep.table_ptr);
+        ep.installed1, (unsigned long long)ep.table_ptr, ep.dev_ok,
+        ep.dev_installed, ep.dev_installed1,
+        (unsigned long long)ep.dev_table_ptr);
     if (!read_ok || word != 0x00C00584u || ep.state[6] != 4 || ep.speed != 3 ||
         ring == 0 || prod != cons) {
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
@@ -2248,9 +2285,13 @@ static void _postUacBurst(void)
     /* The endpoint object can exist (word/ring valid) before the installer
        has published the table entry used by 0x2a980.  Posting then produces
        an empty completion because complete_original finds table[0] == NULL. */
-    if (ep.installed == 0 || ep.table_ptr == 0) {
-        LOG("UAC U2 post skipped: endpoint not installed installed=%u table=0x%llx\n",
-            ep.installed, (unsigned long long)ep.table_ptr);
+    /* observed 0/1 is the installer's partial state; 0xA2/0xF0 were only
+       seen when the post completed.  Skip 0/1 and log both candidate bases. */
+    if (ep.installed <= 1 || ep.table_ptr == 0) {
+        LOG("UAC U2 post skipped: endpoint not installed installed=%u flag1=%u table=0x%llx dev_ok=%u dev_installed=%u dev_flag1=%u dev_table=0x%llx\n",
+            ep.installed, ep.installed1, (unsigned long long)ep.table_ptr,
+            ep.dev_ok, ep.dev_installed, ep.dev_installed1,
+            (unsigned long long)ep.dev_table_ptr);
         return;
     }
 

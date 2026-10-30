@@ -139,7 +139,8 @@ class UacU2PrecheckTests(unittest.TestCase):
         post = body.index("usbDsEndpoint_PostBufferAsync")
         self.assertLess(precheck, post)  # never post before the state read
         for token in ("word != 0x00C00584u", "ep.state[6] != 4", "ep.speed != 3",
-                      "ring == 0", "prod != cons", "installed=%u table=0x%llx",
+                      "ring == 0", "prod != cons", "installed=%u flag1=%u table=0x%llx",
+                      "ep.installed <= 1",
                       "UAC U2 post skipped: endpoint not ready for the cave"):
             self.assertIn(token, body)
         self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)

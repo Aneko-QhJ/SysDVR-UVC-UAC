@@ -521,7 +521,8 @@ tag；要求成功回合的完整值（`0xA2`/`0xF0`）而不是 `!=0`，然后�
 它很可能就是真实的“已安装”标志，而 `!=0` 门让**部分安装**提前 post，导致
 空 completion。
 
-下一步 v5（未构建）：同时读 manager `+0x1610/+0x1611/+0x1608` 与 device
-`+0x1610/+0x1611/+0x1608`，记录两套值；`installed <= 1` 时只记 skip，
-不 post；host 用 `--force-alt1 --repeat=2 --interval-ms=1000`，让第一次
-skip、第二次在安装完成后 post。
+v5（已构建，未部署）：`ddd44cd4…`（90115B，同一 29 条 payload）同时读
+manager `+0x1610/+0x1611/+0x1608` 与 device `+0x1610/+0x1611/+0x1608`，
+记录两套值；`installed <= 1` 时只记 skip、不 post；host 用
+`--force-alt1 --repeat=2 --interval-ms=1000`，让第一次 skip、第二次在
+安装完成后 post。

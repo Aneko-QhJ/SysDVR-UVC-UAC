@@ -249,7 +249,8 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   installed=0、门跳过；第二次 1→1 回读 alt0、未发 SET_CUR；第三次 0→1 后
   门通过（installed=1/table=0x800501000000），post/pattern 发生，但
   completion 为空、WAV 全零、无崩溃。结论：`installed=1` 是部分安装状态，
-  门太弱；需解码安装器字节/table tag 后收紧。
+  门太弱；安装器只写 0/1，`162/240` 不是这个字节。v5 `ddd44cd4…`
+  （90115B）同时读 manager/device 候选，`installed<=1` 时 skip，未部署。
 
 ## 风险与边界
 

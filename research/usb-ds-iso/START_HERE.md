@@ -49,8 +49,9 @@
   installed/table 非零，门通过，completion `3072/3072`，无崩溃；host 16/16
   与 PCM 未测。v4 `c33d0d07…` 实机三次：alt1/installed=0 门跳过；1→1 回读
   alt0 未发 SET_CUR；0→1 后门通过但 `installed=1` 只是部分安装，completion
-  为空、WAV 全零。需解码安装器字节收紧门。路径修正版已打包并绑定新 recipe
-  入口、通过包/入口审计，短包复测同样需要新授权。
+  为空、WAV 全零。需解码安装器字节收紧门；v5 `ddd44cd4…` 已构建（读
+  manager/device 候选，`installed<=1` skip），未部署。路径修正版已打包并
+  绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 
 ## 文件角色

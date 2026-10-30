@@ -22,6 +22,7 @@
 | U2 queue-object 诊断 | 实机一次（1 SET_CUR，无崩溃；端点未安装，空报告） | `private/runs/UAC-u2-noreport2-20261031` |
 | U2 v3 installed 门 | 实机一次（force-alt1）：门通过，completion 3072/3072，无崩溃 | `private/runs/UAC-u2-v3b-20261031` |
 | U2 v4 方波 burst | 实机三次：alt1/installed=0；1→1 回读 0；0→1 门过但 completion 空、WAV 零 | `private/runs/UAC-u2-pattern3-20261031` |
+| U2 v5 候选读取 | 已构建（`ddd44cd4…`，90115B），未部署 | `private/analysis/UAC-u2-v5-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-pattern3` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -285,8 +286,10 @@ host 16/16 包数和 PCM 未测。v4 `c33d0d07…` 实机三次：第一次 alt1
 SET_CUR；第三次 0→1 后门通过（`installed=1 table=0x800501000000`），post
 与 1kHz 填充都发生，但 completion 为空、WAV 全零、无崩溃。结论：
 `installed=1` 是部分安装状态，门还不够严；需解码安装器字节/table tag，
-要求成功回合的完整值（`0xA2`/`0xF0`）。UAC 默认仍禁用（仅
-`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+要求成功回合的完整值（`0xA2`/`0xF0`）。离线已确认安装器只写 0/1；v5
+`ddd44cd4…`（90115B）同时读 manager/device 候选，并在 `installed <= 1`
+时跳过，未部署。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+`52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
@@ -721,10 +724,10 @@ SET_CUR；第三次 0→1 后门通过（`installed=1 table=0x800501000000`）�
   到 `manager+0x14d0+index*16`，没有路径写 `0xA2/0xF0`；因此 app 读到的
   `installed=162/240` 不是这个字节，可能读错 manager/device 对象或被另一张
   表覆盖。pattern3 的 `installed=1` 与安装器写值一致，说明 `!=0` 门确实
-  放行了部分安装。v5 计划：同时读 manager `0xDB610/0xDB611/0xDB608` 与
-  device `0xD4610/0xD4611/0xD4608`，`installed <= 1` 时只 skip；host 用
-  `--force-alt1 --repeat=2 --interval-ms=1000`，第一次 skip、第二次在安装
-  完成后 post。
+  放行了部分安装。v5 `ddd44cd4…` 已构建（未部署）：同时读 manager
+  `0xDB610/0xDB611/0xDB608` 与 device `0xD4610/0xD4611/0xD4608`，
+  `installed <= 1` 时只 skip；host 用 `--force-alt1 --repeat=2
+  --interval-ms=1000`，第一次 skip、第二次在安装完成后 post。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

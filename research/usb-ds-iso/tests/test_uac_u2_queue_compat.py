@@ -177,10 +177,13 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
         self.assertIn('LOG("UAC U2 queue %s addr=0x%llx idx=%u', source)
         self.assertIn('_uacLogQueue("obj", h, table);', source)
-        self.assertIn("ep.installed == 0 || ep.table_ptr == 0", source)
-        self.assertIn("endpoint not installed installed=%u table=0x%llx", source)
+        self.assertIn("ep.installed <= 1 || ep.table_ptr == 0", source)
+        self.assertIn("endpoint not installed installed=%u flag1=%u", source)
         self.assertIn("UAC U2 pattern 1kHz 16ms", source)
         self.assertIn("samples[i] = ((frame / 24) & 1)", source)
+        self.assertIn("ep.installed <= 1", source)
+        self.assertIn("dev_installed", source)
+        self.assertIn("UAC_U2_DEV_FLAG_OFFSET 0xD4610ULL", source)
 
 
 

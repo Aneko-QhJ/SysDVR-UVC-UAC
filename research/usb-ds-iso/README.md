@@ -36,7 +36,8 @@
   后 `installed=240`、table 非零，门通过，completion `3072/3072`，无崩溃；
   host 16/16 与 PCM 未测。v4 `c33d0d07…` 实机三次：alt1/installed=0 门跳过；
   1→1 回读 alt0 未发 SET_CUR；0→1 后门通过但 `installed=1` 只是部分安装，
-  completion 为空、WAV 全零。需解码安装器字节收紧门。设计草案见
+  completion 为空、WAV 全零。需解码安装器字节收紧门；v5 `ddd44cd4…`
+  已构建（读 manager/device 候选，`installed<=1` skip），未部署。设计草案见
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
