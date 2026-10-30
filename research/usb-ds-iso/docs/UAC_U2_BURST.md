@@ -111,3 +111,27 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - 证据：`private/runs/UAC-u2-burst-20261030`（`run.json`、`device-log-u2.txt`、
   `host-audio-log.txt`、`host-claim-failure.json`）、
   `private/card-cycles/20261030-u2-burst`。卡已恢复 `52069a44…` 并安全弹出。
+
+## 2026-10-30 14:39–14:41 retrigger 实机：usb 崩溃（dangerous）
+
+- 部署 `db97b6e7…`（88669B，含 skip 日志）一次 boot；补丁 `record=29`、初始化
+  `AC=2 AS=3 EP=0x84`、配置 257B/4 接口均正常。
+- 宿主音频索引在重启后变成 `[0]`；第一次采集误用 `:2`（华为手机麦），100 次
+  SET_CUR 都在 alt0，设备无 post。第二次 `:0` 采集启动后 `GET_INTERFACE` 超时，
+  SET_CUR 全部 `LIBUSB_ERROR_NO_DEVICE`，设备掉线。
+- 设备崩溃：`usb` 进程（`0100000000000006`）Data Abort `0x4A8`（2162-0004）。
+  PC `0x2a980`（`complete_original`）、LR `0x302c4`（ISO 提交错误路径），
+  `x1=0x84`、`x2=x20=x23=0x1908c`；栈为 `0x2c84c→0x2a9fc→0x302c4` 循环，
+  即 cave 以 `reject_original` 的 `0x1908c` 拒绝提交后，驱动错误完成路径无限
+  递归到栈溢出。设备日志没有 `type=22`/`UAC U2 skip`/`UAC U2 post`。
+- 主机内核：`14:40:39 ep0x84 abort 16 requests`、`14:40:40–52 ep0x00
+  status 0xe00002d6`、`14:40:52 hardware connection lost`、`14:41:25` 重新枚举。
+- **结论**：`db97b6e7…` 标 dangerous，不再部署；cave 拒绝原因（端点字/interval/
+  环非空/长度）与 EP `0x84` 的 endpoint 对象是否安装都还未确定。读卡后恢复
+  `52069a44…` 并安全弹出，无重试。
+- 下一次尝试前必须先离线解决：
+  1. 保留 dmnt 调试句柄，在 post 前读 endpoint 对象 `+2` 的字并记录；不等于
+     `0x00C00584`（或环指针不满足）就不 post，避免再进致命拒绝路径。
+  2. 用 Unicorn 回放补上“被拒绝时的驱动错误路径”模型，确认拒绝后是否必然递归。
+  3. 证据：`private/runs/UAC-u2-burst2-20261030`（`run.json`、`device-log-u2b.txt`
+     `b457421d…`、`crash-usb-0100000000000006.log` `ead11166…`、`erpt-a0311816.txt`）。

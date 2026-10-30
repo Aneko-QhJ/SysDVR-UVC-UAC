@@ -1,12 +1,13 @@
-# 当前状态（2026-10-30 14:30，Asia/Shanghai）
+# 当前状态（2026-10-30 14:50，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 14:18–14:27 的 U2 producer 回合（一次 boot）：
-> 补丁与 alt1 选择正常，但宿主触发时机错过 alt1 窗口，**没有 post**，判定未通过。
-> 卡已恢复 `52069a44…` 并安全弹出，无重试。
+> 最后一次实机是 2026-10-30 14:39–14:41 的 U2 retrigger 回合（一次 boot）：
+> 设备在 alt1 流启动后 **usb 进程 Data Abort（2162-0004）**，cave 以 `0x1908c`
+> 拒绝了 EP `0x84` 的 ISO 提交，驱动的错误完成路径递归到栈溢出。
+> `db97b6e7…` 已标 dangerous，卡恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 14:30）
+## 当前进度（2026-10-30 14:50）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -14,8 +15,8 @@
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | 已实机一次，**未通过**（无 post） | `private/runs/UAC-u2-burst-20261030` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst` |
+| U2 producer | 实机两次：第一次未触发，第二次 **usb 崩溃**（dangerous） | `private/runs/UAC-u2-burst2-20261030` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst2` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -41,10 +42,32 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 30 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步：一次有界 U2 burst（需新的明确授权）。详见
+- 下一步：先离线解释 usb 崩溃（cave 的哪项检查拒绝、endpoint 是否安装），
+  再设计不触发致命拒绝路径的 post 前置检查。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
-## 最近一次 U2 实机（2026-10-30，未通过）
+## 最近一次 U2 retrigger 实机（2026-10-30 14:39–14:41，usb 崩溃）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | `db97b6e7…`（88669B，含 `UAC U2 skip` 日志）**dangerous，不再部署** |
+| 部署 | 一次 boot；卡记录 `private/card-cycles/20261030-u2-burst2` |
+| 设备启动 | `UAC u2 patch result=0 record=29`、`UAC initialized: AC=2 AS=3 EP=0x84` |
+| 宿主音频索引 | SysDVR 重启后变成 `[0]`；第一次采集误用 `:2`（华为手机麦，mono），100 次 SET_CUR 均在 alt0，无 post |
+| 第二次采集 | `:0` 启动后 `GET_INTERFACE` 超时（`LIBUSB_ERROR_TIMEOUT`），随后 SET_CUR 全部 `LIBUSB_ERROR_NO_DEVICE`，设备掉线 |
+| 崩溃 | `usb` 进程（`0100000000000006`）Data Abort `0x4A8`（2162-0004）；PC `0x2a980`（`complete_original`），LR `0x302c4`（ISO 提交错误路径），`x1=0x84`、`x2=x20=x23=0x1908c`；栈为 `0x2c84c→0x2a9fc→0x302c4` 循环（栈溢出） |
+| 设备日志 | 17× START/17× STOP；**0× `type=22`、0× `UAC U2 skip`、0× `UAC U2 post`**；无 fatal 行（usb 先崩） |
+| 主机内核 | `14:40:39 ep0x84 abort 16 requests`；`14:40:40–52 ep0x00 status 0xe00002d6`；`14:40:52 hardware connection lost`；`14:41:25` 重新枚举 |
+| 判定 | **失败（危险）**：cave 以 `0x1908c` 拒绝提交，驱动错误完成递归到栈溢出；不能据此评价数据路径 |
+| 证据 | `private/runs/UAC-u2-burst2-20261030`（`run.json`、`device-log-u2b.txt` `b457421d…`、`crash-usb-0100000000000006.log` `ead11166…`、`erpt-a0311816.txt`、`kernel-usb-log.txt`） |
+| 收尾 | 已恢复 `52069a44…`、清日志并安全弹出；无重试 |
+
+未解问题：cave 的哪一项检查拒绝了提交（端点字/interval/环非空/长度），以及 EP `0x84`
+的 endpoint 对象在 Configured 时是否真的安装。下一轮必须先离线解决这两个问题，
+**在 post 之前用 dmnt 调试句柄读出 endpoint 对象 `+2` 的字并记录**，不等于
+`0x00C00584` 就不 post，避免再触发致命拒绝路径。
+
+## 前一次 U2 实机（2026-10-30 14:18，未触发）
 
 | 项 | 结果 |
 | --- | --- |
@@ -68,9 +91,10 @@
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）；U2 producer（30 条，cave 684B，
-NSP `703e7795…`）已实机一次：补丁与 alt1 选择正常，但宿主触发错过 alt1 窗口，
-**没有 post、没有 completion**，判定未通过。AS alt1 数据路径仍未验证，PCM 未测试。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 producer 实机两次：第一次补丁与 alt1
+选择正常但触发错过窗口（无 post），第二次重建版在 alt1 流启动后 **usb 进程崩溃**
+（Data Abort 0x4A8，cave 以 `0x1908c` 拒绝 EP `0x84` 提交、驱动错误完成递归到栈溢出）。
+`db97b6e7…` 标 dangerous。AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -165,6 +189,10 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   宿主 libusb claim 失败后，用户选择“标准宿主：ffmpeg 采集 + SET_CUR”继续；
   未 post，读卡记录后恢复 `52069a44…` 并安全弹出，无重试。
   证据 `private/runs/UAC-u2-burst-20261030`、`private/card-cycles/20261030-u2-burst`。
+- U2 retrigger 回合由用户“部署”授权（2026-10-30 14:39），一次 boot；设备在
+  alt1 流启动后 usb 崩溃（2162-0004），读卡取回 crash report/erpt 后恢复
+  `52069a44…` 并安全弹出，无重试。`db97b6e7…` 标 dangerous。
+  证据 `private/runs/UAC-u2-burst2-20261030`、`private/card-cycles/20261030-u2-burst2`。
 - U1a 的 r4–r7 与 U1b 在用户“如果还要部署，无需另外授权”下连续执行；
   每次一次 boot，U1a-r7/U1b 通过后均恢复 `52069a44…` 并安全弹出。
   r1–r3 的日志与恢复记录保留在 `private/runs/UAC-u1a*`。
@@ -412,9 +440,10 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
    剩余的是短包复测本身，需要新的明确授权。
 3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
    13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   U2 producer 已构建并实机一次（30 条，EP `0x84`/MPS192/attrs0x05，cave 684B，
-   NSP `703e7795…`）：补丁与 alt1 选择正常，但宿主触发未落在 alt1 窗口，
-   没有 post。下一步是修正触发（采集期间循环 SET_CUR），需要新授权。
+   U2 producer 已实机两次（cave 684B）：第一次触发错过 alt1 窗口（无 post）；
+   第二次 alt1 流启动后 usb 崩溃（cave 以 `0x1908c` 拒绝 EP `0x84` 提交，
+   驱动错误完成递归到栈溢出）。`db97b6e7…` dangerous。下一步是先离线定位
+   拒绝原因与端点安装状态，暂不再部署。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 10s PCM 仍未就绪（先过 U2）。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -424,11 +453,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：U2 触发修正——用 `db97b6e7…`（含 skip 日志）；
-  ffmpeg 采集 `:2` 的同时运行
-  `host/uac-control --set-rate --repeat=100 --interval-ms=20`，一次 boot、
-  最多一次 post（`burstPosted` 保护）。通过/停止条件见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md)；需要新的明确授权。
+- 离线（UAC 下一步）：解释 usb 崩溃——逐项核对 cave 的 6 个拒绝条件；设计
+  post 前的 endpoint 字读取（保留 dmnt 句柄），不等于 `0x00C00584` 或环非空时
+  不 post；必要时让 cave 把失败检查 ID 写进 mailbox。`db97b6e7…` 不再部署。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。
