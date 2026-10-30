@@ -1,17 +1,38 @@
-# 当前状态（2026-10-30 02:15，Asia/Shanghai）
+# 当前状态（2026-10-30 10:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
 > 最后一次实机是 2026-10-30 01:55 的 U1b；U1a/U1b 均通过，卡已恢复
-> `52069a44…` 并安全弹出。
+> `52069a44…` 并安全弹出。此后只做 U2 离线基础（26 条 payload + uac-burst），
+> 未部署。
+
+## 当前进度（2026-10-30 10:15）
+
+| 阶段 | 状态 | 证据 |
+| --- | --- | --- |
+| U0 枚举 | **通过**（257B/4 接口，音频设备） | `private/runs/UAC-u0d-20261030` |
+| U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
+| U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
+| U2 基础 | 已构建，**未部署** | `private/analysis/UAC-u2-base-20261030` |
+| U2 producer | **未实现** | A23 producer 硬编码 EP 0x83/MPS256 |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u1b-alt` |
+
+- U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）；U2 基础在其上追加 8 条 alt0-filter
+  NOP，共 26 条编辑，NSP `abdaff61…`（87461B）。
+- `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已编译，但没有
+  producer 时不会通过，不能当作 U2 数据路径证据。
+- 下一步：把 A23 producer 从 EP `0x83`/MPS256 迁到 EP `0x84`/MPS192，
+  生成 30 条 U2 payload，再做一次有界 burst。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
 ## 一句话
 
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
-U1b 已通过（alt 0→1→0，无 NOP）。AS alt1 尚未 post 数据，仍无 ISO producer，
-PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+U1b 已通过（alt 0→1→0，无 NOP）；U2 基础（26 条：18 描述符 + 8 NOP，
+NSP `abdaff61…`）已构建未部署。AS alt1 尚未 post 数据，producer 迁移到
+EP `0x84`/MPS192 未实现，PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 卡已恢复安全 `52069a44…` 并安全弹出。最近一次短包实机（2026-10-27）主机侧
 通过、设备侧保存失败；路径修正版已存在，未打包/未部署。
 
@@ -320,7 +341,7 @@ PCM 未测试。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 - 入口/索引已整理：[START_HERE.md](../START_HERE.md)、[WORKFLOW.md](../WORKFLOW.md)、
   [docs/INDEX.md](INDEX.md)、[tools/INDEX.md](../tools/INDEX.md)。
-- `make check` 绿：11 个文件，约 2 秒。
+- `make check` 绿：13 个文件，约 2 秒。
 - `make check-all` 基线：1074 tests / 499 秒 / 95 errors / 22 skipped；类别见
   [tests/README.md](../tests/README.md)。当前不是门禁，非零不等于本轮改动回归。
 

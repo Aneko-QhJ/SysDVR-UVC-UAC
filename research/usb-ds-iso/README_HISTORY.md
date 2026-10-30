@@ -1341,3 +1341,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-10-30 01:55 U1b alt-setting 实机（通过）：复用 r7 NSP `01c6ff26…`，无 NOP、无数据 post，一次 boot。`uac-control --alt-only`：`GET_INTERFACE` 0 → `SET_INTERFACE(1)` ACK → `GET_INTERFACE` 1 → `SET_INTERFACE(0)` ACK → `GET_INTERFACE` 0，failures=0。设备日志 `UAC setup[3] type=01 req=0b val=0001 action=3`、`val=0000 action=4`，无 usb fatal；alt 切换期间有 host 重枚举。端点安装未验证，U2 才需要 8 条 NOP。卡恢复 `52069a44…` 并安全弹出。证据：`private/runs/UAC-u1b-20261030/`、`private/card-cycles/20261030-u1b-alt/`。
 
 2026-10-30 U2 基础离线准备：生成 26 条 payload（18 描述符 + 8 NOP），NSP `abdaff61…`（87461B），应用侧 `UAC_U2_BASE_PATCH` 在 `usbDsEnable()` 前应用；新增 host `uac-burst`（interface 3/alt1/EP0x84/MPS192，一次 16×192，SET_CUR 触发）。NOP 评估：8 个 `cbnz w9` 全局放开 alt 端点安装，UAC build 无重复端点，风险可控但产品化应收窄。A23 producer 仍硬编码 EP 0x83/MPS256，迁移到 0x84/MPS192 未实现；未部署、未实机。文档 [UAC_U2_BURST.md](docs/UAC_U2_BURST.md)。
+
+2026-10-30 10:15 进度快照：U0/U1a/U1b 均已通过（257B/4 接口、音频设备；13/13 控制请求；alt 0→1→0）。U2 基础 26 条（18 描述符 + 8 NOP）NSP `abdaff61…`（87461B）已构建未部署；host `uac-burst` 已编译；A23 producer 仍硬编码 EP 0x83/MPS256，迁移到 0x84/MPS192 未实现。卡安全 `52069a44…` 并已弹出，无待处理实机。详见 [CURRENT.md](docs/CURRENT.md) 与 [UAC_U2_BURST.md](docs/UAC_U2_BURST.md)。
