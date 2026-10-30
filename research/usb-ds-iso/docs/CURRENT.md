@@ -539,9 +539,16 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
   没有真正入队，清理时再次插入同一区间 → 断言。**返回 0 的绕过不可行。**
 - 已完成（离线）：`0x748c` 不是 libnx 错误（module `0x3A`/desc `0x8C` 的
   driver 状态），配合 `requested=0 transferred=0` 指向“报告无匹配条目/空条目”；
-  下一次需打印 `report_count` 与各 entry 的 `id/urb_status`。
-- 实机：**暂停 U2 线**。继续的前提是先解决“请求必须真正入队”的兼容性问题
-  （超出 684B cave 的能力），或改回不绕过 driver 簿记的方案。
+  设计草案进一步定位到 `iso_report` 覆盖了 driver 已生成的 report。下一次若继续
+  诊断，需打印 `report_count` 与各 entry 的 `id/urb_status`（或先删 hook 再看
+  driver 原报告）。
+- 实机：**暂停 U2 线**。设计与离线验证（report 覆盖、一次性 post、
+  unmap/entry 判别）完成前不恢复；恢复需要新的明确授权。
+- 设计草案：[UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
+  最确定的缺陷是 `iso_report` 覆盖了 driver 刚生成的 report；completion 已传
+  3072，不需要改。下一步先删 report hook、post 前置位 `burstPosted`、完成后读
+  `ep+4/+8` 与 entry 的 `+16/+32/+40/+44`，用离线 Unicorn 区分“第二次 post”
+  与“unmap miss”；未实现、未构建、未授权实机。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
   模型已备，但接真实数据要等 U2 通过。

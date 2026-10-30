@@ -203,8 +203,10 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 一致——请求的映射/簿记状态不一致，后续清理再次插入同一区间时失败并断言。
 
 结论：**返回 0 的 fake-accept 不可行**；driver 要求请求真正入队/完成，靠返回值
-绕过它的簿记会触发断言。要兼容，cave 必须让请求真正走完 driver 的队列/映射
-流程（远不是 684B 能完成的）。
+绕过它的簿记会触发断言。更准确地说，`0x2c520` 在进入 `0x302e0` 之前就已经
+完成 map 和入队；cave 不需要重写队列，只需要不覆盖 report、并保证 completion
+让这个 entry 真正出队。设计见
+[UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)（未实现、未授权）。
 
 ## 完成报告 `0x748c` 解码（离线）
 
@@ -215,6 +217,10 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   条目或条目为空；
 - 下一次（若继续）应把 `report_count`、每个 entry 的 `id/urb_status` 一起打出来，
   确认是“无匹配条目”还是“条目状态为取消/错误”。
+- 设计草案进一步定位：`0x2cbe0` 是 report 收尾，`iso_report` hook 用 mailbox
+  覆盖了 driver 已生成的 `x20+16` report，因此解析必定失败；completion 本身
+  已经传 3072，不需要改。见
+  [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## 风险与边界
 

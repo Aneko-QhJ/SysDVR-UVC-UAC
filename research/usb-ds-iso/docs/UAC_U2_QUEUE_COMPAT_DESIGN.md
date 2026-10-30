@@ -1,0 +1,327 @@
+# UAC U2 队列兼容的 ISO 提交设计（2026-10-30）
+
+> 状态：**离线设计草案**，未实现、未构建、未实机。地址均来自
+> `private/module/usb.elf` 的当前 BuildID；所有“预期”都不是实机结论。
+>
+> 结论：不要再伪造“拒绝→返回 0”。driver 已经在 `0x2c520` 里完成 map 和
+> 入队，cave 拿到的是已入队的请求；正确方向是让这个请求走完一次真实的
+> completion，并让 driver 自己生成 report。当前最确定的缺陷是 report 被
+> cave 覆盖；map 重复的来源还需要用 entry/队列状态区分“第二次 post”与
+> “unmap miss”。
+
+## 1. 现象
+
+U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条：
+
+1. precheck2：`post rc=0` 之后，usb 在完成/重提路径以 `0x1908c` 递归崩溃；
+2. breaker：`0x302c0` 的 `nop` 同时跳过了 EP0 的错误完成，未 post 就断言；
+3. safecave：首次收到 completion，但 `rc=0x748c requested=0 transferred=0`，
+   随后触发风暴把 EP0 打崩。
+
+离线已证明 fake-accept 会断言：
+
+```
+0x3da8  bl 0x4a20        ; 区间映射插入，重复/重叠返回 0
+0x3dac  cbz w0, 0x40cc   ; 插入失败 -> panic
+0x40cc  bl 0x9540        ; assert
+```
+
+即“请求没有真正入队/释放”，清理时再次插入同一区间。返回 0 绕过 driver
+簿记不可行。
+
+## 2. driver 实际路径
+
+EP `0x84` 的一次 `PostBufferAsync`：
+
+```
+app  usbDsEndpoint_PostBufferAsync
+  -> 0x2a420  IPC handler
+  -> 0x2a330  endpoint lookup / cache flush
+  -> 0x2c520  DMA map + request entry enqueue + submit
+       -> 0x3c50  map (0x3d40 -> 0x4a20 interval tree)
+       -> 0x2c5d0..0x2c664  enqueue entry, status=2
+       -> blr [controller vtable + 136]  == 0x302e0
+            -> 0x30364  ISO branch
+                 original: b.eq 0x30394  (return 0x1908c)
+                 U2 cave:  b.eq iso_enter
+```
+
+关键点：**请求项在进入 `0x302e0` 之前就已经入队并完成 DMA map**。cave 拿到
+的是已经 map 过的 IOVA（`x2`）和已入队的 entry，不是“无簿记”的裸提交。
+
+完成路径：
+
+```
+0x2a980  complete_original(controller, addr, x2, w3, w4, w5)
+  -> table[manager + 0x14c8 + index*16]
+  -> 0x2c690(entry, x1, force=w3&1, transferred=w4, lock=w5&1)
+       entry+32  requested size
+       entry+44  transferred so far
+       entry+40  status (2=active, 3/4/5=done)
+       entry+16  mapped IOVA
+```
+
+`0x2c690` 把 `transferred`（它的第四参，来自 `complete_original` 的 `w4`）
+加到 `entry+44`，再和 `entry+32` 比较：
+
+- 相等 → `0x2c714`，做 ZLP 检查，然后按状态 unmap/释放；
+- 不相等且 `force == 0` → `0x2c770`，提交剩余部分；
+- 不相等且 `force == 1` → `0x2c758`，status=3，unmap/释放。
+
+report 由 `0x2cbe0` 之前的代码从同一个 entry ring 生成（`entry+0 id`、
+`+32 requested`、`+44 transferred`、`+40 status`，count 写到 report+128）。
+
+## 3. 现有 cave 的问题
+
+### 3.1 report 被 cave 覆盖（确定）
+
+`0x2cbe0` 是 report 函数的收尾（driver 已经把 entry ring 复制到 report、
+写好了 count）。U2 payload 把这条 `add x0,x19,#0x10` 换成 `b iso_report`，
+`iso_report` 用 mailbox（magic/bitmap/actual/first TRB）覆盖 `x20+16` 的
+report 数据，但 count 仍是 driver 写的值。app 解析到的是 mailbox 字节，
+不是 `{id, requestedSize, transferredSize, urb_status}`，所以
+`usbDsParseReportData` 返回 `0x748c`、`requested=0`、`transferred=0`。
+
+这是当前最确定的缺陷：即使 completion 完全正确，report 也一定解析失败。
+
+### 3.2 拒绝时返回 0，请求和映射留在队列（确定）
+
+`fail_accept` 直接 `mov w0,#0; ret`。但此时 `0x2c520` 已经 map 并入队；
+返回 0 只让调用方跳过错误完成，entry 和映射都留在原地。下一次 map 同一
+区间就会在 `0x4a20` 插入重复区间 → `0x40cc` 断言。
+
+A23 的“完成缓冲复用会崩”是同类问题；serial640 用 640 个不同 buffer 避开
+了复用，所以看起来“稳定”。U2 用同一个静态 buffer，复用时立刻触发。
+
+### 3.3 completion 本身已经是 3072，不是 192
+
+`iso_event` 在 16 个 ED 后调用：
+
+```
+ldr w4, [x5, #20]        ; previous actual (2880 before the 16th ED)
+add w4, w4, #192         ; 3072
+str w4, [x5, #20]
+cmp w4, #3072
+b.ne done
+...
+mov w2, #0
+mov w3, #1
+mov w5, #1
+b complete_original      ; w4 = 3072
+```
+
+所以 completion 传入的 `w4` 是 3072，`entry+44` 会等于 `entry+32`（若
+requested=3072），不会走“剩余 2880”的分支。这个数不需要改。
+
+`0x2c690` 在相等后调用 `0x2a8b0` 做 ZLP 检查；`0x2a8b0` 只在端点 flag
+为 1、`[desc+3] & 2`（bulk）且 size 是 MPS 整数倍时返回 1。UAC 端点 attrs 是
+`0x05`（ISO），bit1 为 0，所以返回 0，**不会走 ZLP 提交**。也就是说
+completion 的字节数和 ZLP 都不是当前空报告的直接原因；最直接的解释是
+3.1 的 report 覆盖，但 report count 是否另有问题仍需 §7.3 确认。
+
+### 3.4 map 重复的来源仍未定
+
+崩溃栈 `0x2c584 -> 0x3ce0 -> 0x40d0` 指向一次 map（`0x3c50` ->
+`0x3d40` -> `0x4a20`）；`0x2c584` 是 `0x2c520` map 后的返回地址。但 crash
+report 只保留了 7 帧，不能排除这个帧是更早 U2 post 的残留。可能的原因：
+
+- **H1：第二次 `PostBufferAsync`（U2）。** `burstPosted` 目前是在 post 调用
+  **之后**置位；虽然事件循环是单线程，理论上不该并发，但日志只能证明
+  一次成功 post，第二次可能直接在 map 里崩、来不及打印。需要 post 序号
+  和“在 post 之前置位”来排除。
+- **H2：第一次 completion 的 `0x4c70` unmap miss。** A23 审计已发现
+  `2c690` 不检查 `4c70` 的返回值；地址不匹配会静默泄漏。之后即使
+  第二次 post 用的是新 buffer，分配器也可能把仍留在树里的 IOVA 再分
+  一次，触发重复插入。
+- **H3：EP0 控制缓冲的重复 map。** 100× SET_CUR 风暴后出现
+  `0x25c8c/0xf601` 数据阶段失败；如果控制缓冲在同一区间树上重复插入，
+  也会走同一条断言，和 U2 post 无关，`0x2c584` 只是栈上的旧帧。
+
+这三个假设不影响 3.1/3.2 的修法，但决定 3.4 要不要额外修 unmap 或控制
+路径。设计必须把“post 序号 + entry 字段 + 控制传输计数”作为下一个判别点，
+而不是继续猜。
+
+## 4. 设计目标与不变量
+
+1. 每个被接受的 submit 必须恰好完成一次：`entry+44` 等于真实传输字节，
+   status 进入 done，`0x4c70` unmap 成功，entry 出队。
+2. 拒绝不得返回 0；要么在 app 侧 precheck 阻止 post，要么让 driver 的
+   错误完成真正移除 entry（不能递归）。
+3. report 必须来自 driver 的 entry ring，不再覆盖。
+4. 每次 boot 只 post 一次；同一 buffer 在确认 unmap 前不复用。
+5. cave 仍放在 `0x68d54..0x69000`（684B）；新增逻辑优先用删除 report
+   hook 和诊断腾出的空间。
+
+## 5. 方案比较
+
+### A. 保留 driver 请求，修 report 和一次性（推荐）
+
+不重写提交路径；只做：
+
+1. 删除 `iso_report` hook，恢复 `0x2cbe0` 的 `add x0,x19,#0x10`，让
+   driver 用 entry ring 生成 report；
+2. `burstPosted` 在 post **之前**置位，并记录 post 序号；
+3. 每次 post 使用独立的 4KB 对齐 buffer，确认 unmap 前不复用；
+4. 增加完成后的 entry/队列状态读取（`ep+4`/`ep+8`、`entry+16/+32/+40/+44`），
+   同时记录 post 序号与控制传输计数，用于区分 H1/H2/H3；如果是 H2，再修
+   `0x4c70` 的参数/返回值检查。
+
+优点：改动最小，直接复用 driver 的 map/unmap/report/队列；不需要重新
+实现 ISO submit。风险：如果 H2 成立，仅删 report hook 不能解决 map 重复，
+需要额外的 unmap 修复；这可以用离线模型先确认。
+
+### B. 直接在 cave 里改 entry / unmap / 出队
+
+如果 `0x2c690` 会重复完成或无法安全调用，就在 cave 里直接写
+`entry+44`、`entry+40`，调用 `0x4c70`，推进队列索引，再触发 completion
+event。缺点：复制 driver 的锁/索引/状态机，代码量和风险都大；只有在 A
+被离线证伪后才考虑。
+
+### C. 在 driver 里补一条原生 ISO submit 路径
+
+把 `0x30394` 的拒绝替换成完整的 ISO 实现（等价于 `0x2c520` + TRB +
+`0x2c690`），不再依赖 cave。需要新 cave/更大代码空间，当前 684B 放不下；
+作为长期方向，不作为本轮方案。
+
+## 6. 推荐方案的补丁草案
+
+### 6.1 report
+
+删除 payload 里的 `REPORT_HOOK` 编辑和 `iso_report` 函数；`0x2cbe0`
+保持原指令。若还需要 mailbox 诊断，写到 `private` 日志或另一个不覆盖
+report 的位置，不能再用 `x20+16`。
+
+### 6.2 completion
+
+**不改** `w4`：当前 `[x5+20] + 192 = 3072` 已经正确。只保留 3.1 的
+report 修复；如果离线模型显示 `entry+44` 没有到 3072，再查 `x5+20` 的
+初始化（`iso_enter` 里 `stp xzr,xzr,[x5,#8]` 是否覆盖了 actual）。
+
+### 6.3 拒绝
+
+- app 侧 precheck 继续作为第一道门（endpoint word/interval/speed/ring）；
+- cave 的 `fail_accept` 不再返回 0。候选：
+  - 返回 `0x1908c` 让 `0x302c0` 走 driver 错误完成，但必须离线证明
+    它不会再递归（当前 precheck2 已证伪，需先解决重提）；
+  - 或把“小于 3072 的重提”视为已完成，完成 entry 而不是拒绝。
+- 在离线仿真确定之前，**不部署**任何 cave 拒绝路径。
+
+### 6.4 app 一次性
+
+```c
+if (g_uacCtx.burstPosted) return;
+g_uacCtx.burstPosted = true;   /* before the post, not after */
+u32 seq = ++g_uacCtx.postSeq;
+LOG("UAC U2 post begin seq=%u\n", seq);
+```
+
+并把 `g_audioEndpointBuffer` 换成每次 post 取一个未使用的 4KB 对齐槽；
+这样即使 completion 仍有残留，也不会在同一个 boot 内复用地址触发
+重复 map。它是安全网，不是 completion 修复的替代。
+
+### 6.5 完成后的状态读取
+
+在等待 completion 之后、下一次 SET_CUR 之前，用现有的 dmnt 读：
+
+- post 序号（app 日志）与控制传输失败计数；
+- `ep+4` / `ep+8`：队列索引 / count；完成后 count 应回到 post 前的值；
+- `entry = ep+0x78 + idx*0x30`；
+- `entry+16`（IOVA）、`+32`（requested）、`+40`（status）、`+44`（transferred）。
+
+如果 `count` 没减、`status` 还是 2、或 `+44` 不是 3072，就能区分 H1/H2；
+如果 U2 entry 正常而风暴后仍断言，则偏向 H3。这一步是诊断 payload，不是
+最终产品。
+
+### 6.6 预算
+
+当前 cave 668/684B。删除 `iso_report`（约 80B）后，report 修复和
+completion 不变；拒绝路径和一次性 guard 在 app 侧。预计仍有几十字节
+余量；以实际 `build_uac_u2_producer.py` 的 `cave_bytes` 为准。
+
+## 7. 离线验证
+
+### 7.1 静态测试
+
+新增 `tests/test_uac_u2_queue_compat.py`，从 `usb.elf` 解码并断言：
+
+1. `0x2c520` 在 `blr [vtable+136]` 之前写入 entry（`+32`/`+40`/`+16`）；
+2. `0x2c690` 用 `w4` 累加 `entry+44` 并与 `entry+32` 比较；
+3. `0x2cbe0` 是 report 收尾，`iso_report` hook 会覆盖 `x20+16`；
+4. 新 payload 不再包含 `0x2cbe0` 编辑；
+5. completion 的 `w4` 来自 `[x5+20] + 192`，等于 3072；
+6. `0x2a8b0` 对 attrs `0x05` 返回 0（无 ZLP）。
+
+### 7.2 Unicorn 完成路径仿真
+
+新增 `tools/replay_uac_u2_completion.py`：
+
+- 映射 `usb.elf` 的代码段和合成的 endpoint/entry 对象；
+- stub `0x30c0`（domain）、`0x4c70`（unmap）、`0x2a8b0`（ZLP 检查）、
+  controller `vtable+136`，记录调用参数；
+- 固定 `requested=3072`、`transferred=0`、`status=2`、`entry+16=IOVA`，
+  调用 `0x2c690(entry, 0, 1, 3072, 1)`：
+
+  预期：
+  - `entry+44 == 3072`；
+  - `entry+40 == 3`；
+  - `0x4c70` 被调用一次，地址等于 `entry+16`；
+  - `ep+8` 递减；
+  - 无 controller 重提（或按实际语义记录）。
+
+- 再跑 `w4=0`、`w4=192` 作为对照，确认只有 3072 会走 done 分支；
+- 如果 `0x4c70` 返回 miss 或 `entry+40` 仍是 2，把结果写进报告，先修
+  unmap 再谈 live。
+
+### 7.3 report 仿真
+
+用同一个合成 entry ring 跑 `0x2cbe0` 前的 report 构造，断言：
+
+- `count == 1`；
+- `id == entry+0`；
+- `requested == 3072`；
+- `transferred == 3072`；
+- `urb_status` 在 done 集合内；
+- 不再执行 `iso_report` 覆盖。
+
+### 7.4 构建与回归
+
+- `tools/build_uac_u2_producer.py --check` 复核 cave 大小/编辑数；
+- 新 payload 的 `cave_bytes` 必须 ≤ 684；
+- `make -C research/usb-ds-iso check` 绿；
+- 不访问 USB/SD/硬件。
+
+## 8. 实机验证（未授权）
+
+只有在 §7 全部通过、且用户明确授权后才做：
+
+- 一次 boot、一次 alt1、**1–2 次** SET_CUR（不再跑 100 次风暴）；
+- 通过条件：
+  - 设备 `UAC U2 post rc=0x0`；
+  - `UAC U2 complete rc=0x0 requested=3072 transferred=3072`；
+  - 无 `post skipped`、无 fatal、无 crash report；
+  - host 侧 16/16 个 192B 包；
+- 停止条件：任何 fatal / 断连 / 超时；读卡后恢复 `52069a44…`，不重试；
+- 不测 PCM、不混短包复测。
+
+## 9. 开放问题
+
+1. **第二次 map 的来源**：H1、H2 还是 H3？用 §6.5 的 post/控制计数和
+   entry/队列读取区分。
+2. **`0x4c70` 是否 miss**：A23 审计已发现 `2c690` 不检查返回值；U2 可能
+   同样静默泄漏。若 miss，先修 unmap 参数，再谈 completion。
+3. **report count**：driver 的 report 函数是否在 status=3 时写 count=1；
+   如果只写 status 不写 count，app 仍会解析失败。
+4. **cave 空间**：删除 `iso_report` 后是否真的够；若不够，优先删诊断，
+   不要动 TRB 构造。
+5. **A23 是否同源**：如果 H2 成立，A23 的 buffer 复用崩溃可能是同一
+   unmap 问题；可用同一 Unicorn 模型回归，不额外上硬件。
+6. **拒绝路径**：返回 0x1908c 是否一定递归？需要离线重放
+   `0x302c0 -> 0x2a980 -> 0x2c690` 的完整链，而不是只看单个函数。
+
+## 10. 决策
+
+- **采用 A**：先删 report hook、修一次性、加 entry/队列读取；用 §7.2/§7.3
+  的离线仿真确认 completion/unmap/report。
+- B 仅作为 A 被证伪后的后备；C 不在本轮范围。
+- 不恢复 `0x302c0` breaker，不再使用 fake-accept。
+- U2 实机线保持暂停；恢复需要新的明确授权。
