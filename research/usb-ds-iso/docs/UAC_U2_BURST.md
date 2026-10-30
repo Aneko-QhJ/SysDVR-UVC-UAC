@@ -33,6 +33,11 @@ A23 的 vendor 端点检查字是 `0x01000183`（address `0x83`、`bmAttributes=
 MPS256）。UAC AS 描述符由 `UacBuildAsConfiguration` 写成 `bmAttributes=0x05`
 （`ISOCHRONOUS | async sync`）、MPS192，因此检查字必须是 `0x00C00584`。
 
+U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
+`interface 3 alt 1 ... endpoints=1`、`ep 84 attr=05 mps=192 interval=4`
+（原始 7 字节为 `07 05 84 05 c0 00 04`，即 `[desc+2]=0x00C00584`）；
+证据 `private/runs/UAC-u0d-20261030/usb-config.txt`。
+
 驱动侧已离线确认 8 字节描述符是**原样**拷贝进 endpoint 对象的
 （`usb.elf` 的 `0x2fd80`：`ldur w10,[x1,#3]; str w?,[x19,#3]; str w?,[x19]`，
 对象就是 `iso_enter` 的 `x1`，`+3` 处即 attributes）。若仍按旧文档的

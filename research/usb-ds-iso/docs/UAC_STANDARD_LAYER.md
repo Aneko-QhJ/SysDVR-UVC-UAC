@@ -1,6 +1,10 @@
 > 2026-10-30 更新：U0 已通过（257B/4 接口，macOS 绑定 `AppleUSBAudio`，
 > 出现 2ch/48k 输入）；见 [CURRENT.md](CURRENT.md) 与
-> [UAC_HOST_10S.md](UAC_HOST_10S.md)。本文其余部分是 2026-10-27 的离线 P0 记录。
+> [UAC_HOST_10S.md](UAC_HOST_10S.md)。
+> 2026-10-30 更新（U2）：AS `0x84` 的 ISO producer payload 已离线构建
+> （30 条，EP `0x84`/MPS192/attrs0x05），仍未部署；下文“仍缺 ISO producer”
+> 指尚未实机验证的数据路径，见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+> 本文其余部分是 2026-10-27 的离线 P0 记录。
 
 # UAC1 标准层（离线 P0）
 

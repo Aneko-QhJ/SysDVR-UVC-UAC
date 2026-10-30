@@ -26,10 +26,11 @@
   + 3 条分支（`0x30364`/`0x30898`/`0x2cbe0`）+ 18 描述符 + 8 NOP。
   NSP `703e7795…`（88676B），`-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING`；
   编译出的 `uacU2Edits` 表 30 条与 manifest 一致。
-- **端点是 `0x00C00584`，不是 `0x00C00184`**：AS alt1 描述符的
-  `bmAttributes=0x05`（ISO + async），驱动在 `0x2fd80` 把 8 字节描述符原样
-  拷进 endpoint 对象；A23 vendor 端点是 `0x01000183`（attrs 0x01）。若按旧文档
-  写 `0x00C00184`，hook 会走 `reject_original`（返回 `0x1908c`），不会崩但拿不到数据。
+- **端点是 `0x00C00584`，不是 `0x00C00184`**：U0d 的 `usb-config.txt` 已从设备
+  读到 `ep 84 attr=05 mps=192 interval=4`（原始 `07 05 84 05 c0 00 04`）；驱动在
+  `0x2fd80` 把 8 字节描述符原样拷进 endpoint 对象，A23 vendor 端点是
+  `0x01000183`（attrs 0x01）。若按旧文档写 `0x00C00184`，hook 会走
+  `reject_original`（返回 `0x1908c`），不会崩但拿不到数据。
 - `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已改为
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 30 条，失败即拒绝启用；

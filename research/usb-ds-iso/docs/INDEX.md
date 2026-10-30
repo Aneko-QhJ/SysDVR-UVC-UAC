@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | [CURRENT.md](CURRENT.md) | 2026-10-30 | 28K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
-| [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 12K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
+| [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
 | [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-30 | 4K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
@@ -300,7 +300,7 @@
 | [STATUS.md](STATUS.md) | 2026-10-27 | 255K | 当前状态（2026-10-27，Asia/Shanghai） — 已完成[首次短包实测与回归修正](A23_SHORT24_FIRST_LIVE.md)。配套NSP/IPS部署核验后， |
 | [TEST_PLAN.md](TEST_PLAN.md) | 2026-10-27 | 212K | 后续测试条件（2026-10-22） — 当前计划约束已于 2026-10-27 更新，见 [研究规则](RESEARCH_RULES.md)。先不用虚拟机， |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | UAC 配置描述符路径审计（2026-10-29/30，离线） — 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
-| [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 12K | UAC 标准宿主 10s PCM 验证入口（2026-10-29） — 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
+| [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | UAC 标准宿主 10s PCM 验证入口（2026-10-29） — 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U1 控制请求验证准备（2026-10-30，离线） — U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |

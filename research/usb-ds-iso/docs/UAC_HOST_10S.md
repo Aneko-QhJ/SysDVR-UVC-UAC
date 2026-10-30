@@ -5,6 +5,12 @@
 本页定义入口、检查清单与设备侧缺口，并记录 U0–UAC-only 的实机结果；
 UAC 在默认构建中仍禁用。
 
+> 2026-10-30 更新：U2 的 AS `0x84` ISO producer payload 已离线构建
+> （30 条，cave 684B），host `uac-burst` 改为先提交 ISO transfer 再触发；
+> 未部署、未实机。下文的分阶段表与“设计 producer”条目是 2026-10-29 的
+> 当时状态；当前状态见 [CURRENT.md](CURRENT.md) 与
+> [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+
 ## 分阶段（U0 → U4）
 
 | 阶段 | 内容 | 通过条件 |
