@@ -19,11 +19,11 @@
   [UAC_U1_CONTROL.md](docs/UAC_U1_CONTROL.md)。
 - U1b **通过**：`SET_INTERFACE(1)` → `GET_INTERFACE=1` → `SET_INTERFACE(0)`
   均 ACK，设备日志 `action=3/4`；无 NOP、无数据 post。
-- U2 producer 已构建（30 条：684B cave + 3 分支 + 18 描述符 + 8 NOP，
-  NSP `703e7795…`，88676B），应用侧 `UAC_U2_PATCH` 在 enable 前应用，
-  alt1 后的 `SET_CUR` 向 EP `0x84` post 一次 3072B；host `uac-burst` 已改为
-  先提交 ISO transfer 再触发。端点字是 `0x00C00584`（attrs 0x05），
-  不是 `0x00C00184`。未部署、未实机。
+- U2 producer 已实机一次（未通过）：30 条 payload（684B cave + 3 分支 +
+  18 描述符 + 8 NOP，NSP `703e7795…`，88676B）应用成功（`record=29`），
+  macOS 也多次选择 alt1，但两次 `SET_CUR` 时设备端 alt 为 0，没有 post；
+  宿主 libusb 不能 claim 接口后改用 ffmpeg 采集 + `uac-control` 触发。
+  下一轮：`alt!=1` 时记 skip 日志 + 采集期间循环 SET_CUR。
 - 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
   保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
 - 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口

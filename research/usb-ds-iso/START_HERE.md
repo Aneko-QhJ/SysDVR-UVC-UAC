@@ -27,14 +27,15 @@
 ## 当前边界（2026-10-30）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-30 01:55 U1b（alt 0→1→0 **通过**）；此前 01:46 U1a 13/13、
-  01:00 U0d（257B/4 接口、`SysDVR-UVC Capture` 2ch/48k 输入）；均未测 PCM。
-  卡已恢复 `52069a44…`。
+- 最后实机：2026-10-30 14:18–14:27 U2 producer（**未通过**：补丁 `record=29`
+  与 13 次 alt1 选择正常，但宿主触发错过 alt1 窗口，0 post；已恢复
+  `52069a44…`）。此前 01:55 U1b、01:46 U1a 13/13、01:00 U0d（257B/4 接口、
+  `SysDVR-UVC Capture` 2ch/48k 输入）均通过；均未测 PCM。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。
-- 当前工作：U0、U1a、U1b 均已通过；U2 producer（30 条 payload，EP `0x84`/
-  MPS192，cave 684B，NSP `703e7795…`）与 host `uac-burst` 已构建，下一步是
-  一次有界 16×192B burst（需新授权）。路径修正版已打包并绑定新 recipe 入口、
+- 当前工作：U0、U1a、U1b 通过；U2 producer 实机一次未通过（无 post）。
+  下一轮最小改动：`alt!=1` 时记 skip 日志，宿主采集期间循环 SET_CUR
+  （每 boot 最多一次 post），需新授权。路径修正版已打包并绑定新 recipe 入口、
   通过包/入口审计，短包复测同样需要新授权。
 - 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
 

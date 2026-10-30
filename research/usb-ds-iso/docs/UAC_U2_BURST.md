@@ -89,3 +89,21 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - 一次 post 只证明“端点安装 + 一包 16 TD 的 burst”；不证明持续 PCM、时钟/反馈、
   跨块连续性或 UAC 互操作。NOP 收窄与 PCM 都在 U2 通过后再定。
 - 未部署、未实机；本文不把任何离线通过当作数据路径证据。
+
+## 2026-10-30 实机结果（一次 boot，未通过）
+
+- 构建 `703e7795…`（88676B），一次 boot；设备日志 `UAC u2 patch result=0
+  record=29`、`UAC initialized: AC=2 AS=3 EP=0x84`，无 usb fatal。
+- 枚举 `wTotalLength=257`、4 接口；AS alt1 `ep 84 attr=05 mps=192 interval=4`。
+- 宿主：`uac-burst` 在 `libusb_claim_interface(3)` 失败（四个接口均 `-3`，
+  macOS 系统驱动持有）；改用标准宿主 ffmpeg 采集 `:2` + `uac-control --set-rate`。
+- 设备侧 13×`SET_INTERFACE(1)`（action=3）、14×`SET_INTERFACE(0)`（action=4）、
+  2×SET_CUR ACK；**0× `UAC U2 post`、0× completion**。两次触发时设备端 alt 都是 0，
+  `_postUacBurst` 在 post 之前返回。主机内核日志显示 endpoint 0x84 停止时
+  abort 了 30 个请求（流确实开过）。
+- 判定：**未通过**；producer 未被触发，不能评价 EP `0x84` 的数据路径。
+- 下一轮：`_postUacBurst` 在 `alt != 1` 时也写一行日志；宿主在采集期间每 ~20ms
+  发一次 SET_CUR（设备端 `burstPosted` 保证每 boot 最多一次 post）。
+- 证据：`private/runs/UAC-u2-burst-20261030`（`run.json`、`device-log-u2.txt`、
+  `host-audio-log.txt`、`host-claim-failure.json`）、
+  `private/card-cycles/20261030-u2-burst`。卡已恢复 `52069a44…` 并安全弹出。

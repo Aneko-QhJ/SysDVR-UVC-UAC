@@ -1,12 +1,12 @@
-# 当前状态（2026-10-30 10:35，Asia/Shanghai）
+# 当前状态（2026-10-30 14:30，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-30 01:55 的 U1b；U1a/U1b 均通过，卡已恢复
-> `52069a44…` 并安全弹出。此后只做 U2 离线：基础 26 条与 producer 30 条
-> payload 均已构建，**未部署**。
+> 最后一次实机是 2026-10-30 14:18–14:27 的 U2 producer 回合（一次 boot）：
+> 补丁与 alt1 选择正常，但宿主触发时机错过 alt1 窗口，**没有 post**，判定未通过。
+> 卡已恢复 `52069a44…` 并安全弹出，无重试。
 
-## 当前进度（2026-10-30 10:35）
+## 当前进度（2026-10-30 14:30）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -14,8 +14,8 @@
 | U1a 控制 | **通过**（13/13，SET_CUR ACK） | `private/runs/UAC-u1a-r7-20261030` |
 | U1b alt | **通过**（alt 0→1→0，无 NOP） | `private/runs/UAC-u1b-20261030` |
 | U2 基础 | 已构建（26 条），被 producer payload 取代 | `private/analysis/UAC-u2-base-20261030` |
-| U2 producer | **已构建，未部署**（30 条，cave 684B） | `private/analysis/UAC-u2-producer-20261030` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u1b-alt` |
+| U2 producer | 已实机一次，**未通过**（无 post） | `private/runs/UAC-u2-burst-20261030` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261030-u2-burst` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -42,13 +42,33 @@
 - 下一步：一次有界 U2 burst（需新的明确授权）。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
+## 最近一次 U2 实机（2026-10-30，未通过）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | U2 producer `703e7795…`（88676B，30 条编辑，EP `0x84`/MPS192） |
+| 部署 | 一次 boot；卡记录 `private/card-cycles/20261030-u2-burst` |
+| 设备 | `UAC u2 patch result=0 record=29`、`UAC initialized: AC=2 AS=3 EP=0x84`；无 fatal |
+| 枚举 | `wTotalLength=257`、4 接口；AS alt1 `ep 84 attr=05 mps=192 interval=4` |
+| 宿主 | libusb 不能 claim 任何接口（macOS 系统驱动持有，`-3`）；改用标准宿主：ffmpeg 采集 `:2` + `uac-control --set-rate` 触发（不 claim） |
+| 设备事件 | 13× `SET_INTERFACE(1)`（action=3）、14× `SET_INTERFACE(0)`（action=4）、2× SET_CUR ACK；**0× `UAC U2 post`、0× completion** |
+| 主机内核 | `endpoint 0x84: aborting 30 requests`（流确实开过，URB 在飞） |
+| 判定 | **未通过**：两次 SET_CUR 时设备端 alt 均为 0，`_postUacBurst` 提前返回；producer 未被触发，不能据此评价 EP `0x84` 数据路径 |
+| 证据 | `private/runs/UAC-u2-burst-20261030`（`run.json`、`device-log-u2.txt` `c8689c60…`、`host-audio-log.txt`、`host-claim-failure.json`） |
+| 收尾 | 已恢复 `52069a44…`、清日志并安全弹出；无重试 |
+
+下一轮的最小改动：`_postUacBurst` 在 `alt != 1` 时也写一行日志；宿主在采集期间每
+~20ms 发一次 SET_CUR（设备端 `burstPosted` 已保证每 boot 最多一次 post）。
+两者都需要新构建与新授权。
+
 ## 一句话
 
 视频可用；UAC 枚举与控制平面可用，数据路径仍不可用。U0 已通过（U0d）：
 257B/4 接口的复合配置可读，macOS 绑定 AppleUSBAudio 并出现
 `SysDVR-UVC Capture` 2ch/48k 输入；U1a 已通过（r7，13/13 控制请求），
 U1b 已通过（alt 0→1→0，无 NOP）；U2 producer（30 条，cave 684B，
-NSP `703e7795…`）已构建未部署。AS alt1 尚未 post 数据，PCM 未测试。
+NSP `703e7795…`）已实机一次：补丁与 alt1 选择正常，但宿主触发错过 alt1 窗口，
+**没有 post、没有 completion**，判定未通过。AS alt1 数据路径仍未验证，PCM 未测试。
 UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
@@ -139,6 +159,10 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 - U0d 实机（2026-10-30 01:00）由用户“部署”明确授权，一次 boot；已读卡确认补丁、
   恢复 `52069a44…` 并安全弹出；原始日志
   `private/runs/UAC-u0d-20261030/device-log-u0d.txt`（`520afc3b…`）。
+- U2 producer 回合由用户“授权实机，部署”明确授权（2026-10-30 14:18），一次 boot；
+  宿主 libusb claim 失败后，用户选择“标准宿主：ffmpeg 采集 + SET_CUR”继续；
+  未 post，读卡记录后恢复 `52069a44…` 并安全弹出，无重试。
+  证据 `private/runs/UAC-u2-burst-20261030`、`private/card-cycles/20261030-u2-burst`。
 - U1a 的 r4–r7 与 U1b 在用户“如果还要部署，无需另外授权”下连续执行；
   每次一次 boot，U1a-r7/U1b 通过后均恢复 `52069a44…` 并安全弹出。
   r1–r3 的日志与恢复记录保留在 `private/runs/UAC-u1a*`。
@@ -386,9 +410,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
    剩余的是短包复测本身，需要新的明确授权。
 3. **标准 UAC 层**：U0、U1a、U1b 均已通过（257B/4 接口、音频设备；
    13/13 控制请求；alt 0→1→0）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
-   U2 producer 已构建（30 条，EP `0x84`/MPS192/attrs0x05，cave 684B，
-   NSP `703e7795…`）；host `uac-burst` 已改为先提交再触发。
-   下一步是有界 ISO burst，验证 alt1 端点安装与 16×192B，需要新授权。
+   U2 producer 已构建并实机一次（30 条，EP `0x84`/MPS192/attrs0x05，cave 684B，
+   NSP `703e7795…`）：补丁与 alt1 选择正常，但宿主触发未落在 alt1 窗口，
+   没有 post。下一步是修正触发（采集期间循环 SET_CUR），需要新授权。
    接口预算 4 已确认（UVC 2 + AC/AS 2），UAC 与 `ISO_PROBE` 不能同 build。
    Linux 10s host 入口/检查器已备，但 10s PCM 仍未就绪（先过 U2）。
 4. **持续供给**：在标准宿主（Linux `snd-usb-audio`）下测重挂延迟，再定 ring 深度；
@@ -398,8 +422,9 @@ UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
 
 ## 下一步（未授权）
 
-- 实机（UAC 下一步）：一次有界 U2 burst——一次 boot、一次 alt1、一次
-  16×192B 读；通过条件与停止条件见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+- 实机（UAC 下一步）：U2 触发修正——设备侧在 `alt != 1` 时记一行 skip 日志，
+  宿主在采集期间每 ~20ms 发 SET_CUR；一次 boot、最多一次 post
+  （`burstPosted` 保护），通过条件与停止条件见 [UAC_U2_BURST.md](UAC_U2_BURST.md)。
   需要新的明确授权，且不与 alt1 探针/路径修正版混在同一轮。
 - 离线（U2 之后）：按 burst 结果决定是否收窄 8 条全局 NOP，再谈 10s PCM。
 - 离线：标准宿主（Linux `snd-usb-audio`）10s PCM 入口与检查器已备；PCM producer
