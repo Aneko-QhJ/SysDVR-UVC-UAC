@@ -23,6 +23,13 @@ CMP_W10_4 = 0x7100115F      # cmp w10, #0x4   (interface descriptor)
 CMP_W9_30 = 0x7100C13F      # cmp w9, #0x30   (SS endpoint companion)
 CBNZ_W9_MASK = 0xFF00001F
 CBNZ_W9 = 0x35000009
+BL_MASK = 0xFC000000
+BL = 0x94000000
+CONFIG_FETCH = 0x2B520
+MOV_W1_ZR = 0x2A1F03E1
+MOVZ_W1 = 0x52800001
+MOV_W2_W20 = 0x2A1403E2
+MOVZ_W2_4 = 0x52800082
 
 
 def _words(data, sections, start, end):
@@ -69,6 +76,59 @@ class Alt1NopCoverageTests(unittest.TestCase):
             else:
                 hs += 1
         self.assertEqual((ss, hs), (4, 4))
+
+    def _bl_target(self, index):
+        word = self.words[index]
+        assert (word & BL_MASK) == BL, hex(word)
+        imm = word & 0x3FFFFFF
+        if imm & (1 << 25):
+            imm -= 1 << 26
+        return START + 4 * index + (imm << 2)
+
+    def _fetches(self):
+        fetches = []
+        for i in range(len(self.words)):
+            if (self.words[i] & BL_MASK) == BL and self._bl_target(i) == CONFIG_FETCH:
+                fetches.append(START + 4 * i)
+        return fetches
+
+    def _fetch_args(self, fetch):
+        index = (fetch - START) // 4
+        w1 = w2 = None
+        for j in range(index - 1, max(index - 20, 0), -1):
+            word = self.words[j]
+            if w1 is None:
+                if word == MOV_W1_ZR:
+                    w1 = 0
+                elif (word & 0xFFE0001F) == MOVZ_W1:
+                    w1 = (word >> 5) & 0xFFFF
+            if w2 is None:
+                if word == MOV_W2_W20:
+                    w2 = "requested"
+                elif word == MOVZ_W2_4:
+                    w2 = "ss"
+            if w1 is not None and w2 is not None:
+                break
+        return w1, w2
+
+    def test_as_interface_loops_are_patched(self):
+        # Each install loop follows one config fetch.  Fetches carry the
+        # interface index in w1 and the speed in w2 (4 = SS, w20 = requested).
+        # Interface 3 (AS) must map to 0x29F04 (SS) and 0x29FE8 (HS), both in
+        # the NOP list, so EP 0x84 is installed at the requested (HS) speed.
+        fetches = self._fetches()
+        mapping = {}
+        for site in self.expected:
+            preceding = [f for f in fetches if f < site]
+            self.assertTrue(preceding, hex(site))
+            mapping[site] = self._fetch_args(preceding[-1])
+        self.assertEqual(mapping[0x29F04], (3, "ss"))
+        self.assertEqual(mapping[0x29FE8], (3, "requested"))
+        known = {iface for iface, _variant in mapping.values() if iface is not None}
+        self.assertEqual(known, {0, 1, 2, 3})
+        # The HS branch at 0x29a84 reuses the caller's w1 = 0 (set at 0x29620).
+        self.assertIsNone(mapping[0x29AD4][0])
+        self.assertEqual(mapping[0x29AD4][1], "requested")
 
     def test_payload_has_one_nop_per_loop(self):
         self.assertEqual(len(NOP_EDITS), 8)

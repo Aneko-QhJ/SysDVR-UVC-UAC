@@ -131,13 +131,24 @@ U0d 的主机 dump 已直接读到这个端点描述符：`usb-config.txt` 里
 - **结论**：`db97b6e7…` 标 dangerous，不再部署；cave 拒绝原因（端点字/interval/
   环非空/长度）与 EP `0x84` 的 endpoint 对象是否安装都还未确定。读卡后恢复
   `52069a44…` 并安全弹出，无重试。
-- 安装路径补充（静态）：安装器 `0x295d0..0x2a04c` 共有 **8 条**描述符遍历循环
-  （4 个接口 × SS/HS）。SS 循环要求端点后跟 SS companion（`[desc+8] == 0x30`），
-  HS 循环没有这个检查，只要 alt 过滤被 NOP 就安装任何 type-5 端点（callback 以
-  `x2 = 0` 调用）。8 条循环的 alt 过滤（`cbnz w9`）正好就是 payload 的 8 条 NOP；
-  `tests/test_a23_alt1_nop_coverage.py` 从 `usb.elf` 重新找出 8 个站点、4 SS + 4 HS，
-  与 `NOP_EDITS` 逐项相等。因此 HS 下 AS alt1 的 EP `0x84` 理应被安装；若 precheck
-  仍读到 `word=0`，问题不在安装循环覆盖，而在该接口的循环是否被调用/配置是否进 HS。
+- 安装路径补充（静态）：安装器 `0x295d0..0x2a04c` 共有 **8 条** endpoint 安装
+  循环（4 个接口 × SS/请求速度）。用每条 `bl 0x2b520` 前的 `w1`（接口号）与
+  `w2`（`4`=SS，`w20`=请求速度）可以把它们逐一映射：
+
+  | 接口 | SS 循环 | 请求速度（HS）循环 |
+  | --- | --- | --- |
+  | 0 VC | `0x29694` | `0x29AD4` |
+  | 1 VS | `0x29BA4` | `0x29C88` |
+  | 2 AC | `0x29D54` | `0x29E38` |
+  | 3 AS | `0x29F04` | **`0x29FE8`** |
+
+  8 条循环的 alt 过滤（`cbnz w9`）正好是 payload 的 8 条 NOP；
+  `tests/test_a23_alt1_nop_coverage.py` 从 `usb.elf` 重新推导这张表，并断言
+  AS 的两个循环就是 `0x29F04`/`0x29FE8`、都在 NOP 列表里。SS 循环要求端点后跟
+  SS companion（`[desc+8]==0x30`），HS 循环没有该检查。因此 HS 下 AS alt1 的
+  EP `0x84` 由 `0x29FE8` 安装，NOP 覆盖没有问题；若 precheck 仍读到 `word=0`，
+  要查的是这条 pass 是否执行、AS 的配置数据是否被 `0x2b520` 取到，而不是 NOP。
+
 - 下一次尝试前必须先离线解决：
   1. **已完成**：post 前用 dmnt 短暂 attach 读 endpoint 对象（`base+0xFC300`）
      的端点字/interval/环指针、HS 速度，以及安装器 flag（`base+0x1610`）和
