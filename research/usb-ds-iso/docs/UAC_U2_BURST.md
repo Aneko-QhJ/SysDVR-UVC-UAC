@@ -186,6 +186,36 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 证据：`private/runs/UAC-u2-safecave-20261030`（日志 `98852e6a…`、崩溃
   `2a98c2b8…`）、`private/card-cycles/20261030-u2-safecave`。
 
+## 2026-10-30 断言链解码（离线）
+
+安全接受版实机后的 `User Break` 调用链已定位：
+
+```
+0x40cc  bl 0x9540            ; assert/panic stub
+        ^ 由 0x3dac: cbz w0, 0x40cc 跳入
+0x3da8  bl 0x4a20            ; 区间映射插入，返回 0 = 失败
+0x4a20  ...                  ; 按 [node+32]/[node+40] 与 (x2,x3) 比较的树插入
+0x3d40  ...                  ; 请求/队列处理函数（0x3cdc 调用，返回请求对象）
+```
+
+即：请求处理函数调用区间映射插入 `0x4a20`，插入返回 0（重复/重叠），于是
+`0x3dac` 跳到 `0x40cc` 的 panic。与“安全接受版把重提当作成功、但没有真正入队”
+一致——请求的映射/簿记状态不一致，后续清理再次插入同一区间时失败并断言。
+
+结论：**返回 0 的 fake-accept 不可行**；driver 要求请求真正入队/完成，靠返回值
+绕过它的簿记会触发断言。要兼容，cave 必须让请求真正走完 driver 的队列/映射
+流程（远不是 684B 能完成的）。
+
+## 完成报告 `0x748c` 解码（离线）
+
+- `UsbDsReportData` 是 `{ {id, requestedSize, transferredSize, urb_status}[8], count }`；
+- 实机 `complete rc=0x748c requested=0 transferred=0`：`0x748c` 不是 libnx 错误
+  （`MAKERESULT(345, …)` 不会得到它），更像 driver 侧状态（module `0x3A`、
+  desc `0x8C`）；requested/transferred 为 0 说明报告里没有匹配 `urbId=388` 的
+  条目或条目为空；
+- 下一次（若继续）应把 `report_count`、每个 entry 的 `id/urb_status` 一起打出来，
+  确认是“无匹配条目”还是“条目状态为取消/错误”。
+
 ## 风险与边界
 
 - 8 条 NOP 是全局的：Configured 时所有接口/速度的 alt 端点都会安装。UAC build 只有
