@@ -554,3 +554,14 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   只 post 一个 3072B；100 ms 超时调用 `usbDsEndpoint_Cancel`，不在 alt0
   teardown 留下 pending 请求。payload 不变（29 条 / cave 592B）。未部署、
   0 实机；作为下一轮 raw timing 的安全候选。
+
+## 2026-10-31 v14：cave event filter 改为 DCI 9（离线）
+
+- 静态发现：UAC 版 cave 的 `iso_event` 仍用 `cmp w9, #7`（A23 EP0x83 的
+  DCI），而 UAC EP0x84 的 DCI 是 9。UAC 的 ED 事件全部落到
+  `event_original`，cave mailbox 的 completed/actual 不会更新；这与 v11
+  日志 `ring box completed=0 actual=0` 一致。
+- v14 `4ba21107…`（91101B）只把该过滤改成 `#9`，并叠加 v13 的
+  `-DUAC_U2_ONE_SHOT` + 超时 `usbDsEndpoint_Cancel`。payload 仍 29 条 /
+  cave 592B。未部署、0 实机。
+- 下一轮 raw timing 应优先用 v14 fresh boot，而不是 v11 train。

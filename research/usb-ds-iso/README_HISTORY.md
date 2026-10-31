@@ -1451,3 +1451,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-10-31 离线根因假设：v11 train 第二个 `PostBufferAsync` 在 100 ms 超时后 `break`，没有取消已提交 request；host 恢复 alt0/关闭 endpoint 时 usb 模块在 teardown 遇到 pending ISO request，crash stack `0x2c584` 位于 `usb.elf` 的 `0x2c520`（unmap/submit），`0x2a3f4/0x2a464` 在 PostBufferAsync 附近。另：第一次 raw probe 先 submit 后 SET_CUR，Linux xHCI 立即排 16 个 frame，而 cave 把 TD 排在 +32 frame，故 `valid=16/bytes=0` 是时序而非零长度 TD。下一步改用 v10 one-shot `55f2a4eb…`（无第二个 pending）+ trigger-first/delay 或 --transfers 重测；不再用 v11 train 上机。
 
 2026-10-31 v13 one-shot+cancel（离线）：`-DUAC_U2_ONE_SHOT` 只 post 一个 3072B；100 ms 超时调用 `usbDsEndpoint_Cancel`，避免 alt0 teardown 留下 pending ISO request（v11 train 第二个 post 的疑似 crash 根因）。payload 不变（29 条 / cave 592B），NSP `5bfcc67a…`（91101B）。未部署、0 实机；下一轮 raw timing 用 fresh boot + trigger-first/delay。
+
+2026-10-31 v14 DCI9 event filter（离线）：静态发现 UAC 版 cave 的 `iso_event` 仍过滤 A23 的 DCI 7，而 EP0x84 的 DCI 是 9；UAC ED 事件全部落到 `event_original`，cave mailbox 不更新（与 v11 `ring box completed=0` 一致）。v14 `4ba21107…`（91101B）把过滤改为 `#9`，并叠加 v13 的 one-shot + 超时 `usbDsEndpoint_Cancel`。payload 仍 29 条 / cave 592B；未部署、0 实机；下一轮 raw timing 优先用 v14。

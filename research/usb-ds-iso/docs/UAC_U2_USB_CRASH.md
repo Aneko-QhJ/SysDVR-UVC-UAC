@@ -54,6 +54,25 @@ one-shot 已被第一次尝试消耗，所以之前的 trigger-first 结果无�
 6. 启动游戏 → `usb` sysmodule fatal；crash/fatal/erpt 报告生成。
 7. 读卡：恢复 `52069a44…`、删日志/新报告、安全弹出。
 
+## 另一个静态 bug：UAC cave 仍在过滤 A23 的 DCI 7
+
+`iso_burst_uac84_noreport.S` 的 `iso_event`：
+
+```asm
+ubfx w9, w8, #16, #5
+cmp  w9, #7          /* A23 EP0x83 的 DCI */
+b.ne event_original
+```
+
+UAC 端点是 `0x84`，DCI 是 **9**；因此 UAC 的 ED 事件全部落到
+`event_original`，cave 的 mailbox（completed/actual/first）根本不会更新。
+这与 v11 日志里 `ring box completed=0 actual=0` 一致。驱动仍能给出
+report（所以第一包显示 3072/3），但 cave 的 completion 路径没有被使用。
+
+v14 `4ba21107…` 只把该过滤改成 `#9`，并叠加 v13 的 one-shot+cancel。
+这可能是“第二个 post 没有 completion”的另一个原因，下一轮应优先用
+v14，而不是继续用 v11。
+
 ## 根因假设（离线，待验证）
 
 v11 的 32-post train 在第二个 `PostBufferAsync` 之后 100 ms 超时并
@@ -79,9 +98,9 @@ if (R_FAILED(eventWait(&...CompletionEvent, 100E+6))) {
 
 ## 下一步（离线）
 
-1. **不再用 v11 train 做 raw 测试**；改用 v13 one-shot+cancel
-   `5bfcc67a…`（91101 B，29 edits / cave 592B），它只 post 一个 3072B
-   请求，并在超时调用 `usbDsEndpoint_Cancel`，不会留下 pending request。
+1. **不再用 v11 train 做 raw 测试**；改用 v14 `4ba21107…`（91101 B，
+   29 edits / cave 592B），它只 post 一个 3072B 请求，超时调用
+   `usbDsEndpoint_Cancel`，并把 UAC event filter 从 DCI 7 改成 9。
 2. raw host 下一轮用 **fresh boot + `--trigger-first --delay-ms 30`**
    （或 `--transfers` 多 URB）匹配 cave 的 +32 frame；测试结束前不要让
    host 恢复 alt0，先确认 completion 已到。
