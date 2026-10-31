@@ -71,16 +71,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线）：v14 已稳定，但 multi-URB 实现无效（顺序重提交、每 URB
-  20 s、SSH 输出丢失）。先改 host 工具，不再上机：
-  (1) 每个 URB 分配新的 transfer，不在同一对象上反复 submit；
-  (2) 多个 URB **并发**提交（例如 8 个各 16×192，覆盖约 128 ms），
-  而不是等一个空 URB 完成再发下一个；
-  (3) stdout 设 `setvbuf(..., _IONBF, ...)`，并把结果直接写到 guest 文件，
-  避免 SSH 缓冲丢失；
-  (4) 缩短单 URB 等待（例如 200 ms），避免 160 s 挂起；
-  (5) 仍用 v14 one-shot；设备 post 只有一次，host 必须在 +32 frame 附近
-  有并发 URB。改完先离线编译；下一次实机需新授权。
+- 下一步（host 工具已改，待一次新授权 boot）：`uac-raw-probe` 现在
+  **并发**分配/提交 N 个独立 transfer（不再 resubmit 同一对象），默认
+  `--timeout-ms 500`、无缓冲 stdout；v14 NSP 不变。下一轮命令：
+  `./uac-raw-probe --transfers 8 --timeout-ms 500`（submit-first；8×16 包
+  覆盖约 128 ms，应覆盖 cave 的 +32 frame），结果重定向到 guest 文件。
+  设备仍是 v14 one-shot；一次 boot，不启动游戏。8 个 descriptor-parser
+  NOP 的全局风险仍未隔离，暂不动。下一次实机需新的明确授权。
 
 ## VM 可行性（2026-10-31 22:10）
 

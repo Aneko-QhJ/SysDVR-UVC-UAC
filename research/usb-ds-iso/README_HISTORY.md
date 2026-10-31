@@ -1457,3 +1457,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-10-31 23:30 v14 DCI9 raw 实机（一次 boot）：v14 `4ba21107…`（91101B，one-shot+cancel+DCI9）。Linux claim/alt1 成功；`--trigger-first --delay-ms 30 --transfers 2`。host `transfer[0] valid=16 bytes=0`、`transfer[1] valid=1 bad=15`，总 bytes=0；设备 precheck dci=9、one-shot post 3072、report xfer=3072 status=3、complete 3072。**没有新 crash/fatal/erpt 报告**：one-shot+cancel 消除了 v11 pending-request 崩溃。DCI9 没有修复零字节，剩余问题在 data/timing。读卡后恢复 `52069a44…`、删日志、安全弹出，无重试。证据 `private/runs/UAC-u2-v14-dci9-raw-20261031/`、`private/card-cycles/20261031-u2-v14-dci9-raw/`。
 
 2026-10-31 23:47 v14 第二次 boot（submit-first 8 URB）：设备 one-shot post 3072，但 report `xfer=0 status=5`、`0x748c`，ring cons=ring+0x40；**没有新 crash**。host 输出被 SSH 缓冲丢失；工具在同一 transfer 上顺序 resubmit，每个空 URB 等 20 s，8 个约 160 s，不是有效时序探测。下一步先改 host：每 URB 新 transfer、8 个并发、缩短等待、无缓冲写文件；再申请实机。卡恢复 `52069a44…`、删日志、安全弹出。
+
+2026-11-01 host 工具并发化（离线）：`uac-raw-probe` 改为每个 URB 独立 transfer、一次并发提交 N 个，`--timeout-ms`（默认 500 ms）超时 cancel，stdout 无缓冲；修正之前同对象顺序 resubmit/20 s 等待的无效探测。下一轮 v14 命令 `--transfers 8 --timeout-ms 500`（submit-first，覆盖 +32 frame）；未上机。

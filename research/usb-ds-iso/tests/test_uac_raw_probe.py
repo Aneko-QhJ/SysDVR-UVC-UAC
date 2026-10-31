@@ -28,23 +28,30 @@ class UacRawProbeTests(unittest.TestCase):
         self.assertIn("if (!no_trigger && !trigger_first)", self.source)
         self.assertIn("libusb_submit_transfer", self.source)
         for token in ("libusb_fill_iso_transfer", "libusb_set_iso_packet_lengths",
-                      "0x22, 0x01, 0x0100", "done packets=%u",
+                      "0x22, 0x01, 0x0100", "done transfers=%u packets=%u",
+                      "on_iso_done", "concurrent transfers=%u",
                       "transfer[%u] status=%d", "packet[%u] status=%d"):
             self.assertIn(token, self.source)
 
     def test_claim_only_and_no_detach_options(self):
         for token in ("--claim-only", "--no-detach", "--no-trigger",
                       "--interface", "--endpoint", "--packets",
-                      "--trigger-first", "--delay-ms", "--transfers"):
+                      "--trigger-first", "--delay-ms", "--transfers",
+                      "--timeout-ms"):
             self.assertIn(token, self.source)
 
     def test_binary_rejects_bad_packet_count(self):
         if not BINARY.is_file():
             self.skipTest(f"missing {BINARY}; run make -C host uac-raw-probe")
-        result = subprocess.run([str(BINARY), "--packets", "0"],
-                                capture_output=True, text=True, timeout=10)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("packets must be", result.stderr)
+        for args, value, text in (
+                ("--packets", "0", "packets must be"),
+                ("--transfers", "0", "transfers must be"),
+                ("--transfers", "33", "transfers must be"),
+                ("--timeout-ms", "1", "timeout-ms must be")):
+            result = subprocess.run([str(BINARY), args, value],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(text, result.stderr)
 
 
 if __name__ == "__main__":

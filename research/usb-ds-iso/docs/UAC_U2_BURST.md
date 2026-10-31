@@ -589,3 +589,12 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   URB 等 20 s，8 个约 160 s，不能作为有效时序探测。
 - 下一步先改 host：每 URB 新 transfer、8 个并发、缩短等待、无缓冲写文件；
   再申请实机。v14 本身仍稳定。
+
+## 2026-11-01 host 工具：并发 transfer（离线）
+
+- `uac-raw-probe` 改为并发模式：为每个 URB 分配独立 transfer/buffer，
+  一次提交 N 个；`--timeout-ms` 控制总等待（默认 500 ms），超时 cancel；
+  stdout 无缓冲。修正了之前“同一 transfer 顺序 resubmit + 每 URB 20 s”
+  的无效探测。
+- 下一轮 v14 命令：`./uac-raw-probe --transfers 8 --timeout-ms 500`
+  （submit-first，8×16 包覆盖约 128 ms，覆盖 +32 frame）。未上机。

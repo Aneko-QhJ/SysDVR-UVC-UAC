@@ -34,8 +34,9 @@
 - **one-shot+cancel 稳定；DCI9 没有修复零字节**。第二次 v14 boot 用
   submit-first `--transfers 8`：设备空 report `xfer=0 status=5`/`0x748c`，
   无新 crash；host 输出丢失，且顺序重提交太慢，不是有效时序探测。
-- 下一步先改 host：每 URB 新 transfer、并发 8 个、缩短等待、无缓冲输出；
-  改完再申请实机。卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停。
+- host 工具已改为并发（每 URB 新 transfer、`--timeout-ms 500`、无缓冲）；
+  下一轮 v14 命令 `--transfers 8 --timeout-ms 500`（submit-first，覆盖
+  +32 frame）。需一次新授权 boot；卡恢复 `52069a44…`、安全弹出；硬件线暂停。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
