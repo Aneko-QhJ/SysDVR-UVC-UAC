@@ -24,20 +24,20 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 01:45）
+## 当前边界（2026-11-01 01:55）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 01:41 v16 `941646e8…`（91955B）。Switch 开机后、
-  probe 运行前就 **usb sysmodule fatal 2162-0002**（PC `0x19254`，creport
-  User Break `0x1927c`，栈含 `0x2c584/0x2a3f4/0x2a464`）。设备日志只有启动
-  和一次 alt0 `SET_INTERFACE(0)`，**v16 仪器化一次都没执行**；一次授权消耗、
-  无重试。
-- 上一次有效数据：2026-11-01 01:05 v15 只完成第 1 个 burst（3072/3），
-  第 2 个 post `rc=0` 后 100 ms 无 completion 被 cancel，host 3072B；
-  host 全程有 URB 在飞，cave `prod == cons` 门是首要嫌疑。
-- 下一阶段：v16 仍未验证（候选不变，`941646e8…`）。再上机需**新授权**，且
-  开机前 Detach/Suspend Debian VM，主界面后再 attach 并立即运行 probe。
-  详见 [docs/UAC_U2_CONTINUOUS.md](docs/UAC_U2_CONTINUOUS.md)。
+- 最后实机：2026-11-01 01:49 **v16 r2**（VM 开机前 suspend，attach 后立即
+  probe）。host 仍只有 3072B（urb2/urb3），但设备 `pre/post/done` 日志显示
+  **两次 post 都进了 cave 并写了完整 TD 集**（`prod=ring+0x200`、box `ISO2`、
+  frame 0x64E→0x728）；seq1 `complete 3072/3`，seq2 100 ms 无 completion。
+- 结论：**cave 的 `prod == cons` 门被排除**。第 1 个完成后驱动把 prod/cons
+  复位回 ring base（`done` 行），第 2 套 TD 落在控制器已消费 0x200 字节之后，
+  controller 不再取指。新出现一个 erpt `2162-0004`（无 creport/fatal，暂未归属）。
+- 下一阶段（离线）：读 `doorbell_tail`（`0x31c74`）和完成路径，确认控制器
+  dequeue/doorbell 是否复位；候选修法是 cave 跨请求维护 ring 写入位置或完成时
+  复位 dequeue。**再上机需新授权**；详见
+  [docs/UAC_U2_CONTINUOUS.md](docs/UAC_U2_CONTINUOUS.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停，下一次需新授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备

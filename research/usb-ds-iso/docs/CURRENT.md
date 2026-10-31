@@ -1,18 +1,20 @@
-# 当前状态（2026-11-01 01:45，Asia/Shanghai）
+# 当前状态（2026-11-01 01:55，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 01:41 的 **v16 boot 崩溃**：Switch 开机后、
-> host probe 还没跑，设备日志只有启动 + 一次 alt0 `SET_INTERFACE(0)`，随后
-> usb sysmodule fatal 2162-0002（PC `0x19254`；creport User Break `0x1927c`、
-> LR `0x9668`，栈含 `0x2c584/0x2a3f4/0x2a464`），与 10-31 Debian raw 的
-> fatal 签名一致。**v16 仪器化一次都没执行**（无 `UAC U2 precheck/post/state`
-> 行），本轮对 v16 问题无效；一次授权已消耗，无重试。
-> 下一次上机需新授权，并先修正 attach 纪律：开机前 VM 不得占用设备，开机后
-> attach 与 probe 紧挨着执行。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
-> 卡恢复 `52069a44…`、删日志/新崩溃报告、安全弹出。
+> 最后一次实机是 2026-11-01 01:49 的 **v16 r2**（VM 开机前 suspend，attach 后立即
+> probe）：host 仍只有 3072B（urb2/urb3），但设备日志首次给出关键事实——
+> **两次 post 都进了 cave、都写了完整 TD 集**（`post` 行 `prod=ring+0x200`、
+> box `ISO2`、trb0 frame 0x64E→0x728），seq1 完成 3072/3，seq2 100 ms 无
+> completion。**cave 的 `prod == cons` 门被排除**；第 1 个完成后驱动把
+> prod/cons 重置回 ring base（`done` 行），第 2 个 TD 集落在控制器已消费的
+> 位置之后，控制器不再取指。下一次上机需新授权；下一步先离线分析
+> `doorbell_tail`/完成路径的 ring 复位。详见
+> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> 本轮出现一个新 erpt `2162-0004`（Data Abort），无 creport/fatal，暂未归属。
+> 卡恢复 `52069a44…`、删日志/新 erpt、安全弹出。
 
-## 当前进度（2026-11-01 01:45）
+## 当前进度（2026-11-01 01:55）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -44,7 +46,7 @@
 | **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
-| **v16 状态仪器化** | **实机一次，boot 崩溃**：probe 未运行；日志只有启动 + 一次 alt0 `SET_INTERFACE(0)`；usb fatal 2162-0002 / PC `0x19254`（creport `0x1927c`）；仪器化未执行 | `private/runs/UAC-u2-v16-submit-state-20261101` |
+| **v16 状态仪器化** | **实机两次**：r1 boot 崩溃（probe 未运行）；r2 完成——两次 post 都写 TD、seq2 无 completion；**cave 门被排除**，问题在控制器/ring 复位 | `private/runs/UAC-u2-v16-submit-state-r2`、`private/runs/UAC-u2-v16-submit-state-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -81,15 +83,27 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v16 未验证，需新授权 + attach 纪律）：(1) v15 实机已证明 host 全程
-  有 URB 时第 2 个 post 仍无 completion，`fail_accept` 返回 0 的 cave 门仍是
-  首要嫌疑（`iso_enter` 要求 `prod == cons`）；(2) v16 `941646e8…`（91955B）
-  只改 app：每次 post **前**记录 `ring/prod/cons/copy/cycle`，post **后**
-  （每个 seq）dump box/trb 与请求表项，payload 仍与 v14 相同，但**本次 boot
-  崩溃发生在仪器化之前**，候选仍未验证；(3) 下一次上机前先 detach/suspend
-  Debian VM，开机进入主界面后再 attach，并**立即**运行 probe；(4) 8 个
-  descriptor-parser NOP 的全局风险仍未隔离。详见
-  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+- 下一步（离线分析，先不再上机）：(1) v16 r2 已排除 cave 门——两次 post 都
+  写了完整 TD，seq2 的 TD 集没有被控制器服务；(2) 第 1 个完成后驱动把
+  prod/cons 重置回 ring base（`done` 行），而控制器已消费 0x200 字节，
+  第 2 个 TD 集落在控制器 dequeue 之后；(3) 离线读 `doorbell_tail`
+  （`0x31c74`）与完成路径，确认控制器 dequeue 是否被复位、doorbell 目标
+  是否仍指向 base；候选修法是让 cave 维护跨请求的 ring 写入位置，或在完成后
+  复位控制器 dequeue；(4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。
+  下一次上机需要新授权。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+
+## 最近一次实机：v16 r2（2026-11-01 01:49，cave 门被排除）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 开机前 Debian VM suspend；主界面后 resume → attach `1209:ca57` → 立即 probe（第一次 probe 因枚举未完成未触发，随后这一次是唯一设备交互） |
+| host | claim/alt1/SET_CUR 成功；`urb[2] t=33ms 768B` + `urb[3] t=49ms 2304B` = **3072B**；`urb[4..62]` 全 bad；`valid=49 bad=943 bytes=3072`；`cancel remaining=8/64` |
+| seq1 状态 | `pre`：prod=cons=ring、copy=`…dff0`、`empty=1`；`post`：prod=ring+0x200、box `ISO2`、trb0 ctl=`0x64e01411`（frame 0x64E）；`done`：prod=cons=ring（驱动复位）→ `complete 3072/3` |
+| seq2 状态 | `pre`：prod=cons=ring、`empty=1`；`post`：prod=ring+0x200、box `ISO2`、trb0 ctl=`0x72801411`（frame 0x728）→ **100 ms 无 completion → cancel=0** |
+| 判定 | **cave 接受并写了两套 TD**；第 2 套与第 1 套结构相同（同 ring base、同 cycle、新 frame），但只有第 1 套被控制器服务。门不是原因，问题在 ring 复位/dequeue/doorbell |
+| 附注 | 出现新 erpt `2162-0004`（Data Abort，01:49），无 creport/fatal；设备全程在线、日志无 crash 标记，暂未归属 |
+| 证据 | `private/runs/UAC-u2-v16-submit-state-r2`（`host-raw.txt` `a11b4f3e…`、`device-log-v16-r2.txt` `627e7ecf…`、`erpt-eaf3ad7c.txt` `7e883bf9…`）、`private/card-cycles/20261101-u2-v16-submit-state-r2` |
+| 收尾 | 恢复 `52069a44…`、删日志/新 erpt、安全弹出；无重试 |
 
 ## 最近一次实机：v16 boot 崩溃（2026-11-01 01:41）
 
@@ -607,7 +621,13 @@ complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。**v15 0
 顺序 4-burst 只完成第 1 个（3072/3），第 2 个 `rc=0` 后 100 ms 无 completion
 被 cancel（`posted=2 completed=1`）；host 3072B、全程有 URB 在飞，无 crash。
 **v16 01:41 实机**：boot 崩溃（usb fatal 2162-0002 / PC `0x19254`），probe
-未运行、仪器化未执行，候选仍未验证；一次授权消耗、无重试。UAC 默认仍禁用
+未运行、仪器化未执行，候选仍未验证。**v16 r2 01:49 实机**（VM 开机前 suspend、
+attach 后立即 probe）：host 仍 3072B；设备 `pre/post/done` 显示两次 post 都
+进了 cave 并写了完整 TD（`prod=ring+0x200`、box `ISO2`、frame 0x64E→0x728），
+seq1 完成 3072/3、seq2 100 ms 无 completion——**cave 的 `prod == cons` 门被
+排除**；第 1 个完成后驱动把 prod/cons 复位回 ring base，第 2 套 TD 落在
+控制器已消费的 dequeue 之后。下一步离线分析 `doorbell_tail`/完成路径的 ring
+复位；再上机需新授权。UAC 默认仍禁用
 （仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。

@@ -1,12 +1,14 @@
-# UAC U2 连续 producer（v15 实机一次失败；v16 待验证）
+# UAC U2 连续 producer（v15 失败；v16 r2 排除 cave 门）
 
-> 状态：涉及两轮实机。v15（2026-11-01 01:05）：第 1 个 burst 完成 3072/3，
-> 第 2 个 post `rc=0` 后 100 ms 无 completion 被取消（`train end posted=2
-> completed=1`），host 只收到一个 3072B burst，无 crash。v16（2026-11-01
-> 01:41）：**boot 崩溃**（usb fatal 2162-0002，PC `0x19254`），probe 未运行，
-> 仪器化一次都没执行，候选仍未验证。硬件授权已用尽（`remaining=0`），
-> 下一次上机需要新的明确授权（见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。
-> 当前事实以 [CURRENT.md](CURRENT.md) 为准。
+> 状态：三轮相关实机。v15（2026-11-01 01:05）：只完成第 1 个 burst
+> （3072/3），第 2 个 post `rc=0` 后 100 ms 无 completion，被取消。
+> v16 r1（01:41）：**boot 崩溃**（usb fatal 2162-0002），probe 未运行。
+> v16 r2（01:49，VM 开机前 suspend）：host 仍只有 3072B，但设备 `pre/post`
+> 日志证明**两次 post 都进了 cave、都写了完整 TD 集**，只有第 1 套被服务——
+> **`prod == cons` 门被排除**，问题在 ring 复位/控制器 dequeue。
+> 硬件授权已用尽（`remaining=0`），下一次上机需要新的明确授权
+> （见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。当前事实以
+> [CURRENT.md](CURRENT.md) 为准。
 
 ## 问题卡
 
@@ -140,7 +142,7 @@ v16 只改 app，payload/cave 与 v14/v15 逐字节相同：
 | --- | --- | --- |
 | `pre` 行 `prod != cons`（`empty=0`） | cave 门拒绝第 2 次提交 | 修 app：post 前等环空（有界等待，不重试），或让 cave 支持非空环 |
 | `pre` 行 `prod == cons`（`empty=1`）但 post 后 box 仍 0 | `iso_enter` 没被调用，问题在驱动提交/门铃路径 | 静态分析 `0x2c520`→`0x302e0` 在第二次提交时的分支，再定 v17 |
-| post 后 box `ISO2`/trb 非零，但无 completion | cave 写了 TD，问题在控制器/doorbell | 对比 TRB frame/cycle 与 v14 成功值 |
+| post 后 box `ISO2`/trb 非零，但无 completion | cave 写了 TD，问题在控制器/doorbell | **r2 命中**：两套 TD 都写入，seq2 不被服务；对比 ring base/cycle 与控制器 dequeue |
 
 命令与 v15 相同（`--trigger-first --delay-ms 30 --transfers 8 --rearm
 --max-urbs 64 --timeout-ms 1000`），**需要新的授权**；不部署、不重试。
@@ -165,6 +167,35 @@ v16 只改 app，payload/cave 与 v14/v15 逐字节相同：
   `private/card-cycles/20261101-u2-v16-submit-state`。
 - 运行纪律（下一次）：开机前 Detach/Suspend Debian VM，确保设备不被占用；
   主界面出现后再 attach，并**立即**运行 probe，缩短 Linux 驱动接管窗口。
+
+## 2026-11-01 01:49 v16 r2 实机：cave 门被排除
+
+按新纪律：VM 在开机前 suspend，主界面后 resume，attach `1209:ca57` 并立即
+probe。第一次 probe 因枚举未完成报 “not accessible”（无设备交互），随后这次
+是唯一一次真实设备交互。
+
+| seq | `pre` | `post` | 结果 |
+| --- | --- | --- | --- |
+| 1 | prod=cons=ring、copy=`…dff0`、`empty=1` | prod=ring+0x200、box `ISO2`、trb0 ctl=`0x64e01411`（frame 0x64E） | `complete 3072/3`；`done` 行 prod=cons=ring（驱动复位） |
+| 2 | prod=cons=ring、`empty=1` | prod=ring+0x200、box `ISO2`、trb0 ctl=`0x72801411`（frame 0x728） | **100 ms 无 completion → cancel=0** |
+
+host：`urb[2] 768B` + `urb[3] 2304B` = 3072B，之后全 bad；
+`valid=49 bad=943 bytes=3072`，`cancel remaining=8/64`。
+
+结论：
+
+- **门不是原因**：两次 `pre` 都 `empty=1`，两次 `post` 都出现 `ISO2` box 和
+  推进的 prod，cave 确实为第 2 个请求写了 16 Isoch + 16 ED TRB。
+- 两套 TD 结构相同（同一 ring base、同一 cycle=1、新 frame），但只有第 1 套
+  被控制器服务；host 侧对应时段全是 transaction error。
+- 第 1 个完成后，驱动把 prod/cons 复位到 ring base、copy 复位到 `…dff0`
+  （`done` 行）；此时控制器已经消费了 0x200 字节。第 2 套 TD 写在 base，
+  很可能落在控制器 dequeue 之后，或 `doorbell_tail` 没有让控制器回到 base。
+- 下一步（离线）：读 `doorbell_tail`（`0x31c74`）与完成路径，确认 dequeue
+  是否被复位、doorbell 目标；候选修法是让 cave 跨请求维护 ring 写入位置，
+  或完成时复位控制器 dequeue。**任何时候只允许一个 pending 请求的约束不变。**
+- 本轮还出现一个新 erpt `2162-0004`（Data Abort，01:49），无 creport/fatal，
+  设备全程在线、日志无 crash 标记；暂未归属，保留为开放项。
 
 ## 离线证据（2026-11-01 00:52）
 
