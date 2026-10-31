@@ -1,22 +1,21 @@
-# 当前状态（2026-11-01 03:00，Asia/Shanghai）
+# 当前状态（2026-11-01 03:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
 > 最后一次实机是 2026-11-01 02:4x 的 **v19 event-code**（VM 开机前 suspend，
-> attach 后立即 probe）：host 仍只有 3072B（urb2 1152B + urb3 1920B）；
-> 设备 `post` 的 box 为 `magic=ISO2 event=0 …`，而 `eventWait` 之后的 box
-> **被驱动清成全 0**——v19 的完成码在 app 读取前就被清掉。
-> 从 cave 自己的接受检查反推：成功 ED 事件满足 `[event+8]>>24 == 1`，所以
-> `event_original` 的 **code-1 分支（`0x31230`）** 才是我们的路径，不是
-> 0xdb/0xde 的 `0x30ff4` ack。
-> driver 的 code-1 路径：**每个 ED 调用一次 complete_original**
-> （`w4=192`、`w3=0 force`、`w5=1`）并逐事件更新 cons；cave 则是
-> “累计到 3072 后一次完成（`w4=3072`、`w3=1`）并把 cons=prod”。
-> 下一步 **v20**：改成 per-ED 完成 + 按驱动方式更新 cons（需新授权）；
+> attach 后立即 probe）：host 仍只有 3072B；设备 post 的 box 为 `magic=ISO2`
+> 但 `eventWait` 后**被驱动清成全 0**，完成码到不了 app。由 cave 自己的接受
+> 检查反推：成功 ED 的码是 **1**，driver 的 code-1 路径才是被跳过的那条。
+> driver 的 code-1 路径（`0x31230` → `0x31cf0`）：**每个 ED 调一次
+> `complete_original(w4=192, w3=0)`**、并逐事件把 `cons` 指向下一个 TRB；
+> cave 之前是“累计到 3072 一次完成（w4=3072, w3=1）+ cons=prod”。
+> 2026-11-01 03:15 离线完成 **v20 per-ED 候选**（`48b251ea…`，91960B，cave
+> **640B**）：cave 对每个 ED 调 `complete_original(w4=192, w3=0, w5=1)` 并按
+> 驱动方式更新 cons；3072 只做诊断标志。**0 实机**，下一次上机需新授权；
 > 详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 > 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 03:00）
+## 当前进度（2026-11-01 03:15）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -52,6 +51,7 @@
 | **v17 ring-advance 诊断** | **实机一次，位置假设被否**：`advance rc=0`、seq2 TD 写到 `ring+0x200`，仍 100 ms 无 completion；ring 位置不是阻塞点 | `private/runs/UAC-u2-v17-ring-advance-20261101` |
 | **v18 事件掩码仪器化** | **实机一次，掩码假设被否**：`mask=0/bit9=0/ep10=0` 始终成立；seq2 `td@cons` 有效仍无 completion；新焦点是 0xdb/0xde 的门铃 ack | `private/runs/UAC-u2-v18-event-mask-20261101` |
 | **v19 事件完成码** | **实机一次，完成码被驱动清掉**：post 时 box `ISO2`，`eventWait` 后全 0；成功 ED 的码是 1（cave 检查），driver 的 code-1 路径是 per-ED 完成 + cons 更新 | `private/runs/UAC-u2-v19-event-code-20261101` |
+| **v20 per-ED 完成** | **离线已构建，0 实机**：`48b251ea…`（91960B），cave 640B；每个 ED 调 complete_original(w4=192, w3=0) + cons 更新 | `private/analysis/UAC-u2-v20-per-ed-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -88,13 +88,12 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v20，需新授权）：(1) v17 否掉 ring 位置，v18 否掉事件掩码，v19 显示
-  完成码被驱动清掉、成功 ED 的 code 是 1；(2) driver 的 code-1 路径是
-  `0x31230` → `0x31cf0`：每个 ED 调一次 `complete_original(w4=192, w3=0,
-  w5=1)`，并在 `0x31264` 更新 `cons`；(3) cave 目前是累计到 3072 后一次完成
-  （w4=3072、w3=1）并 `cons=prod`，这个差异可能触发驱动的“完成后回 base”
-  清理；(4) v20 改成 per-ED 完成 + 逐事件更新 cons，离线 Unicorn 验证后构建，
-  一次 boot 验证；(5) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
+- 下一步（v20 已离线构建，等待新授权）：(1) v19 确认 driver 的 code-1 路径是
+  每 ED 一次 `complete_original(w4=192, w3=0)` + 逐事件 cons；(2) v20
+  `48b251ea…`（cave 640B）已照此改写，并在 `virtual_tag` 保存 TRB 地址、用
+  Link 判断回卷；(3) 一次 boot：若 seq2 收到数据 → per-ED 修复了清理路径；
+  若仍无数据但日志正常 → 回到 `0x2c7b4` 清理或控制器 halt；(4) 任一 crash
+  立即停、不重试；(5) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
   [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 最近一次实机：v19 event-code（2026-11-01 02:4x，完成码被驱动清掉）

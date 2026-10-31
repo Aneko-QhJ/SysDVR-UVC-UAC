@@ -24,6 +24,8 @@ WORK17 = ROOT / "private/analysis/UAC-u2-v17-ring-advance-20261101"
 WORK18 = ROOT / "private/analysis/UAC-u2-v18-event-mask-20261101"
 WORK19 = ROOT / "private/analysis/UAC-u2-v19-event-code-20261101"
 ASM19 = ROOT / "patches/iso_burst_uac84_dci9_eventcode.S"
+ASM20 = ROOT / "patches/iso_burst_uac84_dci9_pered.S"
+WORK20 = ROOT / "private/analysis/UAC-u2-v20-per-ed-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -276,6 +278,55 @@ class UacU2EventCodeBuildTests(unittest.TestCase):
             if elf.is_file():
                 self.assertIn(b"UAC U2 ring box magic=0x%08x event=0x%08x",
                               elf.read_bytes())
+
+
+class UacU2PerEdTests(unittest.TestCase):
+    """v20: complete every ED like event_original's code-1 path."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not ASM20.is_file():
+            raise unittest.SkipTest(f"missing {ASM20}")
+        cls.asm = ASM20.read_text()
+
+    def test_each_ed_calls_complete_original(self):
+        for token in ("mov x11, x6",
+                      "add x12, x11, #0x10",
+                      "and w7, w7, #0xfc00",
+                      "mov w14, #0x1800",
+                      "csel x12, x12, x13, ne",
+                      "str x12, [x10, #0x20]",
+                      "mov w3, #0",
+                      "mov w4, #192",
+                      "mov w5, #1",
+                      "bl complete_original"):
+            self.assertIn(token, self.asm)
+
+    def test_the_single_3072_completion_is_gone(self):
+        self.assertNotIn("b complete_original", self.asm)
+        self.assertIn("cmp w4, #3072 /* diagnostic only", self.asm)
+
+
+class UacU2PerEdBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK20 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK20}; run the offline build")
+        cls.doc = json.loads((WORK20 / "manifest.json").read_text())
+
+    def test_cave_grows_but_still_fits(self):
+        self.assertEqual(self.doc["cave_bytes"], 640)
+        self.assertLessEqual(self.doc["cave_bytes"], self.doc["cave_limit"])
+
+    def test_build_wires_the_per_ed_cave(self):
+        build = json.loads((WORK20 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertEqual(build["payload"]["cave_bytes"], 640)
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
 
 
 class UacU2RingAdvanceBuildTests(unittest.TestCase):

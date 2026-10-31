@@ -24,18 +24,17 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 03:00）
+## 当前边界（2026-11-01 03:15）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
 - 最后实机：2026-11-01 02:4x **v19 event-code**（VM 开机前 suspend，attach
-  后立即 probe）。host 仍只有 3072B；设备 post 时 box `ISO2`，但 `eventWait`
-  之后 box 被驱动清成全 0（完成码无法在 mailbox 里观察）；seq2 无事件。
-- 结论：v19 的 mailbox 完成码被驱动清掉；成功 ED 的码（cave 检查
-  `[event+8]>>24 == 1`）是 **1**，所以 driver 的 code-1 路径才是被跳过的那条：
-  **每个 ED 调一次 `complete_original(w4=192, w3=0)` 并逐事件更新 cons**；
-  cave 是“累计到 3072 后一次完成（w4=3072, w3=1）+ cons=prod”。
-- 下一阶段：**v20** 把 cave 改成 per-ED 完成 + 按驱动方式更新 cons，离线
-  Unicorn 验证后构建；**需新授权**；详见
+  后立即 probe）。host 仍只有 3072B；post 的 box 为 `ISO2`，但 `eventWait`
+  之后被驱动清成全 0——完成码到不了 app。
+- 结论：成功 ED 的码（cave 检查 `[event+8]>>24 == 1`）是 **1**；driver 的
+  code-1 路径是**每个 ED 调一次 `complete_original(w4=192, w3=0)` + 逐事件
+  更新 cons**；cave 之前是“累计到 3072 一次完成（w4=3072, w3=1）+ cons=prod”。
+- 下一阶段：**v20 `48b251ea…`（91960B，cave 640B）已离线构建**（0 实机）：
+  cave 改成 per-ED 完成 + 驱动方式更新 cons；**需新授权**；详见
   [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。

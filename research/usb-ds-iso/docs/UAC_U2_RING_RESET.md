@@ -1,6 +1,7 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
-> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19 发现完成码被驱动清掉**。
+> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19 找到 driver 的 per-ED
+> code-1 路径；v20 per-ED 候选已离线构建（`48b251ea…`，cave 640B，0 实机）**。
 > v19 的 mailbox 完成码在 app 读取前被驱动清理（`event=0`）；cave 自己的接受
 > 检查要求 `[event+8]>>24 == 1`，所以 0xdb/0xde 的 `0x30ff4` ack 不是我们的
 > 分支。真正的差异在 driver 的 code-1 路径（`0x31230` → `0x31cf0`：每个 ED
@@ -238,19 +239,35 @@ seq2 post box: magic=ISO2 event=0 …（无事件）；100 ms 无 completion →
   前者可能让 driver 在每个 TD 上做正确的 entry/ring 清理，从而避免
   “完成后回 base”把第 2 套 TD 抛到控制器 dequeue 之后。
 
-## v20 方向（per-ED 完成，需新授权）
+## v20 per-ED 完成（已离线构建，0 实机，需新授权）
 
-1. cave 对每个通过校验的 ED（status=1、len=192）立即
-   `bl complete_original`，参数按 driver 路径：`w4=192`、`w3=0`、`w5=1`；
-   不再等 mailbox 累计到 3072 后一次完成。
-2. 按 driver 的方式更新 `cons`（`0x31264` 的语义：指向下一个 TRB），
-   而不是完成时 `cons = prod`。
-3. 保留 mailbox 计数/诊断，但不再作为完成条件；单请求 pending 的约束不变
-   （app 仍是 one-at-a-time）。
-4. 离线先做 Unicorn 回放（16 次 per-ED 调用 + cons 序列），再构建；一次
-   授权 boot，失败即停。
+按 driver 的 code-1 路径改写 cave 的事件处理（`patches/iso_burst_uac84_dci9_pered.S`）：
 
-## 风险
+- 在 `virtual_tag` 保存绝对 TRB 地址（`mov x11, x6`）；
+- 每个通过校验的 ED（code=1、len=192、奇槽、未完成过）执行：
+  - `cons = TRB+0x10`；若当前 TRB 是 Link（`ctl & 0xfc00 == 0x1800`）则
+    `cons = ring base`（`csel`），写入 `[context+0x20]`；
+  - `complete_original(w4=192, w3=0 force, w5=1)`（`bl`），然后返回；
+- 3072 的 bitmap/actual 只保留诊断用途：到达 3072 只置 done 标志，不再
+  作为完成条件；**不再有单次 3072 的 `b complete_original`**。
+
+| 项 | 值 |
+| --- | --- |
+| 构建 | `48b251ea…`（91960B），cave `0896c7bf…` / **640B**（limit 684） |
+| assembly | `patches/iso_burst_uac84_dci9_pered.S` |
+| 工作目录 | `private/analysis/UAC-u2-v20-per-ed-20261101` |
+
+一次 boot 的判定：
+
+| 观察 | 结论 |
+| --- | --- |
+| seq2 收到数据、设备 `complete 3072/3` | per-ED 完成修复了 ring/driver 清理；继续做 4-burst/连续性 |
+| 仍无 seq2 数据，但 seq1 完成/日志正常 | per-ED 不是差异点；回到驱动清理路径（`0x2c7b4`）或控制器 halt |
+| 任一 crash/fatal | 立即停；cave 的 per-ED 调用序列需要重新核对 |
+
+停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 风险## 风险
 
 - 这是**跨进程写**（app 通过 dmnt 写 usb 模块的 ring 字段），写点与 cave
   提交时的写点相同，但发生在驱动空闲期；若假设错误，可能让后续请求状态
