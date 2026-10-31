@@ -42,6 +42,9 @@ device `xfer=3072/status3`、complete rc=0，无新 crash。**2/2 可重复**。
 
 ## 下一步
 
-1. 设计连续/多 burst producer，把 16 ms 成功扩展为持续音频；
-2. host 需持续 re-arm 并发 URB，覆盖每个 burst；
+1. v15 顺序 4-burst 已离线构建（`1c9c6004…`，payload 与 v14 逐字节相同），
+   host `uac-raw-probe --rearm --max-urbs N` 滚动窗口已就绪；
+2. 下一次一次 boot 验证 `posted=4 completed=?`——需新授权；
 3. 8 个 descriptor-parser NOP 的全局风险仍需后续隔离。
+
+详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。

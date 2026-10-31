@@ -54,10 +54,22 @@ static u8 alignas(0x1000) g_uacControlBuffer[0x1000];  // 4KB for UAC control tr
 static u8 alignas(0x1000) g_endpointInBuffer[0x4000];  // Video transfer staging buffer (must fit maxPayload + header)
 static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer staging buffer
 #ifdef UAC_U2_PATCH
-#ifdef UAC_U2_ONE_SHOT
+/* Sequential post count.  The v11 32-post train left its second request
+   pending after a 100 ms timeout, and alt0 teardown then crashed the usb
+   sysmodule; v13/v14 posted exactly one request and cancelled on timeout.
+   UAC_U2_BURSTS only raises the *sequential* count: each request is posted
+   after the previous completion, a timeout cancels before the loop exits, so
+   at most one request is ever pending.  1 is the v14 one-shot clone; the
+   continuous trial uses 2..4. */
+#if defined(UAC_U2_ONE_SHOT)
 #define UAC_U2_TRAIN_POSTS 1
+#elif defined(UAC_U2_BURSTS)
+#define UAC_U2_TRAIN_POSTS UAC_U2_BURSTS
 #else
-#define UAC_U2_TRAIN_POSTS 32
+#define UAC_U2_TRAIN_POSTS 1
+#endif
+#if UAC_U2_TRAIN_POSTS < 1 || UAC_U2_TRAIN_POSTS > 4
+#error "UAC_U2_BURSTS must be 1..4: only one request may be pending at a time"
 #endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][0x1000];
 #endif
@@ -695,8 +707,9 @@ static struct {
     UsbDsEndpoint* audioEndpointIn;
 
 #ifdef UAC_U2_PATCH
-    bool burstPosted;               // U2: one bounded URB per boot
+    bool burstPosted;               // U2: one bounded train per boot
     u32 postSeq;                    // U2: diagnostic post sequence
+    u32 patternFrame;               // U2: running 48 kHz stereo frame phase
 #endif
 
     Mutex audioMutex;
@@ -2371,22 +2384,27 @@ static void _postUacBurst(void)
     }
 
     g_uacCtx.burstPosted = true;
-    LOG("UAC U2 train begin count=%u\n", UAC_U2_TRAIN_POSTS);
+    LOG("UAC U2 train begin count=%u pattern=%u\n", UAC_U2_TRAIN_POSTS,
+        g_uacCtx.patternFrame);
     LOG("UAC U2 pattern 1kHz 16ms train=%u\n", UAC_U2_TRAIN_POSTS);
 
-    /* A one-shot 16 ms burst leaves AppleUSBAudio starving; send a train of
-       distinct 4 KB buffers so the host has ~0.5 s of contiguous 1 kHz data.
-       Each buffer is posted only after the previous completion and is never
-       reused, avoiding the A23 completion-buffer reuse crash. */
+    /* Sequential train: every buffer is posted only after the previous
+       completion, so the driver never holds two ISO requests at once (the
+       v11 crash).  The 1 kHz phase continues across buffers, which lets the
+       host check continuity instead of four separate 16 ms bursts. */
+    u32 posted = 0, completed = 0;
     for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n) {
         u8 *buf = g_u2BurstBuffers[n];
         s16 *samples = (s16 *)buf;
+        const u32 base = g_uacCtx.patternFrame;
         for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
-            const u32 frame = i / 2;
+            const u32 frame = base + (i / 2);
             samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
         }
+        g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
         u32 seq = ++g_uacCtx.postSeq;
-        LOG("UAC U2 post begin seq=%u/%u\n", seq, UAC_U2_TRAIN_POSTS);
+        LOG("UAC U2 post begin seq=%u/%u pattern=%u\n", seq,
+            UAC_U2_TRAIN_POSTS, base);
         armDCacheFlush(buf, UAC_U2_BURST_BYTES);
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 
@@ -2396,6 +2414,7 @@ static void _postUacBurst(void)
         LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
             rc, urbId, UAC_U2_BURST_BYTES, seq);
         if (R_FAILED(rc)) break;
+        ++posted;
         /* Dump the cave's ring/box immediately on the first post. */
         if (n == 0) _uacLogRingState();
 
@@ -2409,6 +2428,7 @@ static void _postUacBurst(void)
             _uacLogRingState();
             break;
         }
+        ++completed;
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
         UsbDsReportData report;
         rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
@@ -2432,7 +2452,13 @@ static void _postUacBurst(void)
         LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u seq=%u\n",
             prc, requested, transferred, seq);
         if (R_FAILED(prc)) break;
+        if (transferred != UAC_U2_BURST_BYTES) {
+            LOG("UAC U2 short seq=%u requested=%u transferred=%u\n",
+                seq, requested, transferred);
+        }
     }
+    LOG("UAC U2 train end posted=%u completed=%u pattern=%u\n", posted,
+        completed, g_uacCtx.patternFrame);
     _uacLogInstallState();
     _uacLogRingState();
 }

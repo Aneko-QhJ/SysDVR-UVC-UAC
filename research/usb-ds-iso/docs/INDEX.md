@@ -17,9 +17,12 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
-| [CURRENT.md](CURRENT.md) | 2026-10-31 | 57K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
-| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-31 | 21K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 26K | U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [CURRENT.md](CURRENT.md) | 2026-11-01 | 83K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 41K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
+| [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 6K | **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
+| [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md) | 2026-11-01 | 1K | 第一次在 Linux raw host 上收到完整 UAC ISO 数据： |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 30K | U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) | 2026-10-31 | 5K | Debian/Linux raw claim 成功；第一次 raw 16×192 transfer 完成 |
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-30 | 8K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
@@ -29,11 +32,8 @@
 | [A23_MAILBOX_REPLAY.md](A23_MAILBOX_REPLAY.md) | 2026-10-29 | 2K | `test_mailbox_multiplex.py` 用 `test_patch.Machine` 执行真实 A23 补丁： |
 | [A23_PER_URB_TWO_STAGE.md](A23_PER_URB_TWO_STAGE.md) | 2026-10-29 | 5K | per-URB 作为 **boot-time 全局 hook** 安装时，UVC 初始化期间就会走到 |
 | [A23_SERIAL640_RETEST.md](A23_SERIAL640_RETEST.md) | 2026-10-29 | 3K | 原始 serial640（NSP `c129dce7…`）在 host 80 包后触发 usb `User Break` |
-| [A23_SERIAL_BASELINE.md](A23_SERIAL_BASELINE.md) | 2026-10-29 | 2K | `iso-stream-serial640.nsp`（SHA256 `c129dce7…`）： |
-| [A23_SHORT24_OFFLINE_CANDIDATE.md](A23_SHORT24_OFFLINE_CANDIDATE.md) | 2026-10-29 | 7K | 后续[SDK组件与设备关系核验](A23_SHORT24_SDK_AND_RELATION.md)已完成：21个原生注入场景 |
-| [A23_SUSTAINED_STREAM_LIMIT.md](A23_SUSTAINED_STREAM_LIMIT.md) | 2026-10-29 | 4K | 640 池排除了“同 buffer 复用”这个解释：**每个 buffer 只映射一次，仍在约 5 个 URB 后崩**。 |
 
-## 全部文档（269）
+## 全部文档（272）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-10-31 | 57K | 当前状态（2026-10-31 01:50，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-11-01 | 83K | 当前状态（2026-11-01 00:52，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-29 | 3K | 实验分支目录与本地产物 — 当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |
@@ -304,5 +304,8 @@
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U1 控制请求验证准备（2026-10-30，离线） — U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
-| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-10-31 | 21K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备） — **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 26K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 41K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备） — **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
+| [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 6K | UAC U2 连续 producer（v15，离线候选） — **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 30K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md) | 2026-11-01 | 1K | U2 raw ISO success（2026-11-01 00:25） — 第一次在 Linux raw host 上收到完整 UAC ISO 数据： |
+| [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) | 2026-10-31 | 5K | U2 v11 `usb` sysmodule fatal（2026-10-31 22:40） — Debian/Linux raw claim 成功；第一次 raw 16×192 transfer 完成 |

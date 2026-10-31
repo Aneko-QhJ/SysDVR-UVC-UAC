@@ -1,13 +1,17 @@
-# 当前状态（2026-11-01 00:45，Asia/Shanghai）
+# 当前状态（2026-11-01 00:52，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
 > 最后一次实机是 2026-11-01 00:40 的 v14 重复验证：同一命令再次收到
 > **完整 3072B**（768+2304），device `xfer=3072 status=3`、complete rc=0，
 > **无新 crash**。trigger-first 30 ms + 并发 8 URB 已 **2/2 可重复**。
+> 2026-11-01 00:52 离线完成 **v15 连续 4-burst** 候选（`1c9c6004…`，91352B）：
+> payload 与 v14 逐字节相同，app 侧顺序 post 4 个 3072B、超时先 cancel，
+> host `uac-raw-probe --rearm` 滚动窗口已就绪。**0 实机**，下一次上机需新授权；
+> 详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 > 卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 00:45）
+## 当前进度（2026-11-01 00:52）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -38,6 +42,7 @@
 | v14 concurrent 8 | **实机一次**：host 收到 **384B**（transfer[7] 2×192），其余空；设备 report 仍 empty status5；无新 crash | `private/runs/UAC-u2-v14-concurrent-20261031` |
 | **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
+| **v15 连续 4-burst** | **离线已构建，0 实机**：`1c9c6004…`（91352B），顺序 4×3072B、超时 cancel、相位连续；payload 与 v14 相同 | `private/analysis/UAC-u2-v15-continuous-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -72,16 +77,26 @@
 - `uac-control` 支持 `--set-rate` 与 `--alt-only`；`uac-burst` 已改为
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
-  alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，连续 producer）：3072B 已 2/2 可重复，下一阶段不再是
-  one-shot，而是把 16 ms 成功扩成持续音频。离线设计：
-  (1) 设备侧连续 post 多个 3072B（每个 +32 frame 窗口），但必须保留
-  v14 的 cancel/无 pending 语义，避免 v11 crash；
-  (2) host 侧 trigger-first + 并发 URB 需要持续 re-arm，覆盖每个 burst；
-  (3) 先用 2-4 个 burst 验证连续性，再考虑 macOS AppleUSBAudio；
-  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。
-  先离线实现/构建，下一次实机需新授权。详见
-  [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md)。
+  alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
+  一次完成（100ms 上限；超时先 cancel，不重试）。
+- 下一步（v15 已离线就绪，等待新授权）：(1) 设备侧顺序 post 4×3072B 已构建
+  （`-DUAC_U2_BURSTS=4`），超时先 cancel、1..4 越界编译失败，payload 与
+  v14 相同；(2) host `--rearm --max-urbs 64` 滚动窗口已实现；
+  (3) 下一次一次 boot 用 `--trigger-first --delay-ms 30 --transfers 8
+  --rearm --max-urbs 64 --timeout-ms 1000`，判定 `posted=4 completed=?`；
+  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
+  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+
+## 最近一次离线：v15 连续 4-burst（2026-11-01 00:52）
+
+| 项 | 结果 |
+| --- | --- |
+| 目标 | 把 v14 的 16 ms one-shot 扩成顺序 4×3072B，同时保留单请求 pending |
+| 构建 | `-DUAC_U2_BURSTS=4`，NSP `1c9c6004…`（91352B）；payload 29 条 / cave 592B，与 v14 **逐字节相同** |
+| 设备改动 | 顺序 post；超时先 `usbDsEndpoint_Cancel` 再退出；1..4 越界 `#error`；1 kHz 相位跨 burst 连续；`train end posted=%u completed=%u` |
+| host 改动 | `uac-raw-probe --rearm --max-urbs N`：完成即补新 URB；每个完成打印 `urb[n] t=<ms>` |
+| 离线证据 | ELF `g_u2BurstBuffers` **0x4000**（v14 为 0x1000）；`BURSTS=5` 编译失败；`tests/test_uac_u2_continuous.py`（10 项）；`make check` 绿 |
+| 实机 | **0 次**；下一次需新授权，命令/判定/停止条件见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 
 ## VM 可行性（2026-10-31 22:10）
 
@@ -565,7 +580,9 @@ one-shot+cancel 稳定、无新 crash；DCI9 后 host 仍 `valid=16 bytes=0`，
 总 `valid=128 bytes=384`；设备 report 仍空 status5，无新 crash——raw host
 数据路径首次打通。**v14 trigger 00:25，成功**：trigger-first 30 ms +
 并发 8 URB，host **3072B**（1344+1728），设备 `xfer=3072 status=3`、
-complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。UAC 默认仍禁用
+complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。**v15 00:52 离线**：
+顺序 4-burst + host `--rearm` 已构建（`1c9c6004…`，0 实机），payload 与 v14
+逐字节相同；下一次上机需新授权。UAC 默认仍禁用
 （仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。

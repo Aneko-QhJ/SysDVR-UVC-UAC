@@ -23,6 +23,7 @@ QUICK = [
     "test_uac_u2_breaker.py",
     "test_uac_u2_safecave.py",
     "test_uac_u2_queue_compat.py",
+    "test_uac_u2_continuous.py",
     "test_a23_alt1_nop_coverage.py",
     "test_a23_short24_path_span_package.py",
     "test_uac_pcm_ring.py",

@@ -640,3 +640,16 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   complete rc=0，无新 crash。
 - **2/2 可重复**。下一阶段：连续/多 burst producer，保留 v14 的
   cancel/无 pending 语义；host 持续 re-arm 并发 URB。
+
+## 2026-11-01 00:52 v15 连续 4-burst（离线，0 实机）
+
+- `-DUAC_U2_BURSTS=4`：**顺序** post 4 个 3072B，每个等 completion；超时先
+  `usbDsEndpoint_Cancel` 再退出，任何时刻最多一个 pending request；1..4
+  越界 `#error`。1 kHz 相位跨 burst 连续（`patternFrame`），日志
+  `train end posted=%u completed=%u`、`short seq=...`。
+- payload 与 v14 **逐字节相同**（29 条 / cave `806f54cb…` / 592B）；NSP
+  `1c9c6004…`（91352B），工作目录
+  `private/analysis/UAC-u2-v15-continuous-20261101`。
+- host `uac-raw-probe --rearm --max-urbs N`：完成即补新 URB，滚动覆盖每个
+  +32 frame TD，每个完成打印 `urb[n] t=<ms>`。
+- 命令/判定/停止条件见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
