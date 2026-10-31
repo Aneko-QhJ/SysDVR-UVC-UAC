@@ -2270,6 +2270,33 @@ static void _uacLogInstallState(void)
     svcCloseHandle(h);
 }
 
+/* v16 instrumentation: the cave's iso_enter only builds TDs while the ring is
+   empty (it requires prod == cons).  A rejected submit returns 0, so the driver
+   reports success and the app then waits for a completion that can never come.
+   Log the full accept state before/after every post: word/interval/speed/dci
+   must stay at their burst-1 values, and prod/cons/copy show whether the gate
+   would accept.  No behaviour change. */
+static void _uacLogSubmitState(const char *tag, u32 seq)
+{
+    UacUsbEpState ep = {0};
+    if (!_uacReadUsbState(&ep)) {
+        LOG("UAC U2 state %s seq=%u read=0\n", tag, seq);
+        return;
+    }
+    u32 word = (u32)ep.state[2] | ((u32)ep.state[3] << 8) |
+               ((u32)ep.state[4] << 16) | ((u32)ep.state[5] << 24);
+    u64 ring = 0, prod = 0, cons = 0, copy = 0;
+    memcpy(&ring, ep.state + 0x10, sizeof(ring));
+    memcpy(&prod, ep.state + 0x18, sizeof(prod));
+    memcpy(&cons, ep.state + 0x20, sizeof(cons));
+    memcpy(&copy, ep.state + 0x28, sizeof(copy));
+    LOG("UAC U2 state %s seq=%u word=0x%08x int=%u dci=%u cycle=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx copy=0x%llx empty=%u\n",
+        tag, seq, word, ep.state[6], ep.state[0x42], ep.state[0x40],
+        ep.speed, (unsigned long long)ring, (unsigned long long)prod,
+        (unsigned long long)cons, (unsigned long long)copy,
+        (ring && prod == cons) ? 1u : 0u);
+}
+
 /* The cave still writes its ISO2 mailbox even with the report hook removed:
    ring+0xf80 magic, +0xf90 completed bitmap, +0xf94 actual sum, +0xf98 first
    TRB, +0xfbc retained control.  Log the first Isoch/ED words too, so a
@@ -2405,6 +2432,7 @@ static void _postUacBurst(void)
         u32 seq = ++g_uacCtx.postSeq;
         LOG("UAC U2 post begin seq=%u/%u pattern=%u\n", seq,
             UAC_U2_TRAIN_POSTS, base);
+        _uacLogSubmitState("pre", seq);
         armDCacheFlush(buf, UAC_U2_BURST_BYTES);
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 
@@ -2415,8 +2443,11 @@ static void _postUacBurst(void)
             rc, urbId, UAC_U2_BURST_BYTES, seq);
         if (R_FAILED(rc)) break;
         ++posted;
-        /* Dump the cave's ring/box immediately on the first post. */
-        if (n == 0) _uacLogRingState();
+        /* v16: log the accept state and the cave ring after every post, not
+           just the first one; a rejected second submit leaves the box empty. */
+        _uacLogSubmitState("post", seq);
+        _uacLogRingState();
+        _uacLogInstallState();
 
         if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
             /* Do not leave the request pending across alt0 teardown: the usb
@@ -2424,6 +2455,7 @@ static void _postUacBurst(void)
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
             LOG("UAC U2 no completion within 100ms seq=%u cancel=0x%x\n",
                 seq, cancel);
+            _uacLogSubmitState("timeout", seq);
             _uacLogInstallState();
             _uacLogRingState();
             break;
@@ -2434,6 +2466,7 @@ static void _postUacBurst(void)
         rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
         if (R_FAILED(rc)) {
             LOG("UAC U2 report rc=0x%x seq=%u\n", rc, seq);
+            _uacLogSubmitState("report-fail", seq);
             _uacLogInstallState();
             _uacLogRingState();
             break;
@@ -2451,6 +2484,7 @@ static void _postUacBurst(void)
                                           &transferred);
         LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u seq=%u\n",
             prc, requested, transferred, seq);
+        _uacLogSubmitState("done", seq);
         if (R_FAILED(prc)) break;
         if (transferred != UAC_U2_BURST_BYTES) {
             LOG("UAC U2 short seq=%u requested=%u transferred=%u\n",

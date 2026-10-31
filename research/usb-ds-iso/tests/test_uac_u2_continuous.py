@@ -19,6 +19,7 @@ SOURCE = REPO / "source/uvc/uvc_device.c"
 HOST = ROOT / "host/uac-raw-probe.c"
 BINARY = ROOT / "host/uac-raw-probe"
 WORK15 = ROOT / "private/analysis/UAC-u2-v15-continuous-20261101"
+WORK16 = ROOT / "private/analysis/UAC-u2-v16-submit-state-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -85,6 +86,63 @@ class UacU2SequentialTrainTests(unittest.TestCase):
                       'LOG("UAC U2 train end posted=%u completed=%u pattern=%u',
                       'LOG("UAC U2 short seq=%u requested=%u transferred=%u'):
             self.assertIn(token, self.body)
+
+
+class UacU2SubmitStateTests(unittest.TestCase):
+    """v16: the second post must show whether the cave gate would accept."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+        cls.body = post_body(cls.source)
+
+    def test_accept_state_is_logged_around_every_post(self):
+        for tag in ('_uacLogSubmitState("pre", seq);',
+                    '_uacLogSubmitState("post", seq);',
+                    '_uacLogSubmitState("done", seq);',
+                    '_uacLogSubmitState("timeout", seq);'):
+            self.assertIn(tag, self.body)
+        for token in ('UAC U2 state %s seq=%u word=0x%08x int=%u dci=%u cycle=%u speed=%u',
+                      'ring=0x%llx prod=0x%llx cons=0x%llx copy=0x%llx empty=%u',
+                      '(ring && prod == cons) ? 1u : 0u'):
+            self.assertIn(token, self.source)
+
+    def test_ring_is_dumped_after_every_post(self):
+        self.assertNotIn("if (n == 0) _uacLogRingState();", self.body)
+        self.assertGreaterEqual(self.body.count("_uacLogRingState();"), 3)
+
+
+class UacU2SubmitStateBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK16 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK16}; run the offline build")
+        cls.doc = json.loads((WORK16 / "manifest.json").read_text())
+
+    def test_payload_is_still_the_v14_cave(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        self.assertEqual(self.doc["cave_sha256"], old["cave_sha256"])
+        self.assertEqual(self.doc["edit_count"], old["edit_count"])
+
+    def test_build_keeps_four_bursts_and_adds_the_state_log(self):
+        build = json.loads((WORK16 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertEqual(build["payload"]["cave_sha256"],
+                         self.doc["cave_sha256"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+            elf = nsp.parent / "exefs.elf"
+            if elf.is_file():
+                data = elf.read_bytes()
+                self.assertIn(b"UAC U2 state %s seq=%u word=0x%08x", data)
+                self.assertIn(b"empty=%u", data)
 
 
 class UacU2ContinuousBuildTests(unittest.TestCase):

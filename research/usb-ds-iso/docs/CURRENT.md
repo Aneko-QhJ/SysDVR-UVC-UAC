@@ -1,4 +1,4 @@
-# 当前状态（2026-11-01 01:15，Asia/Shanghai）
+# 当前状态（2026-11-01 01:25，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -7,11 +7,13 @@
 > cancel（`train end posted=2 completed=1`）；host 收到 **3072B**（urb3/4），
 > 其余 URB 全 transaction error。**无 crash**。host 全程有 URB 在飞，
 > 排除“没 re-arm”；最可能是 cave 的 `prod == cons` 门拒绝了第 2 次提交。
-> 下一次上机（v16 状态仪器化）需新授权；详见
-> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> 2026-11-01 01:25 离线完成 **v16 状态仪器化**（`941646e8…`，91955B，payload
+> 仍与 v14 相同）：每次 post 前后记录 `word/int/dci/cycle/speed/ring/prod/
+> cons/copy/empty`，并 dump 每个 seq 的 box/trb。**0 实机**；下一次上机需新
+> 授权。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 > 卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 01:15）
+## 当前进度（2026-11-01 01:25）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -43,6 +45,7 @@
 | **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
+| **v16 状态仪器化** | **离线已构建，0 实机**：`941646e8…`（91955B），payload 与 v14 相同；每次 post 前后记录 prod/cons/copy + 每个 seq 的 box/trb | `private/analysis/UAC-u2-v16-submit-state-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -79,13 +82,13 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v16 状态仪器化，需新授权）：(1) v15 实机证明 host 全程有 URB 时
+- 下一步（v16 已离线构建，等待新授权）：(1) v15 实机证明 host 全程有 URB 时
   第 2 个 post 仍无 completion，`fail_accept` 返回 0 的 cave 门是首要嫌疑
-  （`iso_enter` 要求 `prod == cons`）；(2) v16 只改 app：每次 post **前**记录
-  `ring prod cons copy cycle`，post **后**（每个 seq）立即 dump box/trb 与
-  请求表项；(3) 一次 boot 即可判定“门拒绝”还是“驱动/门铃路径”；
-  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
-  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+  （`iso_enter` 要求 `prod == cons`）；(2) v16 `941646e8…`（91955B）只改 app：
+  每次 post **前**记录 `ring/prod/cons/copy/cycle`，post **后**（每个 seq）
+  立即 dump box/trb 与请求表项，payload 仍与 v14 相同；(3) 一次 boot 即可
+  判定“门拒绝”还是“驱动/门铃路径”；(4) 8 个 descriptor-parser NOP 的全局
+  风险仍未隔离。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 最近一次实机：v15 连续 4-burst（2026-11-01 01:05，失败）
 

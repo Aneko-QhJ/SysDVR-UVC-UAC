@@ -110,7 +110,7 @@ v15 保留 v14 的**单请求不变量**，只把“1 次”扩成“顺序 4 �
 所以“host 没窗口/没 re-arm”不再是解释。第 2 个请求在驱动里 `rc=0`，但
 没有任何 completion，host 侧对应时段全是 transaction error（没有 TD 被服务）。
 
-## 下一步候选：v16 状态仪器化（离线，需新授权）
+## v16 状态仪器化（离线已构建，0 实机，需新授权）
 
 最可能的失败点是 cave 的接受门（`iso_enter` 开头）：
 
@@ -121,17 +121,28 @@ b.ne fail_accept          ; 环非空 -> 返回 0，不建 TRB、不响铃
 ```
 
 `fail_accept` 返回 0，调用方把它当成功（`PostBufferAsync rc=0`），随后没有
-TD、没有 completion——与本次观察完全一致。现在缺的是“第 2 次 post 那一刻
+TD、没有 completion——与 v15 观察一致。缺的是“第 2 次 post 那一刻
 prod/cons 到底是什么”。
 
-v16（只改 app，不动 payload）：
-1. 每次 post **之前**记录 `ring prod cons copy=state[0x28] cycle=state[0x40]`；
-2. 每次 post **之后**（不只 seq=1）立即 dump box/trb 与请求表项；
-3. 用一次 boot 判断：若 `prod != cons` → 门因环非空拒绝；若 `prod == cons`
-   但 ring 仍空 → 问题在驱动提交/门铃路径，再考虑 v17 在 cave 里加
-   进入/拒绝码计数器。
+v16 只改 app，payload/cave 与 v14/v15 逐字节相同：
 
-这一步只需要新的构建 + 一次授权 boot，不改 payload、不改 host 命令。
+| 项 | 值 |
+| --- | --- |
+| 构建 | `941646e8…`（91955B），`-DUAC_U2_BURSTS=4`；cave `806f54cb…` / 592B |
+| 新增日志 | 每次 post 前后 `UAC U2 state {pre,post,done,timeout} seq=… word=… int=… dci=… cycle=… speed=… ring=… prod=… cons=… copy=… empty=…` |
+| ring 证据 | 每个 seq 的 post 后都 dump box/trb + 请求表项（不再只 seq=1） |
+| 工作目录 | `private/analysis/UAC-u2-v16-submit-state-20261101` |
+
+一次 boot 的判定：
+
+| 观察 | 结论 | 下一步 |
+| --- | --- | --- |
+| `pre` 行 `prod != cons`（`empty=0`） | cave 门拒绝第 2 次提交 | 修 app：post 前等环空（有界等待，不重试），或让 cave 支持非空环 |
+| `pre` 行 `prod == cons`（`empty=1`）但 post 后 box 仍 0 | `iso_enter` 没被调用，问题在驱动提交/门铃路径 | 静态分析 `0x2c520`→`0x302e0` 在第二次提交时的分支，再定 v17 |
+| post 后 box `ISO2`/trb 非零，但无 completion | cave 写了 TD，问题在控制器/doorbell | 对比 TRB frame/cycle 与 v14 成功值 |
+
+命令与 v15 相同（`--trigger-first --delay-ms 30 --transfers 8 --rearm
+--max-urbs 64 --timeout-ms 1000`），**需要新的授权**；不部署、不重试。
 
 ## 离线证据（2026-11-01 00:52）
 
