@@ -525,3 +525,19 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   producer 暂缓，需新授权才再上机。
 - 证据：`private/runs/UAC-u2-v12-attr01-20261031`（日志 `d5db3375…`、内核
   `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v12-attr01`。
+
+## 2026-10-31 22:40 Debian raw（claim 成功、16 包 0 字节；usb 崩溃）
+
+- Debian 13.7 ARM64 VM（Parallels）安装完成；`uac-raw-probe` 在 guest 编译。
+  Parallels 手动连接后 Linux 看到 `1209:ca57 Generic SysDVR-UVC Capture`。
+- `--claim-only`：`auto_detach=0`、`detach[3]=0`、`claim[3]=0`——Linux
+  可以 detach/claim AS 接口。
+- 完整 raw：`alt1=0`、`submit=0`、`set_cur=3`、`transfer status=0`、
+  `valid=16 bad=0 bytes=0`。16 个 ISO 包全部完成，但 `actual_length=0`。
+  第一次尝试消耗设备 one-shot；`--trigger-first --delay-ms 30` 只得到
+  packet0 0 字节、其余 bad。
+- **启动游戏后系统 `usb` sysmodule fatal 2162-0002**（Process ID
+  0100000000000006，PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。
+  crash/fatal/erpt 报告已复制到 `private/runs/UAC-u2-v11-debian-raw-20261031/crash`。
+- 判定：Linux raw claim/transfer 路径可用，但数据为 0；U2 patch 与 usb
+  sysmodule 崩溃相关。**硬件线暂停**，先查 crash 与零长度包。

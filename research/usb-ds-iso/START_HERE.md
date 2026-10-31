@@ -24,17 +24,19 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 22:00）
+## 当前边界（2026-10-31 22:55）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 21:58 v12（一次 boot）：AS endpoint attrs `0x01`，
-  word `0x00c00184`；precheck 通过，第 1 个 post `3072/status=3`，第 2 个
-  100 ms 无 completion（2/32）；host 21:58:03.181–07.336 共 398 个
-  transaction error，无 WAV。已恢复 `52069a44…` 并安全弹出。
-- **attrs 0x05→0x01 没有改变 host 行为**；attrs/address/MPS 排列停止。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。只剩两条路：
-  解释/绕过 AppleUSBAudio request/frame，或换 host/OS；设备侧 native ISO
-  producer 暂缓。下一次实机需新的明确授权。
+- 最后实机：2026-10-31 22:40，Debian 13 VM + v11。Linux claim AS 成功
+  （`auto_detach=0`、`detach[3]=0`、`claim[3]=0`）；raw 16×192
+  `valid=16 bad=0 bytes=0`。首次尝试消耗 one-shot；`--trigger-first
+  --delay-ms 30` 只得到 packet0 0 字节、其余 bad。
+- **启动游戏后系统 `usb` sysmodule fatal 2162-0002**（PC 0x19254，stack
+  含 0x2c584/0x2a3f4/0x2a464）。已复制 crash/fatal/erpt 报告，卡恢复
+  `52069a44…`、删日志、安全弹出。
+- **U2 硬件线暂停**：先解释 usb 崩溃与 16 包 0 字节，不再部署 U2 或上机。
+  离线优先对照 `usb.elf` 的 stack/patch 区域；若 crash 与 patch 有关，先
+  回退/隔离 U2 patch。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

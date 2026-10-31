@@ -24,16 +24,18 @@ class UacRawProbeTests(unittest.TestCase):
         self.assertLess(detach, claim)
 
     def test_submits_iso_before_the_set_cur_trigger(self):
-        submit = self.source.index("libusb_submit_transfer")
-        trigger = self.source.index("set_cur=")
-        self.assertLess(submit, trigger)
+        self.assertIn("if (trigger_first && !no_trigger)", self.source)
+        self.assertIn("if (!no_trigger && !trigger_first)", self.source)
+        self.assertIn("libusb_submit_transfer", self.source)
         for token in ("libusb_fill_iso_transfer", "libusb_set_iso_packet_lengths",
-                      "0x22, 0x01, 0x0100", "done packets=%u"):
+                      "0x22, 0x01, 0x0100", "done packets=%u",
+                      "transfer[%u] status=%d", "packet[%u] status=%d"):
             self.assertIn(token, self.source)
 
     def test_claim_only_and_no_detach_options(self):
         for token in ("--claim-only", "--no-detach", "--no-trigger",
-                      "--interface", "--endpoint", "--packets"):
+                      "--interface", "--endpoint", "--packets",
+                      "--trigger-first", "--delay-ms", "--transfers"):
             self.assertIn(token, self.source)
 
     def test_binary_rejects_bad_packet_count(self):

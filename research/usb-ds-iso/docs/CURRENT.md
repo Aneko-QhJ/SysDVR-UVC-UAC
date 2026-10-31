@@ -1,15 +1,15 @@
-# 当前状态（2026-10-31 22:00，Asia/Shanghai）
+# 当前状态（2026-10-31 22:55，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 21:58 的 v12（一次 boot）：UAC AS 端点
-> `bmAttributes=0x01`（no-sync），endpoint word `0x00C00184`。precheck
-> 通过；第 1 个 post 仍 `3072/3072 status=3`，第 2 个 100 ms 无 completion，
-> 停在 2/32；host 内核 21:58:03.181–07.336 有 **398 个** EP `0x84`
-> transaction error，ffmpeg 挂起、无 WAV。**attrs 0x05→0x01 没有改变 host
-> 行为**，不再继续排列 descriptor attrs。卡恢复 `52069a44…`、安全弹出。
+> 最后一次实机是 2026-10-31 22:40 的 v11 Debian raw 测试：Linux VM
+> 成功 claim AS 接口，第一次 raw 16×192 transfer `valid=16 bad=0 bytes=0`
+>（16 个包都完成但实际长度 0）；one-shot post 被第一次尝试消耗。随后
+> **启动游戏时系统 `usb` sysmodule fatal 2162-0002**（PC offset 0x19254，
+> stack 含 0x2c584/0x2a3f4/0x2a464）。已复制 crash/fatal/erpt 报告，卡恢复
+> `52069a44…`、删日志、安全弹出。**U2 硬件线暂停，先查 usb 崩溃。**
 
-## 当前进度（2026-10-31 22:00）
+## 当前进度（2026-10-31 22:55）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -32,7 +32,9 @@
 | U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
 | Raw UAC host probe | **实机一次**：auto_detach ok，但 detach/claim `LIBUSB_ERROR_ACCESS`；未提交 ISO/未发 SET_CUR，设备无 U2 行 | `private/runs/UAC-u2-v11-raw-20261031` |
 | U2 v12 attrs 0x01 | **实机一次**：word 0x00c00184、first post 3072/3、second no completion；host 398 个 transaction error、无 WAV | `private/runs/UAC-u2-v12-attr01-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v12-attr01` |
+| Debian raw（v11） | **实机一次**：Linux claim 成功；raw 16×192 `valid=16 bad=0 bytes=0`；one-shot 被首次尝试消耗 | `private/runs/UAC-u2-v11-debian-raw-20261031` |
+| usb sysmodule fatal | **实机一次**：启动游戏时 `usb`（0100000000000006）fatal 2162-0002，PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464 | `private/runs/UAC-u2-v11-debian-raw-20261031/crash` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-debian-raw` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -67,12 +69,15 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，停止 descriptor 排列）：v12 证明 attrs 0x05→0x01 没有改变
-  host 行为；不要再排列 attrs/address/MPS。现在只剩两条有依据的路线：
-  (1) 解释/绕过 AppleUSBAudio 的 request/frame 行为（macOS 唯一 audio host）；
-  (2) 换 host/OS 做 raw ISO 验证（当前规则暂不启用 VM）。
-  设备侧可考虑 native ISO producer，但在 host 行为解释前不加代码。下一次
-  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（硬件暂停，先查 `usb` 崩溃）：Debian raw 已证明 Linux 能 claim AS，
+  但 raw transfer 16 包全部 `bytes=0`，且启动游戏时系统 `usb` sysmodule fatal
+  2162-0002（PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。在解释 crash
+  与零长度包之前，**不再部署 U2 构建、不再上机**。离线优先：
+  (1) 用 [crash 报告](../private/runs/UAC-u2-v11-debian-raw-20261031/crash) 对照
+  `usb.elf` 的 0x2c584/0x2a3f4/0x2a464 与 29 条 patch 区域，确认是否 patch
+  破坏了正常 USB 路径；(2) 加 raw per-packet 诊断/多 transfer 时序（工具已改，
+  未再上机）；(3) 若 crash 与 patch 有关，先回退/隔离 U2 patch。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## VM 可行性（2026-10-31 22:10）
@@ -98,6 +103,22 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 Debian raw 实机（2026-10-31 22:40，claim 成功、16 包 0 字节，随后 usb 崩溃）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v11 `15458ef4…` 一次 boot |
+| VM | Debian 13.7 ARM64（Parallels），kernel 6.12.107，libusb 开发包，`uac-raw-probe` 已编译 |
+| 直通 | Parallels 手动连接；Linux `lsusb` 看到 `1209:ca57 Generic SysDVR-UVC Capture` |
+| claim | `auto_detach=0`、`detach[3]=0`、`claim[3]=0`——**Linux claim 成功** |
+| raw | `alt1=0`、`submit=0`、`set_cur=3`、`transfer status=0`、`valid=16 bad=0 bytes=0`（16 包全完成、实际长度 0） |
+| one-shot | 首次尝试消耗设备 one-shot；`--trigger-first --delay-ms 30` 只得到 packet0 0 字节、其余 bad（没有新 post） |
+| crash | 启动游戏时系统 `usb` sysmodule（0100000000000006）fatal 2162-0002；PC offset 0x19254；stack 含 0x2c584/0x2a3f4/0x2a464 |
+| 判定 | Linux raw 路径已打通到 claim/transfer，但数据为 0；且 U2 patch 与 `usb` sysmodule 崩溃相关，**硬件线暂停** |
+| 分析 | [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) |
+| 证据 | `private/runs/UAC-u2-v11-debian-raw-20261031`（`run.json`、crash 报告、`device-log-crash.txt`）、`private/card-cycles/20261031-u2-v11-debian-raw` |
+| 收尾 | 恢复 `52069a44…`、删日志/新崩溃报告、安全弹出；无重试 |
 
 ## 最近一次 U2 v12 实机（2026-10-31 21:58，attrs 0x01 未改变 host 行为）
 
@@ -487,8 +508,10 @@ starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连�
 （`LIBUSB_ERROR_ACCESS`），macOS 不允许从 AppleUSBAudio 拿回 AS；没有提交
 ISO/触发。**v12 21:58 attrs 0x01**：word 0x00c00184、第 1 个 post 3072/3，
 第 2 个无 completion；host 仍 398 个 transaction error、无 WAV——attrs
-0x05→0x01 不是差异点。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+0x05→0x01 不是差异点。**Debian raw 22:40**：Linux claim 成功，raw 16×192
+`valid=16 bad=0 bytes=0`；启动游戏后系统 `usb` sysmodule fatal 2162-0002
+（PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

@@ -564,4 +564,6 @@ payload / cave 592B）。
   （`LIBUSB_ERROR_ACCESS`），raw 路径不可用。v12 的 attrs 0x01 实机也未
   改变 host 行为（398 个 transaction error，2/32 停止），attrs/address/MPS
   排列停止；下一步只能解释/绕过 AppleUSBAudio request/frame，或换 host/OS。
-  U2 实机线暂停，需新的明确授权。
+  Debian raw 随后打通 claim/transfer（`valid=16 bytes=0`），但启动游戏触发
+  系统 `usb` sysmodule fatal 2162-0002（stack 含 0x2c584/0x2a3f4/0x2a464）；
+  U2 实机线暂停，先查 crash 与零长度包，需新的明确授权。

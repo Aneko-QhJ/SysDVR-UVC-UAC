@@ -21,7 +21,8 @@ static void usage(const char *argv0)
 {
     fprintf(stderr,
         "usage: %s [--interface N] [--endpoint 0xNN] [--packets N] "
-        "[--claim-only] [--no-trigger] [--no-detach]\n", argv0);
+        "[--claim-only] [--no-trigger] [--no-detach] "
+        "[--trigger-first] [--delay-ms N] [--transfers N]\n", argv0);
 }
 
 int main(int argc, char **argv)
@@ -30,6 +31,8 @@ int main(int argc, char **argv)
     int endpoint = AS_ENDPOINT;
     unsigned packets = PACKETS;
     int claim_only = 0, no_trigger = 0, no_detach = 0;
+    int trigger_first = 0, delay_ms = 0;
+    unsigned transfers = 1;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--interface") && i + 1 < argc) {
             iface = atoi(argv[++i]);
@@ -43,6 +46,12 @@ int main(int argc, char **argv)
             no_trigger = 1;
         } else if (!strcmp(argv[i], "--no-detach")) {
             no_detach = 1;
+        } else if (!strcmp(argv[i], "--trigger-first")) {
+            trigger_first = 1;
+        } else if (!strcmp(argv[i], "--delay-ms") && i + 1 < argc) {
+            delay_ms = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--transfers") && i + 1 < argc) {
+            transfers = (unsigned)strtoul(argv[++i], NULL, 0);
         } else {
             usage(argv[0]);
             return 2;
@@ -107,43 +116,75 @@ int main(int argc, char **argv)
         (int)(packets * PACKET), (int)packets, NULL, NULL,
         (int)packets + 2000);
     libusb_set_iso_packet_lengths(transfer, PACKET);
+    unsigned char rate[3] = {0x80, 0xBB, 0x00};
+    int crc = 0;
+    if (trigger_first && !no_trigger) {
+        crc = libusb_control_transfer(h, 0x22, 0x01, 0x0100,
+            (uint16_t)endpoint, rate, sizeof(rate), 1000);
+        printf("set_cur=%d (%s)\n", crc,
+               crc < 0 ? libusb_error_name(crc) : "ok");
+        if (crc < 0) goto restore_alt;
+    }
+    if (delay_ms > 0) usleep((useconds_t)delay_ms * 1000);
     rc = libusb_submit_transfer(transfer);
     printf("submit=%d (%s)\n", rc, rc ? libusb_error_name(rc) : "ok");
     if (rc) goto restore_alt;
 
-    if (!no_trigger) {
-        unsigned char rate[3] = {0x80, 0xBB, 0x00};
-        int crc = libusb_control_transfer(h, 0x22, 0x01, 0x0100,
+    if (!no_trigger && !trigger_first) {
+        crc = libusb_control_transfer(h, 0x22, 0x01, 0x0100,
             (uint16_t)endpoint, rate, sizeof(rate), 1000);
         printf("set_cur=%d (%s)\n", crc,
                crc < 0 ? libusb_error_name(crc) : "ok");
     }
 
-    int attempts = 0;
-    while (attempts++ < 2000) {
-        rc = libusb_handle_events_timeout_completed(ctx, &(struct timeval){0, 10000}, NULL);
-        if (rc) {
-            printf("events=%d (%s)\n", rc, libusb_error_name(rc));
-            break;
+    unsigned total_valid = 0, total_bad = 0, total_bytes = 0;
+    for (unsigned t = 0; t < transfers; ++t) {
+        if (t > 0) {
+            rc = libusb_submit_transfer(transfer);
+            printf("resubmit[%u]=%d (%s)\n", t, rc,
+                   rc ? libusb_error_name(rc) : "ok");
+            if (rc) break;
         }
-        if (transfer->status != LIBUSB_TRANSFER_COMPLETED &&
-            transfer->status != LIBUSB_TRANSFER_TIMED_OUT)
+        int attempts = 0;
+        while (attempts++ < 2000) {
+            rc = libusb_handle_events_timeout_completed(ctx, &(struct timeval){0, 10000}, NULL);
+            if (rc) {
+                printf("events=%d (%s)\n", rc, libusb_error_name(rc));
+                break;
+            }
+            if (transfer->status != LIBUSB_TRANSFER_COMPLETED &&
+                transfer->status != LIBUSB_TRANSFER_TIMED_OUT)
+                break;
+        }
+        unsigned valid = 0, bad = 0, bytes = 0;
+        for (unsigned i = 0; i < packets; ++i) {
+            const struct libusb_iso_packet_descriptor *p = &transfer->iso_packet_desc[i];
+            if (p->status == LIBUSB_TRANSFER_COMPLETED) {
+                ++valid;
+                bytes += p->actual_length;
+            } else {
+                ++bad;
+            }
+        }
+        total_valid += valid;
+        total_bad += bad;
+        total_bytes += bytes;
+        printf("transfer[%u] status=%d valid=%u bad=%u bytes=%u\n",
+               t, transfer->status, valid, bad, bytes);
+        if (t == 0) {
+            for (unsigned i = 0; i < packets && i < 4; ++i) {
+                const struct libusb_iso_packet_descriptor *p =
+                    &transfer->iso_packet_desc[i];
+                printf("packet[%u] status=%d actual=%u\n",
+                       i, p->status, p->actual_length);
+            }
+        }
+        if (transfer->status != LIBUSB_TRANSFER_COMPLETED)
             break;
     }
-    printf("transfer status=%d (%s)\n", transfer->status,
-           libusb_error_name(transfer->status));
-    unsigned valid = 0, bad = 0, bytes = 0;
-    for (unsigned i = 0; i < packets; ++i) {
-        const struct libusb_iso_packet_descriptor *p = &transfer->iso_packet_desc[i];
-        if (p->status == LIBUSB_TRANSFER_COMPLETED) {
-            ++valid;
-            bytes += p->actual_length;
-        } else {
-            ++bad;
-        }
-    }
-    printf("done packets=%u valid=%u bad=%u bytes=%u\n", packets, valid, bad, bytes);
-    result = (valid == packets && bad == 0) ? 0 : 1;
+    printf("done packets=%u valid=%u bad=%u bytes=%u\n",
+           packets, total_valid, total_bad, total_bytes);
+    result = (total_valid == packets && total_bad == 0) ? 0 : 1;
 
 restore_alt:
     libusb_set_interface_alt_setting(h, iface, 0);
