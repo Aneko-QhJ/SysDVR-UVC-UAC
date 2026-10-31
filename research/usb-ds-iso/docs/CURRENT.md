@@ -31,6 +31,7 @@
 | U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
 | U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
 | U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
+| U2 v11 burst train | 已构建（`15458ef4…`，91159B），未部署、0 实机；一次 SET_CUR 发 32×16 ms 不同缓冲（~512 ms） | `private/analysis/UAC-u2-v11-train-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v10-mfi` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -66,14 +67,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，host 路径优先）：v10 证明 MFI 经 dmnt 读不到（MMIO `0x700d0000`
-  → `0xd401`），frame 1514 只能记录不能校验；更关键的是 v8 host 日志在 trigger
-  前就每 ~0.5 s abort 16 个请求，AppleUSBAudio 已在 starving/restart。
-  **one-shot 16 ms burst 可能不适合连续音频流**。下一步离线比较：
-  (1) A23 用 raw libusb 的 16 请求窗口为什么能工作；(2) macOS audio 驱动对
-  starvation/连续数据的要求；(3) 是否必须做连续 producer 或长时间 burst，
-  而不是继续调单次 TRB。先不动硬件；下一次实机需新的明确授权。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（v11 一次授权 boot）：v10 显示 host 在 trigger 前已每 ~0.5 s abort
+  16 个请求，one-shot 16 ms 不够。v11 `15458ef4…`（91159B）一次 SET_CUR 连续
+  发 32 个不同的 4 KB 缓冲（32×16 ms ≈ 512 ms 的 1 kHz 数据），每个等完成后再
+  发下一个、从不复用，避免 A23 的复用崩溃。host 顺序：hold alt1 → ffmpeg 8 s
+  → 等 engine → trigger-only → 收 WAV。若 WAV 出现 1 kHz 段，host 数据路径
+  打通；若仍 starving，再考虑更长的连续 producer/raw host。下一次实机需新的
+  明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）

@@ -462,3 +462,14 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   要求，评估连续 producer/长 burst 或 raw host 路径。下一次实机需新授权。
 - 证据：`private/runs/UAC-u2-v10-mfi-20261031`（日志 `23e52127…`）、
   `private/card-cycles/20261031-u2-v10-mfi`。
+
+## 2026-10-31 18:30 v11：32-post burst train（离线）
+
+- v10 显示 host 在 trigger 前每 ~0.5 s abort 16 个请求，one-shot 16 ms
+  不够。v11 在一次 SET_CUR 后连续 post 32 个不同的 4 KB 缓冲
+  （32×16 ms ≈ 512 ms 的 1 kHz 数据），每个等完成后再发下一个、从不复用。
+- 目的：给 AppleUSBAudio 一段足够长的连续数据，区分“device TRB 错”与
+  “host 音频流 starvation”。payload 不变（29 条 / cave 592B），
+  NSP `15458ef4…`（91159B）。未部署、0 实机。
+- 下一次：一次 boot，hold alt1 → ffmpeg 8 s → 等 engine → trigger-only →
+  收 WAV；若出现 1 kHz 段，host 数据路径打通。

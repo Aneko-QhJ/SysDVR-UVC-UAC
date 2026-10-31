@@ -173,8 +173,10 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
     def test_app_has_one_shot_and_queue_diagnostics(self):
         source = (ROOT.parents[1] / "source/uvc/uvc_device.c").read_text()
         self.assertIn("u32 postSeq;", source)
-        self.assertIn("g_uacCtx.burstPosted = true;\n    u32 seq", source)
-        self.assertIn('LOG("UAC U2 post begin seq=%u\\n", seq);', source)
+        self.assertIn('g_uacCtx.burstPosted = true;\n    LOG("UAC U2 train begin', source)
+        self.assertIn('LOG("UAC U2 post begin seq=%u/%u\\n", seq, UAC_U2_TRAIN_POSTS);', source)
+        self.assertIn("for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n)", source)
+        self.assertIn("g_u2BurstBuffers[n]", source)
         self.assertIn('LOG("UAC U2 install obj=0x%llx table=0x%llx', source)
         self.assertIn('LOG("UAC U2 entry %s addr=0x%llx', source)
         self.assertIn('LOG("UAC U2 report data count=%u urb=%u', source)

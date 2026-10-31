@@ -53,6 +53,10 @@ static u8 alignas(0x1000) g_vcControlBuffer[0x1000];   // 4KB for VC control tra
 static u8 alignas(0x1000) g_uacControlBuffer[0x1000];  // 4KB for UAC control transfers
 static u8 alignas(0x1000) g_endpointInBuffer[0x4000];  // Video transfer staging buffer (must fit maxPayload + header)
 static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer staging buffer
+#ifdef UAC_U2_PATCH
+#define UAC_U2_TRAIN_POSTS 32
+static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][0x1000];
+#endif
 
 static UvcDeviceContext g_uvcCtx;
 
@@ -2358,61 +2362,64 @@ static void _postUacBurst(void)
     }
 
     g_uacCtx.burstPosted = true;
-    u32 seq = ++g_uacCtx.postSeq;
-    LOG("UAC U2 post begin seq=%u\n", seq);
+    LOG("UAC U2 train begin count=%u\n", UAC_U2_TRAIN_POSTS);
+    LOG("UAC U2 pattern 1kHz 16ms train=%u\n", UAC_U2_TRAIN_POSTS);
 
-    /* Diagnostic payload: 16 ms of 1 kHz square wave at -12 dBFS.  The host
-       records the UAC stream to WAV and checks this segment, so a successful
-       completion can be tied to data actually reaching EP 0x84, not just to
-       the device-side report. */
-    {
-        s16 *samples = (s16 *)g_audioEndpointBuffer;
-        const u32 frames = UAC_U2_BURST_BYTES / (2 * sizeof(s16));
+    /* A one-shot 16 ms burst leaves AppleUSBAudio starving; send a train of
+       distinct 4 KB buffers so the host has ~0.5 s of contiguous 1 kHz data.
+       Each buffer is posted only after the previous completion and is never
+       reused, avoiding the A23 completion-buffer reuse crash. */
+    for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n) {
+        u8 *buf = g_u2BurstBuffers[n];
+        s16 *samples = (s16 *)buf;
         for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
             const u32 frame = i / 2;
             samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
         }
-        (void)frames;
-    }
-    LOG("UAC U2 pattern 1kHz 16ms seq=%u\n", seq);
-    armDCacheFlush(g_audioEndpointBuffer, UAC_U2_BURST_BYTES);
-    eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+        u32 seq = ++g_uacCtx.postSeq;
+        LOG("UAC U2 post begin seq=%u/%u\n", seq, UAC_U2_TRAIN_POSTS);
+        armDCacheFlush(buf, UAC_U2_BURST_BYTES);
+        eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 
-    u32 urbId = 0;
-    Result rc = usbDsEndpoint_PostBufferAsync(g_uacCtx.audioEndpointIn,
-        g_audioEndpointBuffer, UAC_U2_BURST_BYTES, &urbId);
-    LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
-        rc, urbId, UAC_U2_BURST_BYTES, seq);
-    if (R_FAILED(rc)) return;
-    /* Dump the cave's ring/box immediately: the completion path may clear
-       the endpoint ring before the post-completion diagnostic runs. */
-    _uacLogRingState();
+        u32 urbId = 0;
+        Result rc = usbDsEndpoint_PostBufferAsync(g_uacCtx.audioEndpointIn,
+            buf, UAC_U2_BURST_BYTES, &urbId);
+        LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
+            rc, urbId, UAC_U2_BURST_BYTES, seq);
+        if (R_FAILED(rc)) break;
+        /* Dump the cave's ring/box immediately on the first post. */
+        if (n == 0) _uacLogRingState();
 
-    if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
-        LOG("UAC U2 no completion within 100ms\n");
-        _uacLogInstallState();
-        _uacLogRingState();
-        return;
+        if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
+            LOG("UAC U2 no completion within 100ms seq=%u\n", seq);
+            _uacLogInstallState();
+            _uacLogRingState();
+            break;
+        }
+        eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+        UsbDsReportData report;
+        rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
+        if (R_FAILED(rc)) {
+            LOG("UAC U2 report rc=0x%x seq=%u\n", rc, seq);
+            _uacLogInstallState();
+            _uacLogRingState();
+            break;
+        }
+        u32 requested = 0, transferred = 0;
+        LOG("UAC U2 report data count=%u urb=%u seq=%u\n",
+            report.report_count, urbId, seq);
+        for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+            LOG("UAC U2 report[%u] id=%u req=%u xfer=%u status=%u\n", i,
+                report.report[i].id, report.report[i].requestedSize,
+                report.report[i].transferredSize,
+                report.report[i].urb_status);
+        }
+        Result prc = usbDsParseReportData(&report, urbId, &requested,
+                                          &transferred);
+        LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u seq=%u\n",
+            prc, requested, transferred, seq);
+        if (R_FAILED(prc)) break;
     }
-    eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
-    UsbDsReportData report;
-    rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
-    if (R_FAILED(rc)) {
-        LOG("UAC U2 report rc=0x%x\n", rc);
-        _uacLogInstallState();
-        _uacLogRingState();
-        return;
-    }
-    u32 requested = 0, transferred = 0;
-    LOG("UAC U2 report data count=%u urb=%u\n", report.report_count, urbId);
-    for (u32 i = 0; i < report.report_count && i < 8; ++i) {
-        LOG("UAC U2 report[%u] id=%u req=%u xfer=%u status=%u\n", i,
-            report.report[i].id, report.report[i].requestedSize,
-            report.report[i].transferredSize, report.report[i].urb_status);
-    }
-    Result prc = usbDsParseReportData(&report, urbId, &requested, &transferred);
-    LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
-        prc, requested, transferred);
     _uacLogInstallState();
     _uacLogRingState();
 }

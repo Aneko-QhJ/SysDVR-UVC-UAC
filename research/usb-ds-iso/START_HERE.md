@@ -35,9 +35,11 @@
 - **host 侧新线索**：v8 日志显示 trigger 前 AppleUSBXHCIPipe 已每 ~0.5 s
   abort 16 个请求，AppleUSBAudio 在 starving/restart。one-shot 16 ms
   burst 可能不适合连续音频流；这比单次 TRB 字段更可能是 host 失败原因。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线比较
-  A23 raw libusb 的 16 请求窗口与 macOS audio 连续流要求，评估连续
-  producer/长 burst 或 raw host 路径。下一次实机需新的明确授权。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v11
+  `15458ef4…`（91159B）已构建：一次 SET_CUR 连续发 32 个不同 4 KB 缓冲
+  （~512 ms 1 kHz），每个等完成后发下一个、不复用，用来喂饱
+  AppleUSBAudio。下一次需一次新授权 boot（hold alt1 → ffmpeg → 等
+  engine → trigger-only）。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
