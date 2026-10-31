@@ -1,16 +1,14 @@
-# 当前状态（2026-10-31 18:28，Asia/Shanghai）
+# 当前状态（2026-10-31 21:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 18:25 的 v11（一次 boot）：hold alt1、ffmpeg
-> 8 s，engine 18:25:04.209 `starting`，18:25:09.873 trigger；32-post train
-> 的第 1 个 4 KB 缓冲完成 `3072/3072 status=3`，第 2 个 `rc=0` 但 100 ms
-> 内无 completion，循环停在 2/32；host 内核 18:25:10.071–14.220 有 403 个
-> EP `0x84` transaction error，ffmpeg 挂起、无 WAV。**加长 app 侧 burst
-> 不能修复 host 流**；剩余问题在 host/frame/端点路径。卡恢复 `52069a44…`、
-> 安全弹出，无重试。
+> 最后一次实机是 2026-10-31 21:13 的 raw host probe（一次 boot，未触发）：
+> `auto_detach=0`，但 `detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）、
+> `claim[3]=-3`，无法从 AppleUSBAudio 拿回 AS 接口。因此没有提交 ISO、
+> 没有发 SET_CUR；设备日志只有启动/初始化，无 `UAC U2` 行。卡恢复
+> `52069a44…`、安全弹出，无重试。**macOS raw libusb 路径不可用**。
 
-## 当前进度（2026-10-31 18:28）
+## 当前进度（2026-10-31 21:15）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -31,8 +29,8 @@
 | U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
 | U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
 | U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
-| Raw UAC host probe | 已构建（`host/uac-raw-probe`），未实机；尝试 detach/claim AS、先提交 16×192 ISO 再 SET_CUR | `host/uac-raw-probe.c`、`tests/test_uac_raw_probe.py` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-train` |
+| Raw UAC host probe | **实机一次**：auto_detach ok，但 detach/claim `LIBUSB_ERROR_ACCESS`；未提交 ISO/未发 SET_CUR，设备无 U2 行 | `private/runs/UAC-u2-v11-raw-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-raw` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -67,13 +65,12 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（raw host 一次授权 boot）：`host/uac-raw-probe` 已构建；在 v11
-  设备上先 `--claim-only`，尝试 `libusb_set_auto_detach_kernel_driver` 和
-  `libusb_detach_kernel_driver(3)` 从 AppleUSBAudio 手中拿回 AS 接口。
-  若 claim 成功，再跑完整的“先提交 16×192 ISO、再 SET_CUR”并统计
-  valid/bad/bytes；若 detach/claim 失败，记录 libusb 错误并停止，不再改
-  设备。一次 boot；失败不重试；读卡恢复 `52069a44…`。下一次实机需新的
-  明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（离线）：raw host 路径已在 macOS 上被 `LIBUSB_ERROR_ACCESS` 阻断，
+  只能走 AppleUSBAudio（或换 host/OS）。下一步不再试 detach/claim，改为：
+  (1) 设计连续 UAC producer，让 AppleUSBAudio 一直有 1 ms 数据；
+  (2) 对比 A23 raw libusb 与 audio 驱动在 request/frame 上的差异；
+  (3) 评估是否有其他 host（非 macOS）可验证设备 ISO 路径。先离线，下一次
+  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -89,6 +86,19 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 raw UAC host 探测（2026-10-31 21:13，macOS 拒绝 detach/claim）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v11 `15458ef4…` 一次 boot；不触发 U2 |
+| 工具 | `host/uac-raw-probe --claim-only` |
+| 结果 | `auto_detach=0 (ok)`；`detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）；`claim[3]=-3` |
+| 后续 | claim 失败，未提交 ISO、未发 SET_CUR；设备日志只有启动/初始化，无 `UAC U2` 行 |
+| 判定 | **macOS 不允许从 AppleUSBAudio 手中拿回 AS 接口，raw libusb 路径不可用** |
+| 下一步 | 只能走 AppleUSBAudio 连续流，或换 host/OS；不再试 detach/claim |
+| 证据 | `private/runs/UAC-u2-v11-raw-20261031`（`raw-claim-only.txt`、日志 `c7b7399d…`）、`private/card-cycles/20261031-u2-v11-raw` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v11 实机（2026-10-31 18:25，32-post train 停在 2/32）
 
@@ -446,7 +456,10 @@ starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连�
 **v11 18:25 32-post train**：第 1 个缓冲设备侧完成 `3072/status=3`，第 2 个
 100 ms 内无 completion，停在 2/32；host 仍 403 个 transaction error、无 WAV。
 **加长 app 侧 burst 没有修复 host 流**，剩余问题在 host/frame/端点路径。
-UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+**raw probe 21:13**：`auto_detach=0` 但 `detach[3]/claim[3]=-3`
+（`LIBUSB_ERROR_ACCESS`），macOS 不允许从 AppleUSBAudio 拿回 AS；没有提交
+ISO/触发。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+`52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

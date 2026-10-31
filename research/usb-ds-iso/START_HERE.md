@@ -24,21 +24,18 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 18:28）
+## 当前边界（2026-10-31 21:15）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 18:25 v11（一次 boot）：hold alt1、ffmpeg 8 s、
-  engine 18:25:04.209 `starting`、18:25:09.873 trigger；32-post train 的
-  第 1 个缓冲完成 `3072/3072 status=3`，第 2 个 100 ms 内无 completion，
-  停在 2/32；host 18:25:10.071–14.220 有 403 个 transaction error，
-  ffmpeg 挂起、无 WAV。已恢复 `52069a44…` 并安全弹出。
-- **加长 app 侧 burst 不能修复 host 流**。剩余问题在 host 为什么拒绝
-  第一个已填充 burst（frame/端点/request 匹配），不是缓冲数量。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。新增
-  `host/uac-raw-probe`：先 auto-detach + `libusb_detach_kernel_driver(3)`，
-  再 claim AS；成功后先提交 16×192 ISO 再 SET_CUR。下一次一次授权 boot
-  先跑 `--claim-only`，判断 macOS 是否允许从 AppleUSBAudio 拿回接口；
-  失败即停、不改设备。
+- 最后实机：2026-10-31 21:13 raw host probe（一次 boot，未触发）：
+  `auto_detach=0` 但 `detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）、`claim[3]=-3`；
+  无法从 AppleUSBAudio 拿回 AS 接口。没有提交 ISO、没有发 SET_CUR；设备
+  日志无 `UAC U2` 行。已恢复 `52069a44…` 并安全弹出。
+- **macOS raw libusb 路径不可用**。只能走 AppleUSBAudio 连续流，或换
+  host/OS；不再试 detach/claim。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线设计
+  连续 UAC producer / 比较 A23 raw 与 audio 驱动 request/frame；下一次实机
+  需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

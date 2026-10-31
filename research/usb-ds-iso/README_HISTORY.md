@@ -1437,3 +1437,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-10-31 离线对照（A23 vs UAC TRB）：A23 单 burst 的 `first_trb_control=0x47C01411`（frame 1148、endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9）；Isoch/ED 结构相同，只有 frame/EP index 不同。因此 cave TRB 不是 UAC host 失败的差异点，差异在 AppleUSBAudio 的端点请求/流行为（或 raw host 路径）。
 
 2026-10-31 raw UAC host probe（离线）：新增 `host/uac-raw-probe.c`，先 `libusb_set_auto_detach_kernel_driver` + `libusb_detach_kernel_driver(3)`，再 claim AS 接口；claim 成功后设置 alt1、**先提交** 16×192 ISO transfer、再发 SET_CUR，统计 valid/bad/bytes。支持 `--claim-only`/`--no-detach`/`--no-trigger`。用于判断 macOS 是否允许从 AppleUSBAudio 手中拿回接口，以及设备 raw ISO 路径是否可用。`tests/test_uac_raw_probe.py` 静态检查通过；host 二进制已重建，未实机。
+
+2026-10-31 21:13 raw UAC host probe（一次 boot，未触发）：部署 v11，`host/uac-raw-probe --claim-only`。`auto_detach=0 (ok)`，但 `detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）、`claim[3]=-3`；无法从 AppleUSBAudio 拿回 AS 接口，未提交 ISO、未发 SET_CUR，设备日志只有启动/初始化、无 `UAC U2` 行。判定：macOS raw libusb 路径不可用；只能走 AppleUSBAudio 连续流或换 host/OS。读卡后恢复 `52069a44…`、删日志、安全弹出，无重试。证据 `private/runs/UAC-u2-v11-raw-20261031/`、`private/card-cycles/20261031-u2-v11-raw/`。

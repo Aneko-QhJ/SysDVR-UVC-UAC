@@ -560,4 +560,6 @@ payload / cave 592B）。
   已填充 burst。A23 对照：A23 的 `first_trb_control=0x47C01411`（frame
   1148、endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9），
   Isoch/ED 结构相同，cave TRB 不是差异点；差异在 AppleUSBAudio 的端点/
-  流行为或 raw host 路径。U2 实机线暂停，需新的明确授权。
+  流行为或 raw host 路径。raw probe 随后确认 macOS 拒绝 detach/claim
+  （`LIBUSB_ERROR_ACCESS`），raw 路径不可用；下一步只能做连续 producer
+  或换 host/OS。U2 实机线暂停，需新的明确授权。

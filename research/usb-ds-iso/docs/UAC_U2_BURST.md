@@ -491,3 +491,15 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 目的：判断 macOS 是否允许从 AppleUSBAudio 手中拿回 AS，以及设备 raw
   ISO 路径是否可用；若 claim 失败，记录 libusb 错误并停止。
 - 未实机；需要一次新授权 boot（v11 设备 + `--claim-only` 先测）。
+
+## 2026-10-31 21:13 raw host probe（macOS 拒绝 detach/claim）
+
+- 部署 v11 一次 boot，不触发 U2；`host/uac-raw-probe --claim-only`。
+- `auto_detach=0 (ok)`；`detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）；
+  `claim[3]=-3`。claim 失败，未提交 ISO、未发 SET_CUR；设备日志只有启动/
+  初始化，无 `UAC U2` 行。
+- 判定：**macOS 不允许从 AppleUSBAudio 手中拿回 AS 接口，raw libusb
+  路径不可用**。只能走 AppleUSBAudio 连续流，或换 host/OS；不再试
+  detach/claim。
+- 证据：`private/runs/UAC-u2-v11-raw-20261031`（`raw-claim-only.txt`、日志
+  `c7b7399d…`）、`private/card-cycles/20261031-u2-v11-raw`。
