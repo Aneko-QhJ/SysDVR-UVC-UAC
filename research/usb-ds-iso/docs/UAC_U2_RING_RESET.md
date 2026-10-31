@@ -1,11 +1,11 @@
-# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 分析 + v17 实机）
+# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v18 实机）
 
-> 状态：**v17 诊断已实机一次，dequeue 位置假设被否**。v17 把 prod/cons 推到
-> `ring+0x200` 后，cave 确实把第 2 套 TD 写在了控制器下一槽，但仍然没有
-> 被服务。新的首要假设是“cave 跳过了 driver 的 transfer-event 确认/端点
-> 重启”；**v18 仪器化已离线构建（`35a67deb…`，0 实机）**，读取 pending
-> mask/端点字节并在 cons 处 dump TRB。下一步上机需要新的明确授权。
-> 当前事实以 [CURRENT.md](CURRENT.md) 为准；
+> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码**。v18 实机显示
+> `mask=0x00000000 bit9=0 ep10=0x00` 始终成立（doorbell 路径不检查掩码），
+> 而 seq2 的 TD 在 cons 处结构有效。新焦点：完成码 0xdb/0xde 时 driver 的
+> `event_original` 会做门铃确认（`0x30ff4` 轮询 `regs+0x78` 再写
+> `regs+0x5C/0x78`），cave 跳过它。下一步 v19 先在 cave 记录事件完成码。
+> 下一次上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
 > v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 结论（一句话）
@@ -140,6 +140,45 @@ train end posted=2 completed=1
 | `td@cons` 的 trb0/trb1 与 v14 不同 | TD 内容本身有差异 | 按 IOVA/frame/cycle 逐项对照 |
 
 停止条件与以往相同：任一次失败即停，读卡、恢复 `52069a44…`、不重试。
+
+## 2026-11-01 02:2x v18 实机：掩码假设被否，焦点转向 doorbell ack
+
+host：`urb[3] 1344B` + `urb[4] 1728B` = 3072B，之后全 bad；
+`valid=81 bad=911 bytes=3072`，`cancel remaining=8/64`；设备在线。
+
+设备日志（`private/runs/UAC-u2-v18-event-mask-20261101`）：
+
+```text
+state pre/post/done/timeout（全部）：mask=0x00000000 bit9=0 ep10=0x00
+td@cons seq=1 trb0 addr=0x80030000 len=192 ctl=0x2b701411
+td@cons seq=2 trb0 addr=0x80030000 len=192 ctl=0x33401411   ← 结构同 seq1，仅 frame 变
+seq=2 100 ms 无 completion → cancel=0；train end posted=2 completed=1
+日志最后 USB host disconnected；随后 usb fatal 2162-0002（PC 0x19254）
+```
+
+结论：
+
+- **掩码假设被否**：`[manager+0x22A5C]` 从未置位；`ep10=0x00` 说明
+  `doorbell_tail` 根本不检查它（`tst w10,#0x1f` 为 eq），门铃是无条件写
+  寄存器。
+- seq2 的 TD 内容有效：同一 IOVA、长度 192、cycle 1、frame 0x334（seq1
+  0x2B7，差 125 frame ≈ 16 ms），与 v14 成功结构一致。
+- 新假设：UAC 的 transfer event 完成码若是 **0xdb/0xde**，driver 的
+  `event_original` 会走 `0x30ff4` 的门铃确认块（轮询 `regs+0x78` 的
+  bit9，再写 `regs+0x5C`/`regs+0x78`）；cave 跳过它，控制器的 doorbell
+  状态一直 pending，后续写入被忽略，TD 不再被取指。
+- 本次 usb fatal 发生在 `USB host disconnected` 之后（teardown/关机），
+  不是数据失败的原因；签名与已知 teardown fatal 相同。
+
+## v19 计划（离线实现，需新授权）
+
+1. **先确认完成码**：在 cave 的 `iso_event` 入口把 `[event+8] >> 24` 写到
+   mailbox `ring+0xf84`（app 已能读 `box[1]`），一次 boot 看事件码；
+2. 若为 0xdb/0xde，在 cave 里复刻 `0x30ff4` 的 ack（轮询
+   `regs+0x78` bit9，再写 `regs+0x5C`/`regs+0x78`），保持单请求 pending；
+3. 若完成码不是 0xdb/de，按 `event_original` 的对应分支（`0x31274` 等）
+   重新定位；
+4. 仍不重试：每次 candidate 只跑一次，失败即停。
 
 ## 风险
 
