@@ -75,6 +75,16 @@
   实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
+## VM 可行性（2026-10-31 22:10）
+
+| 项 | 结果 |
+| --- | --- |
+| 环境 | Apple M2/macOS 27.2，Parallels 27.0.3，Windows 11 VM |
+| 直通 | 安全卡 `52069a44…` 的 Switch 设备 `1209:ca57` 成功 attach 到 Windows VM（`Connected-To-Vm: YES`，replug 后） |
+| Windows | `USB Composite Device` 状态 Error，problem code 10（`0xC0000001`）；无子接口枚举 |
+| 判定 | **Parallels USB 直通在 hypervisor 层可用，但 Windows 无法启动该复合设备**；未改驱动、未部署、未跑 raw probe。Windows raw 路径当前不可用 |
+| 下一步 | 可选 Linux VM（libusb 更直接）或继续排查 Windows USB；需要新的明确授权 |
+
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
 
 | 项 | 结果 |
