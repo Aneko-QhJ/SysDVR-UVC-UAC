@@ -549,3 +549,8 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   下一轮 raw 测试改用 v10 one-shot `55f2a4eb…`（无第二个 pending），
   host 用 `--trigger-first --delay-ms` 匹配 cave 的 +32 frame；不再用
   v11 train 上机。
+
+- **v13 one-shot+cancel（离线）**：`5bfcc67a…`（91101B）。`-DUAC_U2_ONE_SHOT`
+  只 post 一个 3072B；100 ms 超时调用 `usbDsEndpoint_Cancel`，不在 alt0
+  teardown 留下 pending 请求。payload 不变（29 条 / cave 592B）。未部署、
+  0 实机；作为下一轮 raw timing 的安全候选。

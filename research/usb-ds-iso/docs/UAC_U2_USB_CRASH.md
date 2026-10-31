@@ -79,9 +79,9 @@ if (R_FAILED(eventWait(&...CompletionEvent, 100E+6))) {
 
 ## 下一步（离线）
 
-1. **不再用 v11 train 做 raw 测试**；改用 v10 one-shot
-   `55f2a4eb…`（90997 B，29 edits / cave 592B），它只 post 一个 3072B
-   请求，不会留下第二个 pending request。
+1. **不再用 v11 train 做 raw 测试**；改用 v13 one-shot+cancel
+   `5bfcc67a…`（91101 B，29 edits / cave 592B），它只 post 一个 3072B
+   请求，并在超时调用 `usbDsEndpoint_Cancel`，不会留下 pending request。
 2. raw host 下一轮用 **fresh boot + `--trigger-first --delay-ms 30`**
    （或 `--transfers` 多 URB）匹配 cave 的 +32 frame；测试结束前不要让
    host 恢复 alt0，先确认 completion 已到。

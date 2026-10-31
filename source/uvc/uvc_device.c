@@ -54,7 +54,11 @@ static u8 alignas(0x1000) g_uacControlBuffer[0x1000];  // 4KB for UAC control tr
 static u8 alignas(0x1000) g_endpointInBuffer[0x4000];  // Video transfer staging buffer (must fit maxPayload + header)
 static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer staging buffer
 #ifdef UAC_U2_PATCH
+#ifdef UAC_U2_ONE_SHOT
+#define UAC_U2_TRAIN_POSTS 1
+#else
 #define UAC_U2_TRAIN_POSTS 32
+#endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][0x1000];
 #endif
 
@@ -2396,7 +2400,11 @@ static void _postUacBurst(void)
         if (n == 0) _uacLogRingState();
 
         if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
-            LOG("UAC U2 no completion within 100ms seq=%u\n", seq);
+            /* Do not leave the request pending across alt0 teardown: the usb
+               sysmodule can touch a dangling ISO request and fatal. */
+            Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+            LOG("UAC U2 no completion within 100ms seq=%u cancel=0x%x\n",
+                seq, cancel);
             _uacLogInstallState();
             _uacLogRingState();
             break;

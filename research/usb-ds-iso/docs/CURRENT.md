@@ -34,6 +34,7 @@
 | U2 v12 attrs 0x01 | **实机一次**：word 0x00c00184、first post 3072/3、second no completion；host 398 个 transaction error、无 WAV | `private/runs/UAC-u2-v12-attr01-20261031` |
 | Debian raw（v11） | **实机一次**：Linux claim 成功；raw 16×192 `valid=16 bad=0 bytes=0`；one-shot 被首次尝试消耗 | `private/runs/UAC-u2-v11-debian-raw-20261031` |
 | usb sysmodule fatal | **实机一次**：启动游戏时 `usb`（0100000000000006）fatal 2162-0002，PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464 | `private/runs/UAC-u2-v11-debian-raw-20261031/crash` |
+| U2 v13 one-shot+cancel | 已构建（`5bfcc67a…`，91101B），未部署、0 实机；一次 post + 超时 `usbDsEndpoint_Cancel`，移除 pending 第二请求 | `private/analysis/UAC-u2-v13-oneshot-cancel-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-debian-raw` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -73,8 +74,8 @@
   `PostBufferAsync` 在 100 ms 超时后没有取消**；host 恢复 alt0/关闭 endpoint
   时 usb 模块在 teardown 遇到 pending ISO request（stack `0x2c584` 位于
   `0x2c520` unmap 路径，`0x2a3f4/0x2a464` 在 PostBufferAsync 附近）。
-  离线下一步：(1) 不再用 v11 train 做 raw 测试，改用 v10 one-shot
-  `55f2a4eb…`（90997B，无第二个 pending）；(2) raw host 用 fresh boot +
+  离线下一步：(1) 不再用 v11 train 做 raw 测试，改用 v13 one-shot+cancel
+  `5bfcc67a…`（91101B，单 post + 超时 cancel，无第二个 pending）；(2) raw host 用 fresh boot +
   `--trigger-first --delay-ms 30` 或 `--transfers` 匹配 +32 frame；
   (3) 若仍崩溃，再做“只 descriptor 编辑 / 只 NOP / 只 hook”三组隔离；
   (4) 8 个 descriptor-parser NOP 是全局风险，下一版应只放宽 UAC 配置。

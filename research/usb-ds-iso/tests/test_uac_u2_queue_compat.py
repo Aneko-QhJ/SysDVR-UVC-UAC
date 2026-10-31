@@ -177,6 +177,8 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('LOG("UAC U2 post begin seq=%u/%u\\n", seq, UAC_U2_TRAIN_POSTS);', source)
         self.assertIn("for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n)", source)
         self.assertIn("g_u2BurstBuffers[n]", source)
+        self.assertIn("usbDsEndpoint_Cancel", source)
+        self.assertIn("UAC_U2_ONE_SHOT", source)
         self.assertIn('LOG("UAC U2 install obj=0x%llx table=0x%llx', source)
         self.assertIn('LOG("UAC U2 entry %s addr=0x%llx', source)
         self.assertIn('LOG("UAC U2 report data count=%u urb=%u', source)
