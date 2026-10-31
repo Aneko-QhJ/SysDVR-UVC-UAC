@@ -24,19 +24,17 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 21:15）
+## 当前边界（2026-10-31 22:00）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 21:13 raw host probe（一次 boot，未触发）：
-  `auto_detach=0` 但 `detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）、`claim[3]=-3`；
-  无法从 AppleUSBAudio 拿回 AS 接口。没有提交 ISO、没有发 SET_CUR；设备
-  日志无 `UAC U2` 行。已恢复 `52069a44…` 并安全弹出。
-- **macOS raw libusb 路径不可用**。只能走 AppleUSBAudio 连续流，或换
-  host/OS；不再试 detach/claim。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v12
-  `25513302…`（91163B）已构建：UAC AS 端点 attrs `0x05`→`0x01`
-  （匹配 A23），cave/expected word `0x00C00184`。下一次一次授权 boot
-  （hold alt1 → ffmpeg → 等 engine → trigger-only）验证 attrs 假设。
+- 最后实机：2026-10-31 21:58 v12（一次 boot）：AS endpoint attrs `0x01`，
+  word `0x00c00184`；precheck 通过，第 1 个 post `3072/status=3`，第 2 个
+  100 ms 无 completion（2/32）；host 21:58:03.181–07.336 共 398 个
+  transaction error，无 WAV。已恢复 `52069a44…` 并安全弹出。
+- **attrs 0x05→0x01 没有改变 host 行为**；attrs/address/MPS 排列停止。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。只剩两条路：
+  解释/绕过 AppleUSBAudio request/frame，或换 host/OS；设备侧 native ISO
+  producer 暂缓。下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

@@ -1,14 +1,15 @@
-# 当前状态（2026-10-31 21:15，Asia/Shanghai）
+# 当前状态（2026-10-31 22:00，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 21:13 的 raw host probe（一次 boot，未触发）：
-> `auto_detach=0`，但 `detach[3]=-3`（`LIBUSB_ERROR_ACCESS`）、
-> `claim[3]=-3`，无法从 AppleUSBAudio 拿回 AS 接口。因此没有提交 ISO、
-> 没有发 SET_CUR；设备日志只有启动/初始化，无 `UAC U2` 行。卡恢复
-> `52069a44…`、安全弹出，无重试。**macOS raw libusb 路径不可用**。
+> 最后一次实机是 2026-10-31 21:58 的 v12（一次 boot）：UAC AS 端点
+> `bmAttributes=0x01`（no-sync），endpoint word `0x00C00184`。precheck
+> 通过；第 1 个 post 仍 `3072/3072 status=3`，第 2 个 100 ms 无 completion，
+> 停在 2/32；host 内核 21:58:03.181–07.336 有 **398 个** EP `0x84`
+> transaction error，ffmpeg 挂起、无 WAV。**attrs 0x05→0x01 没有改变 host
+> 行为**，不再继续排列 descriptor attrs。卡恢复 `52069a44…`、安全弹出。
 
-## 当前进度（2026-10-31 21:15）
+## 当前进度（2026-10-31 22:00）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -30,8 +31,8 @@
 | U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
 | U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
 | Raw UAC host probe | **实机一次**：auto_detach ok，但 detach/claim `LIBUSB_ERROR_ACCESS`；未提交 ISO/未发 SET_CUR，设备无 U2 行 | `private/runs/UAC-u2-v11-raw-20261031` |
-| U2 v12 attrs 0x01 | 已构建（`25513302…`，91163B），未部署、0 实机；AS endpoint attrs 0x05→0x01，cave word 0x00C00184 | `private/analysis/UAC-u2-v12-attr01-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-raw` |
+| U2 v12 attrs 0x01 | **实机一次**：word 0x00c00184、first post 3072/3、second no completion；host 398 个 transaction error、无 WAV | `private/runs/UAC-u2-v12-attr01-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v12-attr01` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -66,14 +67,12 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（v12 一次授权 boot）：raw host 已被 `LIBUSB_ERROR_ACCESS` 阻断，
-  只能走 AppleUSBAudio。v12 `25513302…`（91163B）把 UAC AS 端点
-  `bmAttributes` 从 `0x05`（ISO async）改成 `0x01`（ISO no-sync，匹配 A23
-  vendor 端点），cave/expected word 改 `0x00C00184`。一次 boot：hold alt1 →
-  ffmpeg 8 s → 等 engine → trigger-only → 收 WAV。若 host 开始收数，
-  attrs 就是差异；若仍 transaction error，再换地址 0x83/MPS 或连续
-  producer。下一次实机需新的明确授权。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（离线，停止 descriptor 排列）：v12 证明 attrs 0x05→0x01 没有改变
+  host 行为；不要再排列 attrs/address/MPS。现在只剩两条有依据的路线：
+  (1) 解释/绕过 AppleUSBAudio 的 request/frame 行为（macOS 唯一 audio host）；
+  (2) 换 host/OS 做 raw ISO 验证（当前规则暂不启用 VM）。
+  设备侧可考虑 native ISO producer，但在 host 行为解释前不加代码。下一次
+  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -89,6 +88,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v12 实机（2026-10-31 21:58，attrs 0x01 未改变 host 行为）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v12 `25513302…`（91163B，29 条 / cave 592B，attrs 0x01）一次 boot |
+| precheck | `word=0x00c00184`、`dci=9 cycle=1`、`installed=1`，门通过 |
+| train | 第 1 个缓冲 `complete 3072/3072 status=3`；第 2 个 100 ms 无 completion，停在 2/32 |
+| ring | `trb0 ctl=0x70b01411`（frame 1803）、`trb1 ctl=0x1c21` |
+| host 内核 | 21:58:03.181–07.336 共 **398 个** EP `0x84` transaction error；trigger 前已有 16 请求 abort |
+| WAV | 无（ffmpeg 挂起，killed） |
+| 判定 | **attrs 0x05→0x01 没有改变 host 行为**；attrs/async-sync 不是差异点，停止 descriptor 排列 |
+| 下一步 | 解释/绕过 AppleUSBAudio request/frame，或换 host/OS；native ISO producer 暂缓 |
+| 证据 | `private/runs/UAC-u2-v12-attr01-20261031`（日志 `d5db3375…`、内核 `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v12-attr01` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 raw UAC host 探测（2026-10-31 21:13，macOS 拒绝 detach/claim）
 
@@ -461,7 +475,9 @@ starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连�
 **加长 app 侧 burst 没有修复 host 流**，剩余问题在 host/frame/端点路径。
 **raw probe 21:13**：`auto_detach=0` 但 `detach[3]/claim[3]=-3`
 （`LIBUSB_ERROR_ACCESS`），macOS 不允许从 AppleUSBAudio 拿回 AS；没有提交
-ISO/触发。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+ISO/触发。**v12 21:58 attrs 0x01**：word 0x00c00184、第 1 个 post 3072/3，
+第 2 个无 completion；host 仍 398 个 transaction error、无 WAV——attrs
+0x05→0x01 不是差异点。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。

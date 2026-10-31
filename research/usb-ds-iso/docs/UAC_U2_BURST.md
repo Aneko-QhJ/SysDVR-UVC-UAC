@@ -513,3 +513,15 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   未部署、0 实机。
 - 下一次：一次 boot，hold alt1 → ffmpeg 8 s → 等 engine → trigger-only →
   收 WAV；若 host 开始收数，attrs 就是差异。
+
+## 2026-10-31 21:58 v12 attrs 0x01（实机，未改变 host 行为）
+
+- AS endpoint `bmAttributes=0x01`（no-sync），word `0x00c00184`；precheck
+  通过，第 1 个 post `3072/3072 status=3`，第 2 个 100 ms 无 completion，
+  停在 2/32；host 21:58:03.181–07.336 共 398 个 transaction error，无 WAV。
+- 判定：**attrs 0x05→0x01 没有改变 host 行为**；attrs/async-sync 不是
+  差异点，停止 descriptor attrs/address/MPS 排列。
+- 下一步：解释/绕过 AppleUSBAudio request/frame，或换 host/OS；native ISO
+  producer 暂缓，需新授权才再上机。
+- 证据：`private/runs/UAC-u2-v12-attr01-20261031`（日志 `d5db3375…`、内核
+  `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v12-attr01`。

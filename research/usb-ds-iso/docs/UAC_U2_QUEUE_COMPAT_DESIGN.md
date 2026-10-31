@@ -561,5 +561,7 @@ payload / cave 592B）。
   1148、endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9），
   Isoch/ED 结构相同，cave TRB 不是差异点；差异在 AppleUSBAudio 的端点/
   流行为或 raw host 路径。raw probe 随后确认 macOS 拒绝 detach/claim
-  （`LIBUSB_ERROR_ACCESS`），raw 路径不可用；下一步只能做连续 producer
-  或换 host/OS。U2 实机线暂停，需新的明确授权。
+  （`LIBUSB_ERROR_ACCESS`），raw 路径不可用。v12 的 attrs 0x01 实机也未
+  改变 host 行为（398 个 transaction error，2/32 停止），attrs/address/MPS
+  排列停止；下一步只能解释/绕过 AppleUSBAudio request/frame，或换 host/OS。
+  U2 实机线暂停，需新的明确授权。
