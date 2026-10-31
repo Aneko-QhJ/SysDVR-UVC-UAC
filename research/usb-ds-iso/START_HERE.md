@@ -24,22 +24,19 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 18:25）
+## 当前边界（2026-10-31 18:28）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 18:17 v10（一次 boot，无 ffmpeg）：hold alt1 →
-  trigger-only → 1 s → alt0。precheck `dci=9 cycle=1`、`installed=1`；
-  post 后立即读到 box magic `0x324f5349`、`trb0 ctl=0x5ea01411`
-  （frame 1514）、`trb1 ctl=0x1c21`；MFI 经 dmnt 不可读
-  （`regs=0x700d0000 rd=0xd401`）。已恢复 `52069a44…` 并安全弹出。
-- **host 侧新线索**：v8 日志显示 trigger 前 AppleUSBXHCIPipe 已每 ~0.5 s
-  abort 16 个请求，AppleUSBAudio 在 starving/restart。one-shot 16 ms
-  burst 可能不适合连续音频流；这比单次 TRB 字段更可能是 host 失败原因。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v11
-  `15458ef4…`（91159B）已构建：一次 SET_CUR 连续发 32 个不同 4 KB 缓冲
-  （~512 ms 1 kHz），每个等完成后发下一个、不复用，用来喂饱
-  AppleUSBAudio。下一次需一次新授权 boot（hold alt1 → ffmpeg → 等
-  engine → trigger-only）。
+- 最后实机：2026-10-31 18:25 v11（一次 boot）：hold alt1、ffmpeg 8 s、
+  engine 18:25:04.209 `starting`、18:25:09.873 trigger；32-post train 的
+  第 1 个缓冲完成 `3072/3072 status=3`，第 2 个 100 ms 内无 completion，
+  停在 2/32；host 18:25:10.071–14.220 有 403 个 transaction error，
+  ffmpeg 挂起、无 WAV。已恢复 `52069a44…` 并安全弹出。
+- **加长 app 侧 burst 不能修复 host 流**。剩余问题在 host 为什么拒绝
+  第一个已填充 burst（frame/端点/request 匹配），不是缓冲数量。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线
+  比较 A23 raw libusb 与 macOS audio 路径，解释第一个 burst 的 host
+  transaction error；暂不继续加 train 代码，下一次实机需新授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

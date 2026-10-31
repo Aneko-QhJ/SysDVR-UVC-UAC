@@ -553,5 +553,8 @@ payload / cave 592B）。
   无 host 流时 `xfer=0 status=5`。v10 的 MFI 经 dmnt 不可读
   （`regs=0x700d0000 rd=0xd401`），frame 1514 只能记录；v8 host 日志
   显示 trigger 前每 ~0.5 s abort 16 个请求，audio 流 starving/restart。
-  one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流；下一步离线比较
-  A23 raw libusb 路径与连续 producer。U2 实机线暂停，需新的明确授权。
+  one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流。v11 的 32-post
+  train 实机：第 1 个缓冲 `3072/3072 status=3`，第 2 个 100 ms 无
+  completion，停在 2/32；host 仍 403 个 transaction error、无 WAV。
+  **加长 app 侧 train 不能修复 host 流**；剩余问题在 host 为什么拒绝第一个
+  已填充 burst。U2 实机线暂停，需新的明确授权。

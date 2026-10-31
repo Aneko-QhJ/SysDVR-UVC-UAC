@@ -1,17 +1,16 @@
-# 当前状态（2026-10-31 18:25，Asia/Shanghai）
+# 当前状态（2026-10-31 18:28，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 18:17 的 v10（一次 boot，无 ffmpeg）：
-> precheck `dci=9 cycle=1`、`installed=1`；post 后立即读到 box magic
-> `0x324f5349`、`trb0 ctl=0x5ea01411`（frame 1514）、`trb1 ctl=0x1c21`；
-> 但 MFI 读取失败（`regs=0x700d0000 rd=0xd401`，MMIO 地址 dmnt 不可读），
-> `mfi=0/frame=32` 无效。report 为 `xfer=0 status=5`、parse `0x748c`。
-> 另：v8 host 日志显示 AppleUSBXHCIPipe 在 trigger 前就每 ~0.5 s abort
-> 16 个请求，audio 流已在 starving/restart；**one-shot 16 ms burst 可能
-> 不适合 AppleUSBAudio 的连续流**。卡恢复 `52069a44…`、安全弹出，无重试。
+> 最后一次实机是 2026-10-31 18:25 的 v11（一次 boot）：hold alt1、ffmpeg
+> 8 s，engine 18:25:04.209 `starting`，18:25:09.873 trigger；32-post train
+> 的第 1 个 4 KB 缓冲完成 `3072/3072 status=3`，第 2 个 `rc=0` 但 100 ms
+> 内无 completion，循环停在 2/32；host 内核 18:25:10.071–14.220 有 403 个
+> EP `0x84` transaction error，ffmpeg 挂起、无 WAV。**加长 app 侧 burst
+> 不能修复 host 流**；剩余问题在 host/frame/端点路径。卡恢复 `52069a44…`、
+> 安全弹出，无重试。
 
-## 当前进度（2026-10-31 18:25）
+## 当前进度（2026-10-31 18:28）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -31,8 +30,8 @@
 | U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
 | U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
 | U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
-| U2 v11 burst train | 已构建（`15458ef4…`，91159B），未部署、0 实机；一次 SET_CUR 发 32×16 ms 不同缓冲（~512 ms） | `private/analysis/UAC-u2-v11-train-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v10-mfi` |
+| U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-train` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -67,13 +66,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（v11 一次授权 boot）：v10 显示 host 在 trigger 前已每 ~0.5 s abort
-  16 个请求，one-shot 16 ms 不够。v11 `15458ef4…`（91159B）一次 SET_CUR 连续
-  发 32 个不同的 4 KB 缓冲（32×16 ms ≈ 512 ms 的 1 kHz 数据），每个等完成后再
-  发下一个、从不复用，避免 A23 的复用崩溃。host 顺序：hold alt1 → ffmpeg 8 s
-  → 等 engine → trigger-only → 收 WAV。若 WAV 出现 1 kHz 段，host 数据路径
-  打通；若仍 starving，再考虑更长的连续 producer/raw host。下一次实机需新的
-  明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（离线）：v11 的第 1 个缓冲设备侧完成 `3072/status=3`，但 host 仍有
+  403 个 transaction error，且第 2 个缓冲 100 ms 内无 completion。**加长
+  app 侧 train 不能修复 host 流**。下一步集中在：为什么 host 拒绝第一个已填充
+  的 burst（frame 对齐、端点上下文、host request/ED 匹配），以及 A23 raw
+  libusb 与 macOS audio 的差异。连续 producer/raw host 仍是备选，但在解释
+  第一个 burst 前不继续加代码。先离线；下一次实机需新的明确授权。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -89,6 +88,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v11 实机（2026-10-31 18:25，32-post train 停在 2/32）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v11 `15458ef4…`（91159B，29 条 / cave 592B）一次 boot |
+| host | hold alt1；ffmpeg `:2` 8 s；engine `starting` 18:25:04.209；18:25:09.873 trigger-only；ffmpeg 挂起，18:25:14 killed |
+| train | 第 1 个缓冲 `complete 3072/3072 status=3`；第 2 个 `rc=0 urb=404` 但 100 ms 内无 completion；停在 2/32 |
+| ring | `trb0 ctl=0x02b01411`（frame 688）、`trb1 ctl=0x1c21`；box magic ISO2 |
+| host 内核 | 18:25:10.071–14.220 共 403 个 EP `0x84` `0xe00002ed`；trigger 前已有 16 请求 abort |
+| WAV | 无（ffmpeg 挂起，killed） |
+| 判定 | **加长 app 侧 burst 没有修复 host 流**：第一个 16 ms 设备侧完成，host 仍 transaction error；第二个缓冲没有 completion。问题在 host/frame/端点路径，不是缓冲数量 |
+| 下一步 | 离线解释“host 拒绝第一个已填充 burst”与 A23 raw libusb 差异；暂不继续加 train 代码 |
+| 证据 | `private/runs/UAC-u2-v11-train-20261031`（日志 `f5cc8cf6…`、内核 `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v11-train` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v10 实机（2026-10-31 18:17，MFI 不可读；host 流已在 abort）
 
@@ -426,9 +440,11 @@ error。**v9 18:07 无 ffmpeg**：post 返回后立即读到 box magic `0x324f53
 确实写了 ring/TRB；没有 host 流时 report 为 `xfer=0 status=5`。**v10 18:17**：
 MFI 经 dmnt 不可读（`regs=0x700d0000 rd=0xd401`），TRB frame 1514；v8 host
 日志显示 trigger 前 AppleUSBXHCIPipe 已每 ~0.5 s abort 16 个请求，audio 流
-starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流**，
-这是比单次 TRB 字段更可能的 host 失败原因。UAC 默认仍禁用（仅
-`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流**。
+**v11 18:25 32-post train**：第 1 个缓冲设备侧完成 `3072/status=3`，第 2 个
+100 ms 内无 completion，停在 2/32；host 仍 403 个 transaction error、无 WAV。
+**加长 app 侧 burst 没有修复 host 流**，剩余问题在 host/frame/端点路径。
+UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

@@ -463,13 +463,17 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 证据：`private/runs/UAC-u2-v10-mfi-20261031`（日志 `23e52127…`）、
   `private/card-cycles/20261031-u2-v10-mfi`。
 
-## 2026-10-31 18:30 v11：32-post burst train（离线）
+## 2026-10-31 18:25 v11：32-post burst train（实机，停在 2/32）
 
 - v10 显示 host 在 trigger 前每 ~0.5 s abort 16 个请求，one-shot 16 ms
   不够。v11 在一次 SET_CUR 后连续 post 32 个不同的 4 KB 缓冲
   （32×16 ms ≈ 512 ms 的 1 kHz 数据），每个等完成后再发下一个、从不复用。
-- 目的：给 AppleUSBAudio 一段足够长的连续数据，区分“device TRB 错”与
-  “host 音频流 starvation”。payload 不变（29 条 / cave 592B），
-  NSP `15458ef4…`（91159B）。未部署、0 实机。
-- 下一次：一次 boot，hold alt1 → ffmpeg 8 s → 等 engine → trigger-only →
-  收 WAV；若出现 1 kHz 段，host 数据路径打通。
+- **实机**：第 1 个缓冲 `complete 3072/3072 status=3`；第 2 个 `rc=0` 但
+  100 ms 内无 completion，循环停在 2/32。host 内核 18:25:10.071–14.220
+  仍有 403 个 EP `0x84` transaction error；ffmpeg 挂起、无 WAV。
+- 判定：**加长 app 侧 burst 没有修复 host 流**；问题在 host 为什么拒绝
+  第一个已填充 burst（frame/端点/request 匹配），不是缓冲数量。
+- 下一步离线比较 A23 raw libusb 与 macOS audio 路径；暂不继续加 train，
+  下一次实机需新授权。
+- 证据：`private/runs/UAC-u2-v11-train-20261031`（日志 `f5cc8cf6…`、内核
+  `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v11-train`。
