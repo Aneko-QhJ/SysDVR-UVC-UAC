@@ -20,6 +20,7 @@ HOST = ROOT / "host/uac-raw-probe.c"
 BINARY = ROOT / "host/uac-raw-probe"
 WORK15 = ROOT / "private/analysis/UAC-u2-v15-continuous-20261101"
 WORK16 = ROOT / "private/analysis/UAC-u2-v16-submit-state-20261101"
+WORK17 = ROOT / "private/analysis/UAC-u2-v17-ring-advance-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -122,6 +123,61 @@ class UacU2SubmitStateTests(unittest.TestCase):
     def test_ring_is_dumped_after_every_post(self):
         self.assertNotIn("if (n == 0) _uacLogRingState();", self.body)
         self.assertGreaterEqual(self.body.count("_uacLogRingState();"), 3)
+
+
+class UacU2RingAdvanceTests(unittest.TestCase):
+    """v17: move the cave window to the controller's next 0x200 slot."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+        cls.body = post_body(cls.source)
+
+    def test_advance_moves_both_ring_pointers_one_slot(self):
+        for token in ("#ifdef UAC_U2_RING_ADVANCE",
+                      "#define UAC_U2_TD_BYTES 0x200ULL",
+                      "static bool _uacAdvanceRing(u32 seq, u32 slots)",
+                      "const u64 next = ring + (u64)slots * UAC_U2_TD_BYTES;",
+                      "UAC_U2_EP_OBJ + 0x18",
+                      "UAC_U2_EP_OBJ + 0x20",
+                      "UAC U2 ring advance seq=%u slots=%u from=0x%llx"):
+            self.assertIn(token, self.source)
+
+    def test_advance_only_runs_for_later_bursts_before_the_pre_log(self):
+        anchor = ('#ifdef UAC_U2_RING_ADVANCE\n'
+                  '        if (seq > 1) _uacAdvanceRing(seq, seq - 1);\n'
+                  '#endif\n'
+                  '        _uacLogSubmitState("pre", seq);')
+        self.assertIn(anchor, self.body)
+
+
+class UacU2RingAdvanceBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK17 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK17}; run the offline build")
+        cls.doc = json.loads((WORK17 / "manifest.json").read_text())
+
+    def test_payload_is_still_the_v14_cave(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        self.assertEqual(self.doc["cave_sha256"], old["cave_sha256"])
+
+    def test_build_enables_the_advance_alongside_four_bursts(self):
+        build = json.loads((WORK17 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertIn("-DUAC_U2_RING_ADVANCE", build["defines"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+            elf = nsp.parent / "exefs.elf"
+            if elf.is_file():
+                self.assertIn(b"UAC U2 ring advance seq=%u slots=%u", elf.read_bytes())
 
 
 class UacU2SubmitStateBuildTests(unittest.TestCase):

@@ -2297,6 +2297,40 @@ static void _uacLogSubmitState(const char *tag, u32 seq)
         (ring && prod == cons) ? 1u : 0u);
 }
 
+#ifdef UAC_U2_RING_ADVANCE
+/* v17 diagnostic: the driver resets prod/cons to the ring base when a request
+   completes (v16 "done" line), but the controller has already consumed one
+   0x200-byte TD set, so its dequeue is past the base.  The next cave enter then
+   writes 16+16 TRBs at the base, behind the dequeue, and they are never
+   fetched.  Move the cave's write window to the next 0x200 slot before posting
+   burst 2..N.  This is a one-shot dmnt write to the same ring fields the cave
+   updates at submit time; it is a diagnostic, not the final design.  The four
+   bursts stay below 0xf70, so no Link/slot wrap is involved. */
+#define UAC_U2_TD_BYTES 0x200ULL
+static bool _uacAdvanceRing(u32 seq, u32 slots)
+{
+    if (!g_uacUsbPid || slots == 0) return false;
+    UacUsbEpState ep = {0};
+    if (!_uacReadUsbState(&ep)) return false;
+    u64 ring = 0;
+    memcpy(&ring, ep.state + 0x10, sizeof(ring));
+    if (!ring) return false;
+    const u64 next = ring + (u64)slots * UAC_U2_TD_BYTES;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return false;
+    Result rc = svcWriteDebugProcessMemory(h, &next,
+        g_uacUsbBase + UAC_U2_EP_OBJ + 0x18, sizeof(next));
+    if (R_SUCCEEDED(rc)) {
+        rc = svcWriteDebugProcessMemory(h, &next,
+            g_uacUsbBase + UAC_U2_EP_OBJ + 0x20, sizeof(next));
+    }
+    svcCloseHandle(h);
+    LOG("UAC U2 ring advance seq=%u slots=%u from=0x%llx to=0x%llx rc=0x%x\n",
+        seq, slots, (unsigned long long)ring, (unsigned long long)next, rc);
+    return R_SUCCEEDED(rc);
+}
+#endif
+
 /* The cave still writes its ISO2 mailbox even with the report hook removed:
    ring+0xf80 magic, +0xf90 completed bitmap, +0xf94 actual sum, +0xf98 first
    TRB, +0xfbc retained control.  Log the first Isoch/ED words too, so a
@@ -2432,6 +2466,9 @@ static void _postUacBurst(void)
         u32 seq = ++g_uacCtx.postSeq;
         LOG("UAC U2 post begin seq=%u/%u pattern=%u\n", seq,
             UAC_U2_TRAIN_POSTS, base);
+#ifdef UAC_U2_RING_ADVANCE
+        if (seq > 1) _uacAdvanceRing(seq, seq - 1);
+#endif
         _uacLogSubmitState("pre", seq);
         armDCacheFlush(buf, UAC_U2_BURST_BYTES);
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);

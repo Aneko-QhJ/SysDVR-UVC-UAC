@@ -1,4 +1,4 @@
-# 当前状态（2026-11-01 01:55，Asia/Shanghai）
+# 当前状态（2026-11-01 02:05，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -6,15 +6,17 @@
 > probe）：host 仍只有 3072B（urb2/urb3），但设备日志首次给出关键事实——
 > **两次 post 都进了 cave、都写了完整 TD 集**（`post` 行 `prod=ring+0x200`、
 > box `ISO2`、trb0 frame 0x64E→0x728），seq1 完成 3072/3，seq2 100 ms 无
-> completion。**cave 的 `prod == cons` 门被排除**；第 1 个完成后驱动把
-> prod/cons 重置回 ring base（`done` 行），第 2 个 TD 集落在控制器已消费的
-> 位置之后，控制器不再取指。下一次上机需新授权；下一步先离线分析
-> `doorbell_tail`/完成路径的 ring 复位。详见
-> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> completion。**`prod == cons` 门被排除**；第 1 个完成后驱动把 prod/cons/copy
+> 复位回 ring base（`done` 行），第 2 套 TD 落在控制器已消费的 0x200 字节
+> 之后。doorbell 已确认响过（`rc=0`，错误路径会返回 `0x1928c`）。
+> 2026-11-01 02:05 离线完成 **v17 ring-advance 诊断**（`ef1e63c0…`，92472B，
+> payload 仍与 v14 相同）：post burst 2..N 前用 dmnt 把 prod/cons 同时推到
+> `ring+(seq-1)*0x200`，验证 dequeue 位置假设。**0 实机**，下一次上机需新
+> 授权。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 > 本轮出现一个新 erpt `2162-0004`（Data Abort），无 creport/fatal，暂未归属。
 > 卡恢复 `52069a44…`、删日志/新 erpt、安全弹出。
 
-## 当前进度（2026-11-01 01:55）
+## 当前进度（2026-11-01 02:05）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -47,6 +49,7 @@
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
 | **v16 状态仪器化** | **实机两次**：r1 boot 崩溃（probe 未运行）；r2 完成——两次 post 都写 TD、seq2 无 completion；**cave 门被排除**，问题在控制器/ring 复位 | `private/runs/UAC-u2-v16-submit-state-r2`、`private/runs/UAC-u2-v16-submit-state-20261101` |
+| **v17 ring-advance 诊断** | **离线已构建，0 实机**：`ef1e63c0…`（92472B），post 2..N 前把 prod/cons 推到 `ring+(seq-1)*0x200`，验证 dequeue 位置 | `private/analysis/UAC-u2-v17-ring-advance-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -83,14 +86,25 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（离线分析，先不再上机）：(1) v16 r2 已排除 cave 门——两次 post 都
-  写了完整 TD，seq2 的 TD 集没有被控制器服务；(2) 第 1 个完成后驱动把
-  prod/cons 重置回 ring base（`done` 行），而控制器已消费 0x200 字节，
-  第 2 个 TD 集落在控制器 dequeue 之后；(3) 离线读 `doorbell_tail`
-  （`0x31c74`）与完成路径，确认控制器 dequeue 是否被复位、doorbell 目标
-  是否仍指向 base；候选修法是让 cave 维护跨请求的 ring 写入位置，或在完成后
-  复位控制器 dequeue；(4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。
-  下一次上机需要新授权。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+- 下一步（v17 已离线构建，等待新授权）：(1) 离线已确认 doorbell 响了
+  （`rc=0`；错误路径会返回 `0x1928c`），且驱动完成时把 prod/cons/copy 复位回
+  base，控制器 dequeue 已过 0x200；(2) v17 `ef1e63c0…` 在 post 2..N 前用
+  dmnt 把 prod/cons 同时推到 `ring+(seq-1)*0x200`，让第 2 套 TD 落在控制器
+  dequeue；(3) 一次 boot：若 seq2 收到数据 → dequeue 假设成立，下一步做 cave
+  自维护/流水线（A23 per-URB）版本；若仍失败 → 回到驱动复位/控制器状态分析；
+  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
+  [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+
+## 最近一次离线：v17 ring-advance 诊断（2026-11-01 02:05）
+
+| 项 | 结果 |
+| --- | --- |
+| 分析 | `done` 行显示驱动在完成时把 prod/cons/copy 复位回 base；控制器已消费 32×16B=0x200；v16 r2 的 seq2 TD 写在 base，落在 dequeue 之后 |
+| doorbell | 已排除：`0x31c74` 写 `regs+4 = dci<<8`，错误才返回 `0x1928c`；两次 post 都是 `rc=0` |
+| 构建 | `ef1e63c0…`（92472B），`-DUAC_U2_BURSTS=4 -DUAC_U2_RING_ADVANCE`；payload/cave 与 v14 相同 |
+| 改动 | post burst 2..N 前 dmnt 写 prod=cons=`ring+(seq-1)*0x200`；4 burst 最多 +0x600，不碰 Link/回卷 |
+| 风险 | 跨进程写驱动 ring 字段；假设错误时可能扰动后续请求（不排除 crash），一次 boot、失败即停 |
+| 实机 | **0 次**；下一次需新授权，判定/停止见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md) |
 
 ## 最近一次实机：v16 r2（2026-11-01 01:49，cave 门被排除）
 
