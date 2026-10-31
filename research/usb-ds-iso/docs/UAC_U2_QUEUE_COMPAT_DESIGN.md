@@ -550,5 +550,8 @@ payload / cave 592B）。
   （可能被 driver 清理），host 仍有 2255 个 transaction error。v9
   `0c339a15…` 在 post 返回后立即 dump：box magic ISO2、trb0
   `0x0e801411`（frame 232）、trb1 `0x1c21`，证明 cave 写了 ring/TRB；
-  无 host 流时 `xfer=0 status=5`。剩余问题是 host 为何拒绝这些 TRB/
-  端点上下文；U2 实机线暂停，需新的明确授权。
+  无 host 流时 `xfer=0 status=5`。v10 的 MFI 经 dmnt 不可读
+  （`regs=0x700d0000 rd=0xd401`），frame 1514 只能记录；v8 host 日志
+  显示 trigger 前每 ~0.5 s abort 16 个请求，audio 流 starving/restart。
+  one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流；下一步离线比较
+  A23 raw libusb 路径与连续 producer。U2 实机线暂停，需新的明确授权。

@@ -24,21 +24,20 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 18:15）
+## 当前边界（2026-10-31 18:25）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 18:07 v9（一次 boot，无 ffmpeg）：hold alt1 →
+- 最后实机：2026-10-31 18:17 v10（一次 boot，无 ffmpeg）：hold alt1 →
   trigger-only → 1 s → alt0。precheck `dci=9 cycle=1`、`installed=1`；
-  post 返回后立即读到 `box magic=0x324f5349`（ISO2）、
-  `trb0 addr=0x80030000 len=192 ctl=0x0e801411`（frame 232）、
-  `trb1 ctl=0x00001c21`。没有 host 流时 report 为 `xfer=0 status=5`、
-  parse `0x748c`（预期错误完成）。已恢复 `52069a44…` 并安全弹出。
-- **cave 确实写了 ring/box/TRB，DCI=9**。v8 的 `3072/status=3` 依赖 host
-  完成；剩余问题是 host 为什么拒绝这些 TRB/端点上下文。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v10
-  `55f2a4eb…`（90997B）已构建：在 ring dump 里额外打印 MFI 和计算 frame，
-  用来核对 v9 的 TRB frame 232。下一次只需 hold alt1 + trigger-only
-  （无 ffmpeg）一次 boot；需新的明确授权。
+  post 后立即读到 box magic `0x324f5349`、`trb0 ctl=0x5ea01411`
+  （frame 1514）、`trb1 ctl=0x1c21`；MFI 经 dmnt 不可读
+  （`regs=0x700d0000 rd=0xd401`）。已恢复 `52069a44…` 并安全弹出。
+- **host 侧新线索**：v8 日志显示 trigger 前 AppleUSBXHCIPipe 已每 ~0.5 s
+  abort 16 个请求，AppleUSBAudio 在 starving/restart。one-shot 16 ms
+  burst 可能不适合连续音频流；这比单次 TRB 字段更可能是 host 失败原因。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线比较
+  A23 raw libusb 的 16 请求窗口与 macOS audio 连续流要求，评估连续
+  producer/长 burst 或 raw host 路径。下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

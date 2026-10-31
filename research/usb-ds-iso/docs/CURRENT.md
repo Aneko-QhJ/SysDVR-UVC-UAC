@@ -1,17 +1,17 @@
-# 当前状态（2026-10-31 18:15，Asia/Shanghai）
+# 当前状态（2026-10-31 18:25，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 18:07 的 v9（一次 boot，无 ffmpeg）：
-> precheck `dci=9 cycle=1`、`obj=0x623957b038`、`installed=1`；post 返回后
-> 立即 dump 到 ring `prod=0x623957d200`、box magic=`0x324f5349`（ISO2）、
-> `trb0 addr=0x80030000 len=192 ctl=0x0e801411`（frame 232）、
-> `trb1 ctl=0x00001c21`。**cave 确实写了 ring/box/TRB**。没有 host 流时
-> report 为 `xfer=0 status=5`、parse `0x748c`（预期错误完成），说明 v8 的
-> `3072/status=3` 需要 host 完成。剩余问题在 host 为何拒绝这些 TRB/端点
-> 上下文。卡恢复 `52069a44…`、安全弹出，无重试。
+> 最后一次实机是 2026-10-31 18:17 的 v10（一次 boot，无 ffmpeg）：
+> precheck `dci=9 cycle=1`、`installed=1`；post 后立即读到 box magic
+> `0x324f5349`、`trb0 ctl=0x5ea01411`（frame 1514）、`trb1 ctl=0x1c21`；
+> 但 MFI 读取失败（`regs=0x700d0000 rd=0xd401`，MMIO 地址 dmnt 不可读），
+> `mfi=0/frame=32` 无效。report 为 `xfer=0 status=5`、parse `0x748c`。
+> 另：v8 host 日志显示 AppleUSBXHCIPipe 在 trigger 前就每 ~0.5 s abort
+> 16 个请求，audio 流已在 starving/restart；**one-shot 16 ms burst 可能
+> 不适合 AppleUSBAudio 的连续流**。卡恢复 `52069a44…`、安全弹出，无重试。
 
-## 当前进度（2026-10-31 18:15）
+## 当前进度（2026-10-31 18:25）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -30,8 +30,8 @@
 | U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
 | U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
 | U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
-| U2 v10 MFI/frame | 已构建（`55f2a4eb…`，90997B），未部署、0 实机；打印 MFI 与计算 frame | `private/analysis/UAC-u2-v10-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v9-ring` |
+| U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v10-mfi` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -66,13 +66,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（v10 一次授权 boot）：v9 已证明 cave 写了 ISO2 box 和合法外观的
-  Isoch/ED TRB（`trb0 ctl=0x0e801411`、frame 232；`trb1 ctl=0x1c21`）。
-  v10 `55f2a4eb…`（90997B）在 ring dump 里额外读 `manager+8 -> regs+0x48`
-  的 MFI，并打印 `mfi/frame`，用来核对 TRB 的 frame 232 是否等于 cave 的
-  `((mfi>>3)+32)&0x7ff`。一次 boot，仍只需 hold alt1 + trigger-only，
-  不开 ffmpeg。若 frame 相等，说明调度基址正确，剩余嫌疑转向端点上下文/
-  TRB 地址/attrs；若不等，先修 MFI 读取。下一次实机需新的明确授权。详见
+- 下一步（离线，host 路径优先）：v10 证明 MFI 经 dmnt 读不到（MMIO `0x700d0000`
+  → `0xd401`），frame 1514 只能记录不能校验；更关键的是 v8 host 日志在 trigger
+  前就每 ~0.5 s abort 16 个请求，AppleUSBAudio 已在 starving/restart。
+  **one-shot 16 ms burst 可能不适合连续音频流**。下一步离线比较：
+  (1) A23 用 raw libusb 的 16 请求窗口为什么能工作；(2) macOS audio 驱动对
+  starvation/连续数据的要求；(3) 是否必须做连续 producer 或长时间 burst，
+  而不是继续调单次 TRB。先不动硬件；下一次实机需新的明确授权。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
@@ -89,6 +89,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v10 实机（2026-10-31 18:17，MFI 不可读；host 流已在 abort）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v10 `55f2a4eb…`（90997B，29 条 / cave 592B）一次 boot |
+| host | hold alt1；trigger-only；1 s；alt0；无 ffmpeg |
+| precheck | `dci=9 cycle=1`、`obj=0x4f5837b038`、`installed=1` |
+| post 后立即 | box magic `0x324f5349`、`trb0 ctl=0x5ea01411`（frame 1514）、`trb1 ctl=0x1c21`；`mfi` 读取失败（`regs=0x700d0000 rd=0xd401`） |
+| completion | report count=1、`xfer=0 status=5`、parse `0x748c`（无 host 流） |
+| host 侧线索 | v8 host 日志：trigger 前（18:00:10.4–15.7）AppleUSBXHCIPipe 已每 ~0.5 s abort 16 个请求；audio 流 starving/restart |
+| 判定 | MFI 经 dmnt 不可读；frame 1514 只能记录。**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流**；这可能是 host 失败的主因，不是单次 TRB 字段 |
+| 下一步 | 离线比较 A23 raw libusb 16 请求窗口与 macOS audio 连续流要求；评估连续 producer/长 burst，或 raw host 路径 |
+| 证据 | `private/runs/UAC-u2-v10-mfi-20261031`（日志 `23e52127…`）、`private/card-cycles/20261031-u2-v10-mfi` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v9 实机（2026-10-31 18:07，立即 ring dump：TRB 已写入）
 
@@ -408,9 +423,12 @@ error 15.609，到 29.994 共 1394 个；ffmpeg 挂起、无 WAV。**时序假�
 ring/box/trb 全零（可能已被 driver 清理），host 仍有 2255 个 transaction
 error。**v9 18:07 无 ffmpeg**：post 返回后立即读到 box magic `0x324f5349`
 （ISO2）、`trb0 ctl=0x0e801411`（frame 232）、`trb1 ctl=0x1c21`，证明 cave
-确实写了 ring/TRB；没有 host 流时 report 为 `xfer=0 status=5`。剩余问题是
-host 为何拒绝这些 TRB/端点上下文（frame/MFI、`bmAttributes` 0x05、pipe）。
-UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+确实写了 ring/TRB；没有 host 流时 report 为 `xfer=0 status=5`。**v10 18:17**：
+MFI 经 dmnt 不可读（`regs=0x700d0000 rd=0xd401`），TRB frame 1514；v8 host
+日志显示 trigger 前 AppleUSBXHCIPipe 已每 ~0.5 s abort 16 个请求，audio 流
+starving/restart——**one-shot 16 ms burst 可能不适合 AppleUSBAudio 连续流**，
+这是比单次 TRB 字段更可能的 host 失败原因。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

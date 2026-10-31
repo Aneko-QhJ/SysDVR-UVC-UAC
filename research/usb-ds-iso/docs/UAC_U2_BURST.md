@@ -446,3 +446,19 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   payload 不变（29 条 / cave 592B）。未部署、0 实机。
 - 下一次：一次 boot，hold alt1 + trigger-only，无 ffmpeg；若 frame 相等，
   剩余嫌疑转向端点上下文/TRB 地址/attrs；若不等，先修 MFI 读取。
+
+## 2026-10-31 18:17 v10 MFI/frame（MFI 不可读；host 流已在 abort）
+
+- 无 ffmpeg：hold alt1 → trigger-only → 1 s → alt0。precheck `dci=9`、
+  `installed=1`；post 后立即 box magic `0x324f5349`、
+  `trb0 ctl=0x5ea01411`（frame 1514）、`trb1 ctl=0x1c21`。
+- MFI 读取失败：`regs=0x700d0000 rd=0xd401`（MMIO 地址，dmnt 不可读）；
+  `mfi=0/frame=32` 无效。report `xfer=0 status=5`（无 host 流）。
+- v8 host 日志补充：trigger 前 18:00:10.4–15.7，AppleUSBXHCIPipe 已每
+  ~0.5 s abort 16 个请求，audio 流 starving/restart。**one-shot 16 ms
+  burst 可能不适合 AppleUSBAudio 连续流**，这是比单次 TRB 字段更可能的
+  host 失败原因。
+- 下一步离线：比较 A23 raw libusb 的 16 请求窗口与 macOS audio 连续流
+  要求，评估连续 producer/长 burst 或 raw host 路径。下一次实机需新授权。
+- 证据：`private/runs/UAC-u2-v10-mfi-20261031`（日志 `23e52127…`）、
+  `private/card-cycles/20261031-u2-v10-mfi`。
