@@ -1,13 +1,13 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
-> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码**。v18 实机显示
-> `mask=0x00000000 bit9=0 ep10=0x00` 始终成立（doorbell 路径不检查掩码），
-> 而 seq2 的 TD 在 cons 处结构有效。新焦点：完成码 0xdb/0xde 时 driver 的
-> `event_original` 会做门铃确认（`0x30ff4` 轮询 `regs+0x78` 再写
-> `regs+0x5C/0x78`），cave 跳过它。**v19 已离线构建（`301f216d…`，cave
-> 604B）**：cave 把事件完成码写进 mailbox +4，app 修正 box 解析并在完成时
-> dump。下一次上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md)
-> 为准；v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19 发现完成码被驱动清掉**。
+> v19 的 mailbox 完成码在 app 读取前被驱动清理（`event=0`）；cave 自己的接受
+> 检查要求 `[event+8]>>24 == 1`，所以 0xdb/0xde 的 `0x30ff4` ack 不是我们的
+> 分支。真正的差异在 driver 的 code-1 路径（`0x31230` → `0x31cf0`：每个 ED
+> 调一次 complete_original，w4=192、force=0，并更新 cons）与 cave 的“累计后
+> 一次完成（w4=3072、force=1、cons=prod）”之间。
+> 下一次上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
+> v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 结论（一句话）
 
@@ -205,6 +205,50 @@ str w6, [x5, #4]   /* a6 04 00 b9 */
 | 任意 crash/fatal | 停止 | 读卡取报告，不重试 |
 
 停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 2026-11-01 02:4x v19 实机：完成码被驱动清掉
+
+host：`urb[2] 1152B` + `urb[3] 1920B` = 3072B，之后全 bad；
+`valid=57 bad=935 bytes=3072`；设备在线，无新 crash/fatal/erpt。
+
+设备日志（`private/runs/UAC-u2-v19-event-code-20261101`）：
+
+```text
+post seq1 box: magic=ISO2 event=0 done=0 completed=0 actual=0 first=ring
+eventWait 之后的 box: magic=0 event=0 done=0 completed=0 actual=0 first=0  ← 被驱动清掉
+seq2 post box: magic=ISO2 event=0 …（无事件）；100 ms 无 completion → cancel
+```
+
+结论：
+
+- v19 无法从 mailbox 观察完成码：**驱动在完成清理时把 mailbox 擦掉**，
+  app 在 `eventWait` 之后读到全 0；cave 的写入本身发生过（否则 seq1 不会
+  正常完成）。
+- 从 cave 自己的接受检查反推：成功 ED 事件满足 `[event+8]>>24 == 1`，
+  所以 `event_original` 的 **code-1 分支（`0x31230`）** 才是我们的路径，
+  不是 0xdb/0xde 的 `0x30ff4` ack。
+- driver 的 code-1 路径：`0x31238` 计算下一个 TRB 指针并写
+  `cons = [endpoint+0x20]`（`0x31264 str x8,[x19,#32]`）→ `0x31cf0(event,
+  endpoint)` → 对 ISO（`attrs&3 == 1`）调用
+  `complete_original(w4 = transferred = 192, w3 = 0 force, w5 = 1)`：
+  **每个 ED 完成一次**，由 driver 的 `entry+44` 累加到 3072。
+- cave 的路径：自己累计 16 个 ED → 一次
+  `complete_original(w4 = 3072, w3 = 1 force, w5 = 1)`，然后把 `cons = prod`。
+- 差异：**per-ED 完成 + 逐事件更新 cons** vs **一次完成 + cons=prod**。
+  前者可能让 driver 在每个 TD 上做正确的 entry/ring 清理，从而避免
+  “完成后回 base”把第 2 套 TD 抛到控制器 dequeue 之后。
+
+## v20 方向（per-ED 完成，需新授权）
+
+1. cave 对每个通过校验的 ED（status=1、len=192）立即
+   `bl complete_original`，参数按 driver 路径：`w4=192`、`w3=0`、`w5=1`；
+   不再等 mailbox 累计到 3072 后一次完成。
+2. 按 driver 的方式更新 `cons`（`0x31264` 的语义：指向下一个 TRB），
+   而不是完成时 `cons = prod`。
+3. 保留 mailbox 计数/诊断，但不再作为完成条件；单请求 pending 的约束不变
+   （app 仍是 one-at-a-time）。
+4. 离线先做 Unicorn 回放（16 次 per-ED 调用 + cons 序列），再构建；一次
+   授权 boot，失败即停。
 
 ## 风险
 

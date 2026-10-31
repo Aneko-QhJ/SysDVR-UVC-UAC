@@ -24,26 +24,21 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 02:45）
+## 当前边界（2026-11-01 03:00）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 02:2x **v18 event-mask**（VM 开机前 suspend，attach
-  后立即 probe）。host 仍只有 3072B；设备所有 state 行
-  `mask=0x00000000 bit9=0 ep10=0x00`，seq2 `td@cons` 结构有效（同 IOVA/
-  len/cycle，frame 0x334 vs 0x2B7），但仍 100 ms 无 completion。
-- 结论：**v17 位置假设被否，v18 掩码/事件确认假设也被否**。新焦点：完成码
-  0xdb/0xde 时 `event_original` 的门铃确认 `0x30ff4`（轮询 `regs+0x78`
-  bit9，再写 `regs+0x5C/0x78`），cave 跳过它。
-- 下一阶段：**v19 `301f216d…`（91955B，cave 604B）已离线构建**：cave 把
-  `[event+8]>>24` 写进 mailbox +4，app 修正 box 解析并在完成时 dump；一次
-  boot 读完成码（0xdb/0xde → 复刻 ack；0xdc → 重核时序；seq2 为 0 → 无事件）。
-  **0 实机，需新授权**；详见 [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
+- 最后实机：2026-11-01 02:4x **v19 event-code**（VM 开机前 suspend，attach
+  后立即 probe）。host 仍只有 3072B；设备 post 时 box `ISO2`，但 `eventWait`
+  之后 box 被驱动清成全 0（完成码无法在 mailbox 里观察）；seq2 无事件。
+- 结论：v19 的 mailbox 完成码被驱动清掉；成功 ED 的码（cave 检查
+  `[event+8]>>24 == 1`）是 **1**，所以 driver 的 code-1 路径才是被跳过的那条：
+  **每个 ED 调一次 `complete_original(w4=192, w3=0)` 并逐事件更新 cons**；
+  cave 是“累计到 3072 后一次完成（w4=3072, w3=1）+ cons=prod”。
+- 下一阶段：**v20** 把 cave 改成 per-ED 完成 + 按驱动方式更新 cons，离线
+  Unicorn 验证后构建；**需新授权**；详见
+  [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
-- 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停，下一次需新授权。
-- 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
-  `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
-  打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
-- 设备日志已回收，SD 已安全弹出；当前设备现场状态不推定。
+- 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
 
 ## 文件角色
 
