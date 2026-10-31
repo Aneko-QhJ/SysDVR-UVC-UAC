@@ -2379,11 +2379,17 @@ static void _uacLogRingState(void)
         (unsigned long long)cons, (unsigned long long)ring, mfi, frame,
         (unsigned long long)regs, R_SUCCEEDED(rc) ? mrc : rc);
     if (R_SUCCEEDED(rc) && ring) {
-        u32 box[4] = {0};
+        /* v19: the mailbox layout is magic +0, last event completion code +4,
+           done flag +0xc, completed bitmap +0x10, actual +0x14, first TRB
+           +0x18.  The old dump read +4/+8/+0xc as completed/actual/first. */
+        u32 box[8] = {0};
         rc = svcReadDebugProcessMemory(box, h, ring + 0xF80, sizeof(box));
         if (R_SUCCEEDED(rc)) {
-            LOG("UAC U2 ring box magic=0x%08x completed=0x%08x actual=%u first=0x%08x\n",
-                box[0], box[1], box[2], box[3]);
+            u64 first = 0;
+            memcpy(&first, (const u8 *)box + 0x18, sizeof(first));
+            LOG("UAC U2 ring box magic=0x%08x event=0x%08x done=%u completed=0x%08x actual=%u first=0x%llx\n",
+                box[0], box[1], box[3] ? 1u : 0u, box[4], box[5],
+                (unsigned long long)first);
         }
         u8 trb[0x20] = {0};
         if (R_SUCCEEDED(rc)) {
@@ -2534,6 +2540,9 @@ static void _postUacBurst(void)
         }
         ++completed;
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+        /* v19: read the mailbox right after the completion event, before the
+           report path can clean it, so seq1's last event code is visible. */
+        _uacLogRingState();
         UsbDsReportData report;
         rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
         if (R_FAILED(rc)) {

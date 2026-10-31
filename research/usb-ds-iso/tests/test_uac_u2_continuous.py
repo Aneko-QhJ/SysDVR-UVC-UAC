@@ -22,6 +22,8 @@ WORK15 = ROOT / "private/analysis/UAC-u2-v15-continuous-20261101"
 WORK16 = ROOT / "private/analysis/UAC-u2-v16-submit-state-20261101"
 WORK17 = ROOT / "private/analysis/UAC-u2-v17-ring-advance-20261101"
 WORK18 = ROOT / "private/analysis/UAC-u2-v18-event-mask-20261101"
+WORK19 = ROOT / "private/analysis/UAC-u2-v19-event-code-20261101"
+ASM19 = ROOT / "patches/iso_burst_uac84_dci9_eventcode.S"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -204,6 +206,75 @@ class UacU2EventMaskBuildTests(unittest.TestCase):
             elf = nsp.parent / "exefs.elf"
             if elf.is_file():
                 self.assertIn(b"mask=0x%08x bit9=%u ep10=0x%02x",
+                              elf.read_bytes())
+
+
+class UacU2EventCodeTests(unittest.TestCase):
+    """v19: record the last transfer-event completion code in mailbox +4."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file() or not ASM19.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE} or {ASM19}")
+        cls.source = SOURCE.read_text()
+        cls.body = post_body(cls.source)
+        cls.asm = ASM19.read_text()
+
+    def test_cave_stores_the_completion_code(self):
+        for token in ("ldr w6, [x1, #8]", "lsr w6, w6, #24",
+                      "str w6, [x5, #4]", "v19: record the last transfer-event"):
+            self.assertIn(token, self.asm)
+
+    def test_ring_box_is_dumped_after_the_completion(self):
+        wait = self.body.index(
+            "eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent")
+        ring = self.body.index("_uacLogRingState();", wait)
+        report = self.body.index("usbDsEndpoint_GetReportData(", wait)
+        self.assertLess(ring, report)
+
+    def test_box_fields_use_the_real_offsets(self):
+        for token in ("event=0x%08x done=%u completed=0x%08x actual=%u first=0x%llx",
+                      "memcpy(&first, (const u8 *)box + 0x18, sizeof(first))",
+                      "box[4], box[5]"):
+            self.assertIn(token, self.source)
+
+
+class UacU2EventCodeBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK19 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK19}; run the offline build")
+        cls.doc = json.loads((WORK19 / "manifest.json").read_text())
+
+    def test_cave_is_the_v14_cave_plus_the_event_code_insert(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        c_old = bytes.fromhex(next(e["after"] for e in old["edits"]
+                                   if e["address"] == "0x68d54"))
+        c_new = bytes.fromhex(next(e["after"] for e in self.doc["edits"]
+                                   if e["address"] == "0x68d54"))
+        inserted = bytes.fromhex("260840b9c67c1853a60400b9")
+        at = c_new.find(inserted)
+        self.assertNotEqual(at, -1)
+        self.assertEqual(len(c_new), len(c_old) + len(inserted))
+        # Code before the insert keeps its encoding; code after it may differ
+        # only in the relative branches that the 12-byte shift moved.
+        self.assertEqual(c_new[:at], c_old[:at])
+        self.assertEqual(len(c_new[at + len(inserted):]), len(c_old[at:]))
+
+    def test_build_wires_the_new_cave(self):
+        build = json.loads((WORK19 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertEqual(build["payload"]["cave_bytes"], 604)
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+            elf = nsp.parent / "exefs.elf"
+            if elf.is_file():
+                self.assertIn(b"UAC U2 ring box magic=0x%08x event=0x%08x",
                               elf.read_bytes())
 
 

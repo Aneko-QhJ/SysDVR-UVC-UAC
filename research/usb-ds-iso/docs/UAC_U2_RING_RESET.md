@@ -1,12 +1,13 @@
-# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v18 实机）
+# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
 > 状态：**v17 否掉 ring 位置，v18 否掉事件掩码**。v18 实机显示
 > `mask=0x00000000 bit9=0 ep10=0x00` 始终成立（doorbell 路径不检查掩码），
 > 而 seq2 的 TD 在 cons 处结构有效。新焦点：完成码 0xdb/0xde 时 driver 的
 > `event_original` 会做门铃确认（`0x30ff4` 轮询 `regs+0x78` 再写
-> `regs+0x5C/0x78`），cave 跳过它。下一步 v19 先在 cave 记录事件完成码。
-> 下一次上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
-> v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> `regs+0x5C/0x78`），cave 跳过它。**v19 已离线构建（`301f216d…`，cave
+> 604B）**：cave 把事件完成码写进 mailbox +4，app 修正 box 解析并在完成时
+> dump。下一次上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md)
+> 为准；v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 结论（一句话）
 
@@ -170,15 +171,40 @@ seq=2 100 ms 无 completion → cancel=0；train end posted=2 completed=1
 - 本次 usb fatal 发生在 `USB host disconnected` 之后（teardown/关机），
   不是数据失败的原因；签名与已知 teardown fatal 相同。
 
-## v19 计划（离线实现，需新授权）
+## v19 事件完成码（已离线构建，0 实机，需新授权）
 
-1. **先确认完成码**：在 cave 的 `iso_event` 入口把 `[event+8] >> 24` 写到
-   mailbox `ring+0xf84`（app 已能读 `box[1]`），一次 boot 看事件码；
-2. 若为 0xdb/0xde，在 cave 里复刻 `0x30ff4` 的 ack（轮询
-   `regs+0x78` bit9，再写 `regs+0x5C`/`regs+0x78`），保持单请求 pending；
-3. 若完成码不是 0xdb/de，按 `event_original` 的对应分支（`0x31274` 等）
-   重新定位；
-4. 仍不重试：每次 candidate 只跑一次，失败即停。
+cave 只加 12 字节：在 `iso_event` 的邮箱指针建立后插入
+
+```asm
+ldr w6, [x1, #8]   /* 26 08 40 b9 */
+lsr w6, w6, #24    /* c6 7c 18 53 */
+str w6, [x5, #4]   /* a6 04 00 b9 */
+```
+
+把 transfer event 的完成码写进 mailbox `+4`；cave 每次 enter 会把 `+4` 清零，
+所以 **seq2 若为 0 就说明根本没有事件到达**。app 侧同时修正了旧 box dump 的
+错位（原先把 `+4/+8/+0xc` 当 completed/actual/first），现在读
+`magic +0 / event +4 / done +0xc / completed +0x10 / actual +0x14 / first +0x18`，
+并在 `eventWait` 之后、`GetReportData` 之前 dump 一次，保住 seq1 的最后一个
+完成码。
+
+| 项 | 值 |
+| --- | --- |
+| 构建 | `301f216d…`（91955B），cave `ffef1d7b…` / **604B**（+12，limit 684） |
+| assembly | `patches/iso_burst_uac84_dci9_eventcode.S` |
+| 工作目录 | `private/analysis/UAC-u2-v19-event-code-20261101` |
+| 其余 | 29 条 edits、endpoint/DCI/完成参数与 v14 相同；其余 28 条 edit 不变 |
+
+一次 boot 的判定：
+
+| 观察 | 结论 | 下一步 |
+| --- | --- | --- |
+| seq1 完成后的 `event=0xdb` 或 `0xde` | 与 `0x30ff4` 的 ack 分支一致 | v20 在 cave 里复刻轮询 `regs+0x78` + 写 `regs+0x5C/0x78` |
+| `event=0xdc` | 走的是清位/ack 分支（`0x311a8`），与之前测到的 `mask=0` 不符 | 重新核对事件码与掩码时序 |
+| seq2 的 `event=0`（post 后 dump） | 第 2 个请求**完全没有事件**到达 | 问题在控制器/端点，不在事件处理 |
+| 任意 crash/fatal | 停止 | 读卡取报告，不重试 |
+
+停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
 
 ## 风险
 
