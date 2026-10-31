@@ -24,7 +24,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 02:15）
+## 当前边界（2026-11-01 02:20）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
 - 最后实机：2026-11-01 02:10 **v17 ring-advance**（VM 开机前 suspend，attach
@@ -34,9 +34,9 @@
 - 结论：**位置假设被否**；ring 位置不是阻塞点。新首要假设是 cave 对 DCI 9
   事件不调用 `event_original`，跳过了 driver 的事件确认/端点重启（相关代码在
   `0x31324`/`0x311a8`，掩码在 `[manager+0x22A5C]`）。
-- 下一阶段：**v18 仪器化**（只改 app）：读 `[module+0xFCA5C]` pending 掩码与
-  endpoint `+0x0A`，post 后 dump prod 处 TRB；若 `bit9=1`，在 cave 里复刻
-  清位/轮询/门铃序列。**需新授权**；详见
+- 下一阶段：**v18 `35a67deb…`（91846B）已离线构建**（0 实机）：状态行读
+  `[module+0xFCA5C]` 掩码与 endpoint `+0x0A`，cons 处 dump TD 集；若
+  `bit9=1`，在 cave 里复刻清位/轮询/门铃序列。**需新授权**；详见
   [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停，下一次需新授权。

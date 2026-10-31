@@ -1,4 +1,4 @@
-# 当前状态（2026-11-01 02:15，Asia/Shanghai）
+# 当前状态（2026-11-01 02:20，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -9,13 +9,14 @@
 > 套 TD **正好写在控制器 dequeue 的下一槽**，仍然 100 ms 无 completion。
 > **dequeue 位置假设被否**；ring 位置不是阻塞点。
 > 新首要假设：cave 对 DCI 9 的 transfer event 直接处理、不调用
-> `event_original`，跳过了 driver 的事件确认/端点重启，所以第一次完成之后
-> 控制器不再服务新的 TD 集。下一步 **v18 仪器化**（读 `[module+0xFCA5C]`
-> pending 掩码、endpoint `+0x0A`、dump prod 处的 TRB）需要新授权；详见
+> `event_original`，跳过了 driver 的事件确认/端点重启。
+> 2026-11-01 02:20 离线完成 **v18 仪器化**（`35a67deb…`，91846B，payload 仍与
+> v14 相同）：状态行补 `mask=[module+0xFCA5C] bit9 ep10=[object+0x0A]`，并在
+> cons 处 dump TD 集。**0 实机**，下一次上机需新授权；详见
 > [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 > 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 02:15）
+## 当前进度（2026-11-01 02:20）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -49,6 +50,7 @@
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
 | **v16 状态仪器化** | **实机两次**：r1 boot 崩溃（probe 未运行）；r2 完成——两次 post 都写 TD、seq2 无 completion；**cave 门被排除**，问题在控制器/ring 复位 | `private/runs/UAC-u2-v16-submit-state-r2`、`private/runs/UAC-u2-v16-submit-state-20261101` |
 | **v17 ring-advance 诊断** | **实机一次，位置假设被否**：`advance rc=0`、seq2 TD 写到 `ring+0x200`，仍 100 ms 无 completion；ring 位置不是阻塞点 | `private/runs/UAC-u2-v17-ring-advance-20261101` |
+| **v18 事件掩码仪器化** | **离线已构建，0 实机**：`35a67deb…`（91846B），状态行加 `mask/bit9/ep10`，cons 处 dump TD；payload 与 v14 相同 | `private/analysis/UAC-u2-v18-event-mask-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -85,14 +87,15 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v18 仪器化，需新授权）：(1) v17 已否掉“第 2 套 TD 位置不对”——
-  它正好写在控制器 dequeue 的下一槽，仍不被服务；(2) 新首要假设是 cave 跳过
-  了 driver 的 transfer-event 确认/端点重启（`event_original` 内的
-  `0x31324` 置位、`0x311a8` 清位/轮询 `regs+0x78`）；(3) v18 只改 app：读
-  `[module+0xFCA5C]` pending 掩码与 endpoint `+0x0A`，并把 post 后的 TRB dump
-  改到 prod 处；(4) 若 seq2 时 `bit9=1` → 在 cave 里复刻清位/轮询/门铃序列；
-  否则回到 endpoint `+0x0A` 与控制器状态分析；(5) 8 个 descriptor-parser NOP
-  的全局风险仍未隔离。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+- 下一步（v18 已离线构建，等待新授权）：(1) v17 已否掉“第 2 套 TD 位置不
+  对”——它正好写在控制器 dequeue 的下一槽，仍不被服务；(2) 新首要假设是 cave
+  跳过了 driver 的 transfer-event 确认/端点重启（`event_original` 内的
+  `0x31324` 置位、`0x311a8` 清位/轮询 `regs+0x78`）；(3) v18 `35a67deb…`
+  （91846B）只改 app：读 `[module+0xFCA5C]` pending 掩码与 endpoint `+0x0A`，
+  并在 cons 处 dump TD 集；(4) 若 seq2 时 `bit9=1` → 在 cave 里复刻清位/
+  轮询/门铃序列；否则回到 endpoint `+0x0A` 与控制器状态分析；(5) 8 个
+  descriptor-parser NOP 的全局风险仍未隔离。详见
+  [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 最近一次实机：v17 ring-advance（2026-11-01 02:10，位置假设被否）
 

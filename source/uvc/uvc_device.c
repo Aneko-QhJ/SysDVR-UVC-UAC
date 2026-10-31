@@ -2158,9 +2158,15 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #define UAC_U2_INSTALL_FLAG_OFF 0x1610ULL
 #define UAC_U2_INSTALL_FLAG1_OFF 0x1611ULL
 #define UAC_U2_INSTALL_TABLE_OFF 0x1608ULL
+/* v18: per-DCI "transfer event pending" mask (manager+0x22A5C).  event_original
+   sets a bit on 0x31324 and clears it (plus the regs+0x78 poll) on 0x311a8;
+   the cave handles DCI-9 events itself and never runs that path. */
+#define UAC_U2_PENDING_MASK_OFFSET 0xFCA5CULL
 typedef struct {
     u8 state[0x48];
     u32 speed;
+    u32 pending_mask;
+    bool mask_ok;
     u64 install_obj;
     bool install_ok;
     u8 installed;
@@ -2182,6 +2188,14 @@ static bool _uacReadUsbState(UacUsbEpState *out)
     if (R_SUCCEEDED(rc)) {
         rc = svcReadDebugProcessMemory(&out->speed, h,
             g_uacUsbBase + UAC_U2_SPEED_OFFSET, sizeof(out->speed));
+    }
+    /* A failed mask read is diagnostic only; it must not fail the precheck. */
+    out->mask_ok = false;
+    {
+        Result mrc = svcReadDebugProcessMemory(&out->pending_mask, h,
+            g_uacUsbBase + UAC_U2_PENDING_MASK_OFFSET,
+            sizeof(out->pending_mask));
+        out->mask_ok = R_SUCCEEDED(mrc);
     }
     if (R_SUCCEEDED(rc)) {
         rc = svcReadDebugProcessMemory(&out->install_obj, h,
@@ -2290,11 +2304,13 @@ static void _uacLogSubmitState(const char *tag, u32 seq)
     memcpy(&prod, ep.state + 0x18, sizeof(prod));
     memcpy(&cons, ep.state + 0x20, sizeof(cons));
     memcpy(&copy, ep.state + 0x28, sizeof(copy));
-    LOG("UAC U2 state %s seq=%u word=0x%08x int=%u dci=%u cycle=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx copy=0x%llx empty=%u\n",
+    LOG("UAC U2 state %s seq=%u word=0x%08x int=%u dci=%u cycle=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx copy=0x%llx empty=%u mask=0x%08x bit9=%u ep10=0x%02x\n",
         tag, seq, word, ep.state[6], ep.state[0x42], ep.state[0x40],
         ep.speed, (unsigned long long)ring, (unsigned long long)prod,
         (unsigned long long)cons, (unsigned long long)copy,
-        (ring && prod == cons) ? 1u : 0u);
+        (ring && prod == cons) ? 1u : 0u,
+        ep.mask_ok ? ep.pending_mask : 0u,
+        (ep.mask_ok ? (ep.pending_mask >> 9) & 1u : 0u), ep.state[0x0A]);
 }
 
 #ifdef UAC_U2_RING_ADVANCE
@@ -2385,6 +2401,25 @@ static void _uacLogRingState(void)
             LOG("UAC U2 trb0 addr=0x%llx len=%u ctl=0x%08x trb1 addr=0x%llx len=%u ctl=0x%08x\n",
                 (unsigned long long)addr0, len0, ctl0,
                 (unsigned long long)addr1, len1, ctl1);
+        }
+        /* v18: after a post the cave's TD set starts at cons (prod advanced by
+           0x200), so dump there as well as at the ring base. */
+        if (cons) {
+            u8 td[0x20] = {0};
+            Result trc = svcReadDebugProcessMemory(td, h, cons, sizeof(td));
+            if (R_SUCCEEDED(trc)) {
+                u64 addr0 = 0, addr1 = 0;
+                u32 len0 = 0, ctl0 = 0, len1 = 0, ctl1 = 0;
+                memcpy(&addr0, td, 8);
+                memcpy(&len0, td + 8, 4);
+                memcpy(&ctl0, td + 12, 4);
+                memcpy(&addr1, td + 16, 8);
+                memcpy(&len1, td + 24, 4);
+                memcpy(&ctl1, td + 28, 4);
+                LOG("UAC U2 td@cons addr=0x%llx trb0 addr=0x%llx len=%u ctl=0x%08x trb1 addr=0x%llx len=%u ctl=0x%08x\n",
+                    (unsigned long long)cons, (unsigned long long)addr0, len0,
+                    ctl0, (unsigned long long)addr1, len1, ctl1);
+            }
         }
     }
     svcCloseHandle(h);

@@ -3,8 +3,9 @@
 > 状态：**v17 诊断已实机一次，dequeue 位置假设被否**。v17 把 prod/cons 推到
 > `ring+0x200` 后，cave 确实把第 2 套 TD 写在了控制器下一槽，但仍然没有
 > 被服务。新的首要假设是“cave 跳过了 driver 的 transfer-event 确认/端点
-> 重启”，下一步用 v18 读取 pending mask/端点字节并 dump prod 处的 TRB。
-> 下一步上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
+> 重启”；**v18 仪器化已离线构建（`35a67deb…`，0 实机）**，读取 pending
+> mask/端点字节并在 cons 处 dump TRB。下一步上机需要新的明确授权。
+> 当前事实以 [CURRENT.md](CURRENT.md) 为准；
 > v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 结论（一句话）
@@ -112,20 +113,33 @@ train end posted=2 completed=1
 - `event_original` 的完成处理还会写 event ring/EPRD（`0x308e0` 之后由事件
   环消费者统一做），这部分 cave 没有跳过。
 
-## v18 仪器化（待实现，需新授权）
+## v18 仪器化（已离线构建，0 实机，需新授权）
 
 只改 app、不动 payload，在 v16 的状态日志上补三项：
 
 1. 读 `[module+0xFCA5C]` 的 pending 掩码（普通内存，dmnt 可读），打印
    `mask=0x…` 与 `bit9`；
-2. 读 endpoint 对象的 `+0x0A` 字节（决定 `doorbell_tail` 是否检查掩码）；
-3. 每个 post 后 dump **prod 处**的 TRB（而不是固定 ring base），这样 seq2
-   的 16 Isoch/ED 内容和 IOVA 才可见。
+2. 读 endpoint 对象的 `+0x0A` 字节（决定 `doorbell_tail` 是否检查掩码），
+   打印 `ep10=0x…`；
+3. 每个 post 后在 **cons** 处 dump 前 32 字节（`UAC U2 td@cons`）——post 后
+   cave 已把 prod 前进 0x200，TD 集从 cons 开始；固定读 ring base 会看到 0。
 
-判定：若 seq2 `pre`/`post` 的 `bit9=1`，则确认“缺事件确认”；随后在 cave 的
-`iso_event` 里复制 `0x311c4..0x311f8` 的清位/轮询/门铃序列（或调用等价
-helper），再做一次有界验证。若 `bit9=0` 且掩码无关，则回到 `[endpoint+0x0A]`
-与控制器端点状态的静态分析。
+| 项 | 值 |
+| --- | --- |
+| 构建 | `35a67deb…`（91846B），`-DUAC_U2_BURSTS=4`（不带 RING_ADVANCE） |
+| payload | 29 条 / cave `806f54cb…` / 592B，与 v14 逐字节相同 |
+| 工作目录 | `private/analysis/UAC-u2-v18-event-mask-20261101` |
+
+一次 boot 的判定：
+
+| 观察 | 结论 | 下一步 |
+| --- | --- | --- |
+| seq2 `pre`/`post` 的 `bit9=1` | 确认“缺事件确认”：cave 没走 `event_original` 的清位路径 | 在 cave 的 `iso_event` 里复刻 `0x311c4..0x311f8`（清 bit9、轮询 `regs+0x78`、写门铃），再做一次有界验证 |
+| `bit9=0` 且 `ep10 & 0x1f == 0` | 掩码检查不适用，doorbell 路径无条件响铃 | 转向控制器端点状态：查 ep10、事件环 consumer、端点 restart 相关字段 |
+| `bit9=0` 但 `ep10 & 0x1f != 0` | 掩码被检查但未置位，问题在更早的 ring/端点状态 | 结合 `td@cons` 的 TRB 内容与 v14 成功值继续比对 |
+| `td@cons` 的 trb0/trb1 与 v14 不同 | TD 内容本身有差异 | 按 IOVA/frame/cycle 逐项对照 |
+
+停止条件与以往相同：任一次失败即停，读卡、恢复 `52069a44…`、不重试。
 
 ## 风险
 

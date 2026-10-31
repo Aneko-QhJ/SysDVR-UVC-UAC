@@ -21,6 +21,7 @@ BINARY = ROOT / "host/uac-raw-probe"
 WORK15 = ROOT / "private/analysis/UAC-u2-v15-continuous-20261101"
 WORK16 = ROOT / "private/analysis/UAC-u2-v16-submit-state-20261101"
 WORK17 = ROOT / "private/analysis/UAC-u2-v17-ring-advance-20261101"
+WORK18 = ROOT / "private/analysis/UAC-u2-v18-event-mask-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -151,6 +152,59 @@ class UacU2RingAdvanceTests(unittest.TestCase):
                   '#endif\n'
                   '        _uacLogSubmitState("pre", seq);')
         self.assertIn(anchor, self.body)
+
+
+class UacU2EventMaskTests(unittest.TestCase):
+    """v18: read the per-DCI pending mask and dump the TD set at cons."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+        cls.body = post_body(cls.source)
+
+    def test_state_line_reads_the_pending_mask(self):
+        for token in ("#define UAC_U2_PENDING_MASK_OFFSET 0xFCA5CULL",
+                      "mask=0x%08x bit9=%u ep10=0x%02x",
+                      "ep.mask_ok ? ep.pending_mask : 0u",
+                      "(ep.mask_ok ? (ep.pending_mask >> 9) & 1u : 0u)",
+                      "ep.state[0x0A]",
+                      "out->mask_ok = false;"):
+            self.assertIn(token, self.source)
+
+    def test_td_set_is_dumped_at_cons(self):
+        for token in ("UAC U2 td@cons addr=0x%llx trb0 addr=0x%llx",
+                      "svcReadDebugProcessMemory(td, h, cons, sizeof(td))"):
+            self.assertIn(token, self.source)
+
+
+class UacU2EventMaskBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK18 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK18}; run the offline build")
+        cls.doc = json.loads((WORK18 / "manifest.json").read_text())
+
+    def test_payload_is_still_the_v14_cave(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        self.assertEqual(self.doc["cave_sha256"], old["cave_sha256"])
+
+    def test_build_is_v16_plus_the_mask_log(self):
+        build = json.loads((WORK18 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertNotIn("-DUAC_U2_RING_ADVANCE", build["defines"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+            elf = nsp.parent / "exefs.elf"
+            if elf.is_file():
+                self.assertIn(b"mask=0x%08x bit9=%u ep10=0x%02x",
+                              elf.read_bytes())
 
 
 class UacU2RingAdvanceBuildTests(unittest.TestCase):
