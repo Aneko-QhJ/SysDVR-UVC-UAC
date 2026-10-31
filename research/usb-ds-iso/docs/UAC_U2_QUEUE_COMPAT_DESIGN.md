@@ -546,6 +546,7 @@ payload / cave 592B）。
   延迟触发实验排除了时序：hold alt1 后 engine 先启动 5.7 s，trigger 后
   180 ms 起仍出现 1394 个 transaction error，ffmpeg 挂起、无 WAV。
   错误与 cave post 强相关；cave 的 3072 是 16×192 记账，不是 host 数据。
-  下一步离线查 post/TRB/doorbell：endpoint `+0x42` DCI、`+0x40` cycle、
-  doorbell 目标（9）、Isoch/ED 运行值，对比 A23 EP `0x83`。U2 实机线
+  v8 随后确认 `dci=9 cycle=1`，但 completion 后的 ring/box/trb 全零
+  （可能被 driver 清理），host 仍有 2255 个 transaction error。v9
+  `0c339a15…` 在 post 返回后、eventWait 前立即 dump ring；U2 实机线
   暂停，需新的明确授权。

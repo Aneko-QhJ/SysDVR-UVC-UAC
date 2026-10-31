@@ -2375,6 +2375,9 @@ static void _postUacBurst(void)
     LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
         rc, urbId, UAC_U2_BURST_BYTES, seq);
     if (R_FAILED(rc)) return;
+    /* Dump the cave's ring/box immediately: the completion path may clear
+       the endpoint ring before the post-completion diagnostic runs. */
+    _uacLogRingState();
 
     if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
         LOG("UAC U2 no completion within 100ms\n");

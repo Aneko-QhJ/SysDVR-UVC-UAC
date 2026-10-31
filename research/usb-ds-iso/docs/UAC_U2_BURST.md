@@ -405,3 +405,17 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   与 Isoch/ED 运行值，对比 A23 已工作的 EP `0x83`；下一次实机需新授权。
 - 证据：`private/runs/UAC-u2-v7-timing-20261031`（日志 `441533c8…`、内核
   `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v7-timing`。
+
+## 2026-10-31 18:00 v8 DCI/ring 实机（DCI=9，post 后 ring 空）
+
+- hold alt1；ffmpeg `:2` 8 s；engine `starting` 18:00:10.309；
+  18:00:15.992 `--trigger-only`；设备 precheck `dci=9 cycle=1`、
+  `obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`，post rc=0、
+  report count=1、complete `3072/3072`。
+- completion 后 ring：`prod=cons=ring`，但 box magic/completed/actual/first
+  全 0，trb0/trb1 全 0；host 内核从 18:00:16.194 起 2255 个
+  `0xe00002ed`；ffmpeg 再次挂起、无 WAV。
+- 判定：DCI 正确；空 ring 可能是 driver 清理，不能据此判断 cave 未写。
+- v9 `0c339a15…`（90741B）已构建：post rc 后、eventWait 前立即 dump
+  ring/box/trb；未部署，下一次需新授权。
+- 证据：`private/runs/UAC-u2-v8-dci-20261031`、`private/card-cycles/20261031-u2-v8-dci`。

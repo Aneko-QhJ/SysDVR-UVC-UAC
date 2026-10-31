@@ -1,19 +1,18 @@
-# 当前状态（2026-10-31 17:52，Asia/Shanghai）
+# 当前状态（2026-10-31 18:05，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 17:45 的 v7 时序实验（一次 boot）：
-> `--hold-alt1` 后 ffmpeg 打开，host engine 于 17:45:09.774 `starting`；
-> 17:45:15.429 才 `--trigger-only` 发 SET_CUR。设备侧仍为
-> `obj=0x71b297b038`、`installed=1 table=0x71b29796f0`、post rc=0、
-> report count=1、complete `3072/3072`；但 host 内核在 **17:45:15.609**
-> 起出现 EP `0x84` 的 `0xe00002ed` transaction error，到 17:45:29.994
-> 共 **1394 个**；ffmpeg 挂起、未生成 WAV。**时序假设被排除**：engine
-> 早于 trigger 5.7 s，错误与 cave post 强相关；剩余阻塞在 post/TRB/
-> doorbell 或端点上下文，不是 host 启动太早。卡恢复 `52069a44…`、安全
-> 弹出，无重试。
+> 最后一次实机是 2026-10-31 18:00 的 v8（一次 boot）：precheck
+> `dci=9 cycle=1`、`obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`；
+> post rc=0、report count=1、complete `3072/3072`。host engine 于
+> 18:00:10.309 `starting`，18:00:15.992 trigger；第一条 EP `0x84`
+> transaction error 18:00:16.194，到 18:00:39.999 共 **2255 个**；ffmpeg
+> 再次挂起、无 WAV。completion 后的 ring dump 全零（box/trb 均为 0），
+> 可能是 driver 已清理；需要 post 返回后**立刻**转储。v9 `0c339a15…`
+> （90741B）已构建：在 post rc 后、eventWait 前调用 ring dump。卡恢复
+> `52069a44…`、安全弹出，无重试。
 
-## 当前进度（2026-10-31 17:52）
+## 当前进度（2026-10-31 18:05）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -30,8 +29,9 @@
 | U2 v6 安装对象门 | **实机一次**：obj=`0x40e57b038`、`installed=1`、table 非零、门过、post rc=0，completion 空、WAV 零、无崩溃 | `private/runs/UAC-u2-v6-20261031` |
 | U2 v7 report 诊断 | **实机一次**：report count=1/id=388/3072/3072/status=3、complete rc=0；WAV 全零、无崩溃 | `private/runs/UAC-u2-v7-20261031` |
 | U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
-| U2 v8 DCI/TRB 诊断 | 已构建（`ba596bb8…`，90690B），未部署、0 实机；门 DCI==9，打印 ring box/trb0/trb1 | `private/analysis/UAC-u2-v8-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v7-timing` |
+| U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
+| U2 v9 立即 ring dump | 已构建（`0c339a15…`，90741B），未部署、0 实机；post 返回后立刻 dump ring/box/trb | `private/analysis/UAC-u2-v9-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v8-dci` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -66,12 +66,12 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（v8 一次授权 boot）：已离线构建 `ba596bb8…`（90690B）。v8 在 post
-  前要求 endpoint `+0x42` DCI == 9（不是就只记 skip、不 post），并在
-  completion/超时后打印 ring `+0xf80` box（magic/completed/actual/first）、
-  第一条 Isoch/ED 的 addr/len/ctl。用来区分“DCI/frame/type 错”与“控制器
-  端点上下文缺失”。host 顺序同 17:45 时序实验（hold alt1 → ffmpeg → 等
-  engine → trigger-only）。下一次实机需新的明确授权。详见
+- 下一步（v9 一次授权 boot）：v8 已确认 `dci=9`，completion 后的 ring 全零很可能是
+  driver 清理，不能据此判断 cave 没写。v9 `0c339a15…`（90741B）在 `post rc` 后、
+  `eventWait` 前立刻 dump ring `+0xf80` box 和第一条 Isoch/ED。一次 boot，host
+  顺序同 v8（hold alt1 → ffmpeg → 等 engine → trigger-only）。若立刻 dump 仍全零，
+  说明 cave 没写这个 ring/box 或 ring 地址不对；若有数据但 ctl/frame 异常，再改
+  cave/端点上下文。下一次实机需新的明确授权。详见
   [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
@@ -88,6 +88,22 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v8 实机（2026-10-31 18:00，DCI=9 但 post 后 ring 空）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v8 `ba596bb8…`（90690B，29 条 / cave 592B）一次 boot |
+| host | hold alt1；ffmpeg `:2` 8 s；engine `starting` 18:00:10.309；18:00:15.992 `--trigger-only`；SET_CUR 1 次 |
+| precheck | `dci=9 cycle=1`、`obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`、门通过 |
+| post/report | `post rc=0`、report count=1、complete `3072/3072` |
+| ring（completion 后） | `dci=9 cycle=1 prod=cons=ring`，但 box magic/completed/actual/first 全 0，trb0/trb1 全 0 |
+| host 内核 | 第一条 EP `0x84` transaction error 18:00:16.194（trigger 后 202 ms），到 18:00:39.999 共 **2255 个** `0xe00002ed` |
+| WAV | ffmpeg 再次挂起、无文件；已 kill 并 `--alt=0` 恢复 |
+| 判定 | DCI 正确；completion 后的 ring 可能已被 driver 清理，不能据此判断 cave 未写。需要 post 返回后立即 dump |
+| 下一步 | v9 `0c339a15…` 已构建：post rc 后、eventWait 前 dump ring box/trb |
+| 证据 | `private/runs/UAC-u2-v8-dci-20261031`（日志 `39a50006…`、内核 `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v8-dci` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v7 时序实验（2026-10-31 17:45，时序假设被排除）
 
@@ -373,9 +389,10 @@ v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要�
 3072/3072`，v6 的空报告未复现。**17:45 时序实验**：hold alt1 后 host engine
 17:45:09.774 `starting`，17:45:15.429 trigger；第一条 EP `0x84` transaction
 error 15.609，到 29.994 共 1394 个；ffmpeg 挂起、无 WAV。**时序假设被排除**，
-错误与 cave post 强相关；cave 的 3072 仍是 16×192 记账。下一步离线查
-post/TRB/doorbell（endpoint `+0x42` DCI、`+0x40` cycle、Isoch/ED 运行值），
-先不直接上硬件。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+错误与 cave post 强相关。v8 随后确认 `dci=9 cycle=1`，但 completion 后的
+ring/box/trb 全零（可能已被 driver 清理），host 仍有 2255 个 transaction
+error。v9 `0c339a15…` 在 post 返回后、eventWait 前立即 dump ring，待一次
+新授权 boot。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。

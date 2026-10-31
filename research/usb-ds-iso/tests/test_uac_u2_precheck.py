@@ -179,6 +179,10 @@ class UacU2PrecheckTests(unittest.TestCase):
                       "UAC U2 post skipped: install object not ready"):
             self.assertIn(token, body)
         self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)
+        post_rc = body.index("UAC U2 post rc=")
+        ring = body.index("_uacLogRingState();", post_rc)
+        wait = body.index("eventWait(", post_rc)
+        self.assertLess(ring, wait)  # dump before the completion can clear it
 
     def test_reader_attaches_only_briefly(self):
         start = self.source.index("static bool _uacReadUsbState")

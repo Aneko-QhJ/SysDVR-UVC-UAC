@@ -24,22 +24,21 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 17:52）
+## 当前边界（2026-10-31 18:05）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 17:45 v7 时序实验（一次 boot）：
-  `--hold-alt1` 后 ffmpeg 打开，engine 于 17:45:09.774 `starting`；
-  17:45:15.429 `--trigger-only` 发 1 次 SET_CUR。设备侧
-  `obj=0x71b297b038`、`installed=1 table=0x71b29796f0`、post rc=0、
-  report count=1、complete `3072/3072`；但 host 内核从 17:45:15.609
-  起出现 EP `0x84` transaction error，到 17:45:29.994 共 **1394 个**；
-  ffmpeg 挂起、无 WAV。已恢复 `52069a44…` 并安全弹出。
-- **时序假设被排除**：engine 比 trigger 早 5.7 s，错误与 cave post 强相关；
-  设备侧 3072 仍是 cave 16×192 记账，不是 host 收数证据。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线查
-  **post/TRB/doorbell**：endpoint `+0x42` DCI、`+0x40` cycle、doorbell
-  目标（应为 9）、Isoch/ED 运行值；对比 A23 已工作的 EP `0x83`。
-  下一次实机需新的明确授权。
+- 最后实机：2026-10-31 18:00 v8（一次 boot）：precheck `dci=9 cycle=1`、
+  `obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`，门通过；post rc=0、
+  report count=1、complete `3072/3072`。host engine 18:00:10.309 `starting`，
+  18:00:15.992 trigger；18:00:16.194 起 EP `0x84` transaction error，到
+  18:00:39.999 共 **2255 个**；ffmpeg 再次挂起、无 WAV。completion 后的
+  ring box/trb 全零（可能已被 driver 清理）。已恢复 `52069a44…` 并安全弹出。
+- **DCI 已确认正确**（9）；completion 后的空 ring 不能证明 cave 未写。
+  v9 `0c339a15…`（90741B）在 post 返回后、eventWait 前立即 dump ring/box/
+  trb；未部署、0 实机。下一次实机需新的明确授权。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步是
+  **v9 一次授权 boot**：确认 cave 是否真的写了 ring box 和 Isoch/ED；
+  若仍全零，查 ring 地址/cave 写入；若有数据但 ctl/frame 异常，再改 cave。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
