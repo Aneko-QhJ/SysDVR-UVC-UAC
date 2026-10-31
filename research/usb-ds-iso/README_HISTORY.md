@@ -1459,3 +1459,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-10-31 23:47 v14 第二次 boot（submit-first 8 URB）：设备 one-shot post 3072，但 report `xfer=0 status=5`、`0x748c`，ring cons=ring+0x40；**没有新 crash**。host 输出被 SSH 缓冲丢失；工具在同一 transfer 上顺序 resubmit，每个空 URB 等 20 s，8 个约 160 s，不是有效时序探测。下一步先改 host：每 URB 新 transfer、8 个并发、缩短等待、无缓冲写文件；再申请实机。卡恢复 `52069a44…`、删日志、安全弹出。
 
 2026-11-01 host 工具并发化（离线）：`uac-raw-probe` 改为每个 URB 独立 transfer、一次并发提交 N 个，`--timeout-ms`（默认 500 ms）超时 cancel，stdout 无缓冲；修正之前同对象顺序 resubmit/20 s 等待的无效探测。下一轮 v14 命令 `--transfers 8 --timeout-ms 500`（submit-first，覆盖 +32 frame）；未上机。
+
+2026-11-01 00:05 v14 并发 8 URB 实机（一次 boot）：`uac-raw-probe --transfers 8 --timeout-ms 500`（submit-first，8 个独立并发 URB）。host `transfer[0..6] valid=16 bytes=0`、`transfer[7] valid=16 bytes=384`，总 `valid=128 bad=0 bytes=384`；设备 one-shot post 3072，但 report `xfer=0 status=5`/`0x748c`，ring `cons=ring+0xe0`，无 cancel/timeout，**无新 crash**。判定：raw host 数据路径首次打通（2×192B），但只有最后 URB 命中、设备 report 仍空；下一步解释 16 TD/cons=e0 与 URB7，下一轮 16/32 URB 或 trigger-first（需新授权）。读卡恢复 `52069a44…`、删日志、安全弹出。

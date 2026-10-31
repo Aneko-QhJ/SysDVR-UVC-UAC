@@ -598,3 +598,14 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   的无效探测。
 - 下一轮 v14 命令：`./uac-raw-probe --transfers 8 --timeout-ms 500`
   （submit-first，8×16 包覆盖约 128 ms，覆盖 +32 frame）。未上机。
+
+## 2026-11-01 00:05 v14 并发 8 URB：host 首次收到 384B
+
+- `uac-raw-probe --transfers 8 --timeout-ms 500`（submit-first，8 个独立
+  并发 URB）。host：`transfer[0..6]` 各 16 包但 `bytes=0`；
+  `transfer[7] valid=16 bytes=384`；总 `valid=128 bad=0 bytes=384`。
+- 设备：one-shot post 3072；report `xfer=0 status=5`、`0x748c`；
+  ring `cons=ring+0xe0`；无 cancel/timeout；**无新 crash**。
+- 判定：**raw host 数据路径已打通**（首次真实 2×192B），但只有最后一个
+  URB 命中 2 包，设备 report 仍为空。下一步解释 16 TD/cons=e0 与 host
+  URB7 的关系；下一轮 16/32 URB 或 trigger-first（需新授权）。

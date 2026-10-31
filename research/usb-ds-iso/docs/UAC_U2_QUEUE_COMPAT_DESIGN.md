@@ -570,4 +570,6 @@ payload / cave 592B）。
   cancel+DCI9）实机无新 crash，但 host 仍 16 包 0 字节，设备 3072/3；
   剩余问题是 data/timing，下一步 usbmon/时间戳，不再用 v11 train。
   v14 第二次 boot 的 submit-first 8 URB 得到空 report `xfer=0/status5`，
-  无新 crash；host 工具需改为并发新 transfer + 无缓冲输出后再上机。
+  无新 crash；host 工具改为并发独立 transfer 后，v14 并发 8 URB 首次
+  收到 384B（2×192），但只有最后一个 URB 命中、设备 report 仍为空。
+  下一步解释 16 TD/cons=e0 与 host URB7，试 16/32 URB 或 trigger-first。
