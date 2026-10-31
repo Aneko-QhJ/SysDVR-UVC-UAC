@@ -482,3 +482,12 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9）；Isoch/ED
   结构相同，只有 frame/EP index 不同。**cave TRB 本身不是 UAC 失败的解释**，
   差异在 host 音频驱动/端点请求路径。
+
+## 2026-10-31 raw UAC host probe（离线）
+
+- 新增 `host/uac-raw-probe`：先 auto-detach + `libusb_detach_kernel_driver(3)`，
+  再 claim AS 接口；成功后设 alt1、**先提交** 16×192 ISO transfer、再发
+  SET_CUR，统计 `valid/bad/bytes`。`--claim-only` 只测 detach/claim。
+- 目的：判断 macOS 是否允许从 AppleUSBAudio 手中拿回 AS，以及设备 raw
+  ISO 路径是否可用；若 claim 失败，记录 libusb 错误并停止。
+- 未实机；需要一次新授权 boot（v11 设备 + `--claim-only` 先测）。

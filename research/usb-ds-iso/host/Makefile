@@ -29,6 +29,10 @@ uac-burst: uac-burst.c
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
 clean:
-	rm -f iso-probe alt1-probe iso-stream usb-config-dump uac-control uac-burst
+	rm -f iso-probe alt1-probe iso-stream usb-config-dump uac-control uac-burst uac-raw-probe
 
 .PHONY: clean
+
+
+uac-raw-probe: uac-raw-probe.c
+	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@

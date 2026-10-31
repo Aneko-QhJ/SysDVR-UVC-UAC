@@ -34,9 +34,11 @@
   ffmpeg 挂起、无 WAV。已恢复 `52069a44…` 并安全弹出。
 - **加长 app 侧 burst 不能修复 host 流**。剩余问题在 host 为什么拒绝
   第一个已填充 burst（frame/端点/request 匹配），不是缓冲数量。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线
-  比较 A23 raw libusb 与 macOS audio 路径，解释第一个 burst 的 host
-  transaction error；暂不继续加 train 代码，下一次实机需新授权。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。新增
+  `host/uac-raw-probe`：先 auto-detach + `libusb_detach_kernel_driver(3)`，
+  再 claim AS；成功后先提交 16×192 ISO 再 SET_CUR。下一次一次授权 boot
+  先跑 `--claim-only`，判断 macOS 是否允许从 AppleUSBAudio 拿回接口；
+  失败即停、不改设备。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

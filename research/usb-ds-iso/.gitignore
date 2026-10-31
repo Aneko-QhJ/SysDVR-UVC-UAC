@@ -5,3 +5,4 @@ host/iso-probe
 host/alt1-probe
 host/uac-control
 host/uac-burst
+host/uac-raw-probe
