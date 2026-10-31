@@ -1,19 +1,18 @@
-# 当前状态（2026-11-01 01:25，Asia/Shanghai）
+# 当前状态（2026-11-01 01:45，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 01:05 的 v15 连续 4-burst：设备只完成
-> **第 1 个** burst（3072/3），第 2 个 post `rc=0` 后 100 ms 无 completion 被
-> cancel（`train end posted=2 completed=1`）；host 收到 **3072B**（urb3/4），
-> 其余 URB 全 transaction error。**无 crash**。host 全程有 URB 在飞，
-> 排除“没 re-arm”；最可能是 cave 的 `prod == cons` 门拒绝了第 2 次提交。
-> 2026-11-01 01:25 离线完成 **v16 状态仪器化**（`941646e8…`，91955B，payload
-> 仍与 v14 相同）：每次 post 前后记录 `word/int/dci/cycle/speed/ring/prod/
-> cons/copy/empty`，并 dump 每个 seq 的 box/trb。**0 实机**；下一次上机需新
-> 授权。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
-> 卡恢复 `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-11-01 01:41 的 **v16 boot 崩溃**：Switch 开机后、
+> host probe 还没跑，设备日志只有启动 + 一次 alt0 `SET_INTERFACE(0)`，随后
+> usb sysmodule fatal 2162-0002（PC `0x19254`；creport User Break `0x1927c`、
+> LR `0x9668`，栈含 `0x2c584/0x2a3f4/0x2a464`），与 10-31 Debian raw 的
+> fatal 签名一致。**v16 仪器化一次都没执行**（无 `UAC U2 precheck/post/state`
+> 行），本轮对 v16 问题无效；一次授权已消耗，无重试。
+> 下一次上机需新授权，并先修正 attach 纪律：开机前 VM 不得占用设备，开机后
+> attach 与 probe 紧挨着执行。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> 卡恢复 `52069a44…`、删日志/新崩溃报告、安全弹出。
 
-## 当前进度（2026-11-01 01:25）
+## 当前进度（2026-11-01 01:45）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -45,7 +44,7 @@
 | **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
-| **v16 状态仪器化** | **离线已构建，0 实机**：`941646e8…`（91955B），payload 与 v14 相同；每次 post 前后记录 prod/cons/copy + 每个 seq 的 box/trb | `private/analysis/UAC-u2-v16-submit-state-20261101` |
+| **v16 状态仪器化** | **实机一次，boot 崩溃**：probe 未运行；日志只有启动 + 一次 alt0 `SET_INTERFACE(0)`；usb fatal 2162-0002 / PC `0x19254`（creport `0x1927c`）；仪器化未执行 | `private/runs/UAC-u2-v16-submit-state-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -82,13 +81,30 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v16 已离线构建，等待新授权）：(1) v15 实机证明 host 全程有 URB 时
-  第 2 个 post 仍无 completion，`fail_accept` 返回 0 的 cave 门是首要嫌疑
-  （`iso_enter` 要求 `prod == cons`）；(2) v16 `941646e8…`（91955B）只改 app：
-  每次 post **前**记录 `ring/prod/cons/copy/cycle`，post **后**（每个 seq）
-  立即 dump box/trb 与请求表项，payload 仍与 v14 相同；(3) 一次 boot 即可
-  判定“门拒绝”还是“驱动/门铃路径”；(4) 8 个 descriptor-parser NOP 的全局
-  风险仍未隔离。详见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+- 下一步（v16 未验证，需新授权 + attach 纪律）：(1) v15 实机已证明 host 全程
+  有 URB 时第 2 个 post 仍无 completion，`fail_accept` 返回 0 的 cave 门仍是
+  首要嫌疑（`iso_enter` 要求 `prod == cons`）；(2) v16 `941646e8…`（91955B）
+  只改 app：每次 post **前**记录 `ring/prod/cons/copy/cycle`，post **后**
+  （每个 seq）dump box/trb 与请求表项，payload 仍与 v14 相同，但**本次 boot
+  崩溃发生在仪器化之前**，候选仍未验证；(3) 下一次上机前先 detach/suspend
+  Debian VM，开机进入主界面后再 attach，并**立即**运行 probe；(4) 8 个
+  descriptor-parser NOP 的全局风险仍未隔离。详见
+  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+
+## 最近一次实机：v16 boot 崩溃（2026-11-01 01:41）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v16 `941646e8…`（91955B，payload 与 v14/v15 相同）；卡回读一致 |
+| 预期 | probe 一次，记录每个 seq 的 `UAC U2 state pre/post/done` |
+| 实际 | **probe 未运行**；设备日志只有启动、`UAC u2 patch result=0 record=28`、`USB host connected`、一次 alt0 `SET_INTERFACE(0)`（iface 3），随后崩溃 |
+| 崩溃 | usb sysmodule：fatal `2162-0002`（0x4A2），PC `0x19254`；creport User Break PC `0x1927c`、LR `0x9668`，栈 `0x944c/0x9514/0x9534/0x9560/0x40d0/0x3ce0/0x2c584/0x2a3f4/0x2a464` |
+| 对照 | 与 2026-10-31 Debian raw 的 usb fatal 签名一致；此前 safecave/breaker 也出现同一 `0x1927c` User Break |
+| 环境 | 设备在开机时仍处于上一轮 Debian VM 的 attach 状态；Linux 侧在 probe 之前已枚举并设置 alt0 |
+| 判定 | **v16 问题未回答**：仪器化一次都没执行。崩溃触发的精确条件未隔离（EP0 控制路径 + host 枚举时序）；一次授权已消耗，无重试 |
+| 证据 | `private/runs/UAC-u2-v16-submit-state-20261101`（`device-log-v16.txt` `621ab821…`、`crash/` 两份报告）、`private/card-cycles/20261101-u2-v16-submit-state` |
+| 收尾 | 恢复 `52069a44…`、删 `/logfile.txt` 与本次 crash/fatal 报告、安全弹出 |
+| 运行纪律 | 下一次：开机前 VM 不得占用设备；主界面出现后再 attach，并立即跑 probe，缩短 Linux 驱动接管窗口 |
 
 ## 最近一次实机：v15 连续 4-burst（2026-11-01 01:05，失败）
 
@@ -589,8 +605,9 @@ one-shot+cancel 稳定、无新 crash；DCI9 后 host 仍 `valid=16 bytes=0`，
 并发 8 URB，host **3072B**（1344+1728），设备 `xfer=3072 status=3`、
 complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。**v15 01:05 实机**：
 顺序 4-burst 只完成第 1 个（3072/3），第 2 个 `rc=0` 后 100 ms 无 completion
-被 cancel（`posted=2 completed=1`）；host 3072B、全程有 URB 在飞，无 crash；
-下一个候选 v16 记录 post 前 `prod/cons` 判定 cave 门。UAC 默认仍禁用
+被 cancel（`posted=2 completed=1`）；host 3072B、全程有 URB 在飞，无 crash。
+**v16 01:41 实机**：boot 崩溃（usb fatal 2162-0002 / PC `0x19254`），probe
+未运行、仪器化未执行，候选仍未验证；一次授权消耗、无重试。UAC 默认仍禁用
 （仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。

@@ -1,10 +1,11 @@
-# UAC U2 连续 producer（v15，实机一次失败）
+# UAC U2 连续 producer（v15 实机一次失败；v16 待验证）
 
-> 状态：**实机一次（2026-11-01 01:05）**：第 1 个 burst 完成 3072/3，
-> 第 2 个 post `rc=0` 后 100 ms 无 completion，被 `usbDsEndpoint_Cancel`
-> 取消，`train end posted=2 completed=1`；host 只收到一个 3072B burst，
-> 后 3 个没有数据。无 crash。硬件授权已用尽（`remaining=0`），下一次上机
-> 需要新的明确授权（见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。
+> 状态：涉及两轮实机。v15（2026-11-01 01:05）：第 1 个 burst 完成 3072/3，
+> 第 2 个 post `rc=0` 后 100 ms 无 completion 被取消（`train end posted=2
+> completed=1`），host 只收到一个 3072B burst，无 crash。v16（2026-11-01
+> 01:41）：**boot 崩溃**（usb fatal 2162-0002，PC `0x19254`），probe 未运行，
+> 仪器化一次都没执行，候选仍未验证。硬件授权已用尽（`remaining=0`），
+> 下一次上机需要新的明确授权（见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。
 > 当前事实以 [CURRENT.md](CURRENT.md) 为准。
 
 ## 问题卡
@@ -110,7 +111,7 @@ v15 保留 v14 的**单请求不变量**，只把“1 次”扩成“顺序 4 �
 所以“host 没窗口/没 re-arm”不再是解释。第 2 个请求在驱动里 `rc=0`，但
 没有任何 completion，host 侧对应时段全是 transaction error（没有 TD 被服务）。
 
-## v16 状态仪器化（离线已构建，0 实机，需新授权）
+## v16 状态仪器化（已构建；实机一次 boot 崩溃，未验证）
 
 最可能的失败点是 cave 的接受门（`iso_enter` 开头）：
 
@@ -143,6 +144,27 @@ v16 只改 app，payload/cave 与 v14/v15 逐字节相同：
 
 命令与 v15 相同（`--trigger-first --delay-ms 30 --transfers 8 --rearm
 --max-urbs 64 --timeout-ms 1000`），**需要新的授权**；不部署、不重试。
+
+## 2026-11-01 01:41 v16 实机：boot 崩溃（v16 未验证）
+
+- 部署 `941646e8…`（91955B），回读一致；**probe 没有运行**（设备日志无
+  `UAC U2 precheck/post/state` 任何一行）。
+- 设备日志只有：启动、`UAC u2 patch result=0 record=28`、
+  `USB host connected`、一次 alt0 `SET_INTERFACE(0)`（iface 3）。
+- 崩溃：usb sysmodule fatal `2162-0002`（Result `0x4A2`），PC `0x19254`；
+  creport User Break PC `0x1927c`、LR `0x9668`，栈
+  `0x944c/0x9514/0x9534/0x9560/0x40d0/0x3ce0/0x2c584/0x2a3f4/0x2a464`——
+  与 2026-10-31 Debian raw 的 usb fatal 签名一致，`0x1927c` 也出现在
+  早先 safecave/breaker 轮。
+- 环境：开机时设备仍处于上一轮 Debian VM 的 attach 状态；Linux 侧在 probe
+  之前已经枚举并做了一次 alt0 `SET_INTERFACE(0)`。
+- 判定：**v16 的问题未回答**（仪器化从未执行）；崩溃触发的精确条件未隔离
+  （EP0 控制路径 + host 枚举时序）。一次授权消耗，**无重试**。
+- 证据：`private/runs/UAC-u2-v16-submit-state-20261101`（`device-log-v16.txt`
+  `621ab821…`、`crash/` 两份报告）、
+  `private/card-cycles/20261101-u2-v16-submit-state`。
+- 运行纪律（下一次）：开机前 Detach/Suspend Debian VM，确保设备不被占用；
+  主界面出现后再 attach，并**立即**运行 probe，缩短 Linux 驱动接管窗口。
 
 ## 离线证据（2026-11-01 00:52）
 
