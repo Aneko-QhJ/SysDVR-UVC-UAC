@@ -1,22 +1,21 @@
-# 当前状态（2026-11-01 02:05，Asia/Shanghai）
+# 当前状态（2026-11-01 02:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 01:49 的 **v16 r2**（VM 开机前 suspend，attach 后立即
-> probe）：host 仍只有 3072B（urb2/urb3），但设备日志首次给出关键事实——
-> **两次 post 都进了 cave、都写了完整 TD 集**（`post` 行 `prod=ring+0x200`、
-> box `ISO2`、trb0 frame 0x64E→0x728），seq1 完成 3072/3，seq2 100 ms 无
-> completion。**`prod == cons` 门被排除**；第 1 个完成后驱动把 prod/cons/copy
-> 复位回 ring base（`done` 行），第 2 套 TD 落在控制器已消费的 0x200 字节
-> 之后。doorbell 已确认响过（`rc=0`，错误路径会返回 `0x1928c`）。
-> 2026-11-01 02:05 离线完成 **v17 ring-advance 诊断**（`ef1e63c0…`，92472B，
-> payload 仍与 v14 相同）：post burst 2..N 前用 dmnt 把 prod/cons 同时推到
-> `ring+(seq-1)*0x200`，验证 dequeue 位置假设。**0 实机**，下一次上机需新
-> 授权。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
-> 本轮出现一个新 erpt `2162-0004`（Data Abort），无 creport/fatal，暂未归属。
-> 卡恢复 `52069a44…`、删日志/新 erpt、安全弹出。
+> 最后一次实机是 2026-11-01 02:10 的 **v17 ring-advance**（VM 开机前
+> suspend，attach 后立即 probe）：host 仍只有 3072B（urb2 192B + urb3 2880B），
+> 设备日志确认 `ring advance seq=2 … to=ring+0x200 rc=0`、seq2 `pre`
+> prod=cons=`ring+0x200`、`post` prod=`ring+0x400` 且 box `ISO2`——cave 把第 2
+> 套 TD **正好写在控制器 dequeue 的下一槽**，仍然 100 ms 无 completion。
+> **dequeue 位置假设被否**；ring 位置不是阻塞点。
+> 新首要假设：cave 对 DCI 9 的 transfer event 直接处理、不调用
+> `event_original`，跳过了 driver 的事件确认/端点重启，所以第一次完成之后
+> 控制器不再服务新的 TD 集。下一步 **v18 仪器化**（读 `[module+0xFCA5C]`
+> pending 掩码、endpoint `+0x0A`、dump prod 处的 TRB）需要新授权；详见
+> [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+> 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 02:05）
+## 当前进度（2026-11-01 02:15）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -49,7 +48,7 @@
 | **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
 | **v15 连续 4-burst** | **实机一次，失败**：seq1 3072/3；seq2 `rc=0` 后 100 ms 无 completion（cancel）；`posted=2 completed=1`；host 仅 3072B；无 crash | `private/runs/UAC-u2-v15-continuous-20261101` |
 | **v16 状态仪器化** | **实机两次**：r1 boot 崩溃（probe 未运行）；r2 完成——两次 post 都写 TD、seq2 无 completion；**cave 门被排除**，问题在控制器/ring 复位 | `private/runs/UAC-u2-v16-submit-state-r2`、`private/runs/UAC-u2-v16-submit-state-20261101` |
-| **v17 ring-advance 诊断** | **离线已构建，0 实机**：`ef1e63c0…`（92472B），post 2..N 前把 prod/cons 推到 `ring+(seq-1)*0x200`，验证 dequeue 位置 | `private/analysis/UAC-u2-v17-ring-advance-20261101` |
+| **v17 ring-advance 诊断** | **实机一次，位置假设被否**：`advance rc=0`、seq2 TD 写到 `ring+0x200`，仍 100 ms 无 completion；ring 位置不是阻塞点 | `private/runs/UAC-u2-v17-ring-advance-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -86,25 +85,26 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v17 已离线构建，等待新授权）：(1) 离线已确认 doorbell 响了
-  （`rc=0`；错误路径会返回 `0x1928c`），且驱动完成时把 prod/cons/copy 复位回
-  base，控制器 dequeue 已过 0x200；(2) v17 `ef1e63c0…` 在 post 2..N 前用
-  dmnt 把 prod/cons 同时推到 `ring+(seq-1)*0x200`，让第 2 套 TD 落在控制器
-  dequeue；(3) 一次 boot：若 seq2 收到数据 → dequeue 假设成立，下一步做 cave
-  自维护/流水线（A23 per-URB）版本；若仍失败 → 回到驱动复位/控制器状态分析；
-  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
-  [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+- 下一步（v18 仪器化，需新授权）：(1) v17 已否掉“第 2 套 TD 位置不对”——
+  它正好写在控制器 dequeue 的下一槽，仍不被服务；(2) 新首要假设是 cave 跳过
+  了 driver 的 transfer-event 确认/端点重启（`event_original` 内的
+  `0x31324` 置位、`0x311a8` 清位/轮询 `regs+0x78`）；(3) v18 只改 app：读
+  `[module+0xFCA5C]` pending 掩码与 endpoint `+0x0A`，并把 post 后的 TRB dump
+  改到 prod 处；(4) 若 seq2 时 `bit9=1` → 在 cave 里复刻清位/轮询/门铃序列；
+  否则回到 endpoint `+0x0A` 与控制器状态分析；(5) 8 个 descriptor-parser NOP
+  的全局风险仍未隔离。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
-## 最近一次离线：v17 ring-advance 诊断（2026-11-01 02:05）
+## 最近一次实机：v17 ring-advance（2026-11-01 02:10，位置假设被否）
 
 | 项 | 结果 |
 | --- | --- |
-| 分析 | `done` 行显示驱动在完成时把 prod/cons/copy 复位回 base；控制器已消费 32×16B=0x200；v16 r2 的 seq2 TD 写在 base，落在 dequeue 之后 |
-| doorbell | 已排除：`0x31c74` 写 `regs+4 = dci<<8`，错误才返回 `0x1928c`；两次 post 都是 `rc=0` |
-| 构建 | `ef1e63c0…`（92472B），`-DUAC_U2_BURSTS=4 -DUAC_U2_RING_ADVANCE`；payload/cave 与 v14 相同 |
-| 改动 | post burst 2..N 前 dmnt 写 prod=cons=`ring+(seq-1)*0x200`；4 burst 最多 +0x600，不碰 Link/回卷 |
-| 风险 | 跨进程写驱动 ring 字段；假设错误时可能扰动后续请求（不排除 crash），一次 boot、失败即停 |
-| 实机 | **0 次**；下一次需新授权，判定/停止见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md) |
+| 纪律 | 开机前 VM suspend；主界面后 resume → attach → 立即 probe |
+| host | claim/alt1/SET_CUR 成功；`urb[2] t=33ms 192B` + `urb[3] t=49ms 2880B` = **3072B**；`urb[4..62]` 全 bad；`valid=57 bad=935 bytes=3072`；设备在线 |
+| 设备 | `ring advance seq=2 slots=1 from=ring to=ring+0x200 rc=0x0`；seq2 `pre` prod=cons=`ring+0x200`；`post` prod=`ring+0x400`、box `ISO2`、copy=`ring+0xf70`；100 ms 无 completion → cancel=0；`posted=2 completed=1` |
+| 判定 | **位置假设被否**：TD 已写在控制器 dequeue 的下一槽，仍不被取指。问题在“第一次完成后端点/事件未被确认”，不是 ring 偏移 |
+| 附注 | 无新 crash/fatal/erpt；trb0 dump 仍读 base（seq2 的 TD 在 +0x200，故全 0）→ v18 改为 dump prod |
+| 证据 | `private/runs/UAC-u2-v17-ring-advance-20261101`（`host-raw.txt` `98d24880…`、`device-log-v17.txt` `d5f38086…`）、`private/card-cycles/20261101-u2-v17-ring-advance` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次实机：v16 r2（2026-11-01 01:49，cave 门被排除）
 
@@ -639,10 +639,13 @@ complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。**v15 0
 attach 后立即 probe）：host 仍 3072B；设备 `pre/post/done` 显示两次 post 都
 进了 cave 并写了完整 TD（`prod=ring+0x200`、box `ISO2`、frame 0x64E→0x728），
 seq1 完成 3072/3、seq2 100 ms 无 completion——**cave 的 `prod == cons` 门被
-排除**；第 1 个完成后驱动把 prod/cons 复位回 ring base，第 2 套 TD 落在
-控制器已消费的 dequeue 之后。下一步离线分析 `doorbell_tail`/完成路径的 ring
-复位；再上机需新授权。UAC 默认仍禁用
-（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+排除**；第 1 个完成后驱动把 prod/cons 复位回 ring base。**v17 02:10 实机**：
+`ring advance seq=2 … to=ring+0x200 rc=0`，seq2 的 TD 正好写在控制器
+dequeue 的下一槽，仍无 completion——**位置假设被否**；新首要假设是 cave 跳过
+了 `event_original` 的事件确认/端点重启。下一步 v18 仪器化（读
+`[module+0xFCA5C]` pending 掩码与 endpoint `+0x0A`，dump prod 处 TRB）需新
+授权。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…`
+并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

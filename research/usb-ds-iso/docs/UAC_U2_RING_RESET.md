@@ -1,7 +1,10 @@
-# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 分析 + v17 诊断）
+# UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 分析 + v17 实机）
 
-> 状态：**离线分析完成，v17 诊断候选已构建、0 实机**。下一次上机需要新的
-> 明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
+> 状态：**v17 诊断已实机一次，dequeue 位置假设被否**。v17 把 prod/cons 推到
+> `ring+0x200` 后，cave 确实把第 2 套 TD 写在了控制器下一槽，但仍然没有
+> 被服务。新的首要假设是“cave 跳过了 driver 的 transfer-event 确认/端点
+> 重启”，下一步用 v18 读取 pending mask/端点字节并 dump prod 处的 TRB。
+> 下一步上机需要新的明确授权。当前事实以 [CURRENT.md](CURRENT.md) 为准；
 > v15/v16 的过程见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 结论（一句话）
@@ -77,6 +80,52 @@ TRB slot 选择 mailbox，天然支持 2-3 个 in-flight。
 | `advance` 返回非 0 或设备 crash/fatal | 停止，不重试；读卡取 crash 报告 |
 
 停止条件与以往相同：任一次失败即停，读卡、恢复 `52069a44…`、不重试。
+
+## 2026-11-01 02:10 v17 实机：位置假设被否
+
+host：`urb[2] 192B` + `urb[3] 2880B` = 3072B，之后全 bad；
+`valid=57 bad=935 bytes=3072`，`cancel remaining=8/64`；设备全程在线。
+
+设备日志（`private/runs/UAC-u2-v17-ring-advance-20261101`）：
+
+```text
+ring advance seq=2 slots=1 from=0x…d000 to=0x…d200 rc=0x0     ← 写入成功
+seq=2 pre   prod=cons=0x…d200 empty=1
+seq=2 post  prod=0x…d400 cons=0x…d200 box ISO2 copy=0x…df70   ← TD 写到了 +0x200
+trb0 dump(base) 全 0（符合预期，TD 在 +0x200）
+seq=2       100 ms 无 completion → cancel=0
+train end posted=2 completed=1
+```
+
+结论：**cave 把第 2 套 TD 正好写在了控制器 dequeue 的下一槽，仍然没有被
+取指**。ring 位置不是阻塞点。
+
+新的首要假设：**cave 对 DCI 9 的 transfer event 直接处理、不调用
+`event_original`，跳过了 driver 的事件确认/端点重启**，所以控制器在第一次
+完成之后不再服务新的 TD 集。相关静态位置：
+
+- `[manager+0x22A5C]`（模块 `0xFCA5C`）是按 DCI 的 pending 掩码；
+  `0x31324` 置位、`0x311a8` 清位并轮询 `regs+0x78`，两处都在
+  `event_original`（`0x30f70`）内部。
+- `doorbell_tail` 只有在 `[endpoint+0x0A] & 0x1f != 0` 时才检查该掩码；
+  UAC 端点这个字节的值未知。
+- `event_original` 的完成处理还会写 event ring/EPRD（`0x308e0` 之后由事件
+  环消费者统一做），这部分 cave 没有跳过。
+
+## v18 仪器化（待实现，需新授权）
+
+只改 app、不动 payload，在 v16 的状态日志上补三项：
+
+1. 读 `[module+0xFCA5C]` 的 pending 掩码（普通内存，dmnt 可读），打印
+   `mask=0x…` 与 `bit9`；
+2. 读 endpoint 对象的 `+0x0A` 字节（决定 `doorbell_tail` 是否检查掩码）；
+3. 每个 post 后 dump **prod 处**的 TRB（而不是固定 ring base），这样 seq2
+   的 16 Isoch/ED 内容和 IOVA 才可见。
+
+判定：若 seq2 `pre`/`post` 的 `bit9=1`，则确认“缺事件确认”；随后在 cave 的
+`iso_event` 里复制 `0x311c4..0x311f8` 的清位/轮询/门铃序列（或调用等价
+helper），再做一次有界验证。若 `bit9=0` 且掩码无关，则回到 `[endpoint+0x0A]`
+与控制器端点状态的静态分析。
 
 ## 风险
 

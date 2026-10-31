@@ -24,21 +24,20 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 02:05）
+## 当前边界（2026-11-01 02:15）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 01:49 **v16 r2**（VM 开机前 suspend，attach 后立即
-  probe）。host 仍只有 3072B（urb2/urb3），但设备 `pre/post/done` 日志显示
-  **两次 post 都进了 cave 并写了完整 TD 集**（`prod=ring+0x200`、box `ISO2`、
-  frame 0x64E→0x728）；seq1 `complete 3072/3`，seq2 100 ms 无 completion。
-- 离线结论：**cave `prod == cons` 门被排除**，doorbell 也确实响了（`rc=0`）；
-  驱动在完成时把 prod/cons/copy 复位回 base，控制器 dequeue 已过 0x200，
-  第 2 套 TD 落在 dequeue 之后——见
+- 最后实机：2026-11-01 02:10 **v17 ring-advance**（VM 开机前 suspend，attach
+  后立即 probe）。host 仍只有 3072B；设备 `ring advance seq=2 … to=ring+0x200
+  rc=0`、seq2 `post` prod=`ring+0x400`、box `ISO2`——第 2 套 TD 正好写在控制器
+  dequeue 的下一槽，仍然 100 ms 无 completion。
+- 结论：**位置假设被否**；ring 位置不是阻塞点。新首要假设是 cave 对 DCI 9
+  事件不调用 `event_original`，跳过了 driver 的事件确认/端点重启（相关代码在
+  `0x31324`/`0x311a8`，掩码在 `[manager+0x22A5C]`）。
+- 下一阶段：**v18 仪器化**（只改 app）：读 `[module+0xFCA5C]` pending 掩码与
+  endpoint `+0x0A`，post 后 dump prod 处 TRB；若 `bit9=1`，在 cave 里复刻
+  清位/轮询/门铃序列。**需新授权**；详见
   [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
-- 下一阶段：v17 `ef1e63c0…`（92472B）诊断已构建：post 2..N 前用 dmnt 把
-  prod/cons 推到 `ring+(seq-1)*0x200`，验证 dequeue 位置假设。**0 实机，
-  需新授权**；若成立，后续做 cave 自维护/流水线版本。新 erpt `2162-0004`
-  （无 creport/fatal）仍未归属。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停，下一次需新授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
