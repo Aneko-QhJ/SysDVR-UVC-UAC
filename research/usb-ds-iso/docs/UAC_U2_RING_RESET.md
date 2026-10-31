@@ -1,7 +1,10 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
-> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19 找到 driver 的 per-ED
-> code-1 路径；v20 per-ED 候选已离线构建（`48b251ea…`，cave 640B，0 实机）**。
+> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成**。
+> v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
+> seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
+> `usbDsEndpoint_Cancel`（空闲时）复位端点，验证控制器 dequeue 是否随之
+> 重启。
 > v19 的 mailbox 完成码在 app 读取前被驱动清理（`event=0`）；cave 自己的接受
 > 检查要求 `[event+8]>>24 == 1`，所以 0xdb/0xde 的 `0x30ff4` ack 不是我们的
 > 分支。真正的差异在 driver 的 code-1 路径（`0x31230` → `0x31cf0`：每个 ED
@@ -266,6 +269,37 @@ seq2 post box: magic=ISO2 event=0 …（无事件）；100 ms 无 completion →
 | 任一 crash/fatal | 立即停；cave 的 per-ED 调用序列需要重新核对 |
 
 停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 2026-11-01 03:0x v20 实机：per-ED 完成不影响复位
+
+host：`urb[2] 576B` + `urb[3] 2496B` = 3072B，之后全 bad；
+`valid=57 bad=935 bytes=3072`；无新 crash/fatal/erpt。
+
+设备（`private/runs/UAC-u2-v20-per-ed-20261101`）：
+
+```text
+seq1 post  box ISO2, trb0 ctl=0x26a01411
+eventWait 后 box 全 0
+report 3072/3072 status=3；complete rc=0
+done       prod=cons=ring        ← 仍然回 base（per-ED 没改变）
+seq2 post  box ISO2, trb0 ctl=0x2fe01411 → 100 ms 无 completion → cancel
+```
+
+结论：**per-ED 完成对 seq1 正常工作，但不是差异点**——驱动的 ring 复位
+（prod=cons=ring）和第 2 套 TD 不被取指的行为完全没变。也就是说，
+“一次完成 vs 每 ED 完成”不影响复位；复位来自完成的清理路径
+（`0x2c7b4` 附近）或端点/控制器状态本身。
+
+## v21 方向：burst 之间复位端点（app-only，需新授权）
+
+1. 在每个 burst 完成后、下一个 post 之前，调用一次
+   `usbDsEndpoint_Cancel(endpoint)`（此时没有在飞请求），记录返回值；
+2. `Cancel` 是我们已经观察到会“把 ring 复位到 base”的路径（v15/v16 超时
+   cancel 后 prod=cons=ring），它很可能同时复位驱动的端点状态；如果它也让
+   控制器 dequeue 重启，第 2 套写在 base 的 TD 就应该能被取指；
+3. 若 idle `Cancel` 返回错误或干扰后续提交，退回 v17 的 +0x200 位置组合
+   （cancel 后 cave 仍写 base，但 prod 被驱动复位；如需要再叠加 ring advance）；
+4. 一次 boot、失败即停、读卡恢复。
 
 ## 风险## 风险
 
