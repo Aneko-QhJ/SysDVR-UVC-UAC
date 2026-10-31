@@ -1461,3 +1461,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-11-01 host 工具并发化（离线）：`uac-raw-probe` 改为每个 URB 独立 transfer、一次并发提交 N 个，`--timeout-ms`（默认 500 ms）超时 cancel，stdout 无缓冲；修正之前同对象顺序 resubmit/20 s 等待的无效探测。下一轮 v14 命令 `--transfers 8 --timeout-ms 500`（submit-first，覆盖 +32 frame）；未上机。
 
 2026-11-01 00:05 v14 并发 8 URB 实机（一次 boot）：`uac-raw-probe --transfers 8 --timeout-ms 500`（submit-first，8 个独立并发 URB）。host `transfer[0..6] valid=16 bytes=0`、`transfer[7] valid=16 bytes=384`，总 `valid=128 bad=0 bytes=384`；设备 one-shot post 3072，但 report `xfer=0 status=5`/`0x748c`，ring `cons=ring+0xe0`，无 cancel/timeout，**无新 crash**。判定：raw host 数据路径首次打通（2×192B），但只有最后 URB 命中、设备 report 仍空；下一步解释 16 TD/cons=e0 与 URB7，下一轮 16/32 URB 或 trigger-first（需新授权）。读卡恢复 `52069a44…`、删日志、安全弹出。
+
+2026-11-01 离线解释并发 384B：cave `iso_event` 只有 16 个 ED 全部成功、actual 累计 3072 时才调用 `complete_original`；host 只收到 2 包，所以 cave 未完成，host 恢复 alt0 后 driver 以 status5/`0x748c` 空报告收尾。ring `cons=ring+0xe0`=7 个 TD/ED 对被消费，但只有 2 个 ED 成功；其余 5 个可能空/错误，9 对未消费。下一轮优先 trigger-first + 并发 8 URB（delay30/transfers8/timeout500），需新授权。

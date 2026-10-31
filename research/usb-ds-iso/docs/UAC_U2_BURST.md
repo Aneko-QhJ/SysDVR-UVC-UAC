@@ -609,3 +609,13 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - 判定：**raw host 数据路径已打通**（首次真实 2×192B），但只有最后一个
   URB 命中 2 包，设备 report 仍为空。下一步解释 16 TD/cons=e0 与 host
   URB7 的关系；下一轮 16/32 URB 或 trigger-first（需新授权）。
+
+## 2026-11-01 离线：为什么只有 2 包、report 为空
+
+- cave 的 `iso_event` 只有累计 `actual==3072`（16 个 ED 各 192B）时才调用
+  `complete_original`。host 只收到 2 包（384B），所以 cave 没有完成请求。
+- host 在 500 ms 后恢复 alt0；driver 随后以 status5 / `0x748c` 空报告结束。
+- ring `cons=ring+0xe0` = 7 个 TD/ED 对被控制器消费，但只有 2 个 ED 成功；
+  其余 5 个可能是空/错误 TD，另外 9 对在 alt0 前未消费。
+- 下一轮优先 trigger-first + 并发 8 URB（`--delay-ms 30 --transfers 8
+  --timeout-ms 500`），把 host 窗口放到 +32 frame 附近；需新授权。

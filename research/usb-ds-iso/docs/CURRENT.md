@@ -75,12 +75,14 @@
 - 下一步（离线解释“只有 2 包”）：并发 8 URB 已打通 host 数据路径
   （transfer[7] 收到 384B），但其余 126 包为空，设备 report 仍
   `xfer=0 status=5`/`0x748c`。离线优先：
-  (1) 对照 cave 的 16 个 TD、ring `cons=ring+0xe0` 与 host URB7 的 2 包，
-  判断是 cave 只送出 2 个 TD，还是 host 只在一个 URB 窗口内命中；
-  (2) 解释设备 report 为空：driver 的 entry/report 路径是否被多个 host URB
-  或 DCI9 event 处理影响；
-  (3) 下一轮候选（需新授权）：`--transfers 16/32 --timeout-ms 1000`，
-  或 trigger-first 并发窗口；目标至少稳定收到完整 3072B；
+  (1) cave 的 `iso_event` 只有在 **16 个 ED 都成功、actual 累计 3072** 时才
+  调用 `complete_original`；host 只收到 2 包（384B），所以 cave 没有完成
+  请求，host 恢复 alt0 后 driver 以 status5/`0x748c` 空报告收尾；
+  (2) ring `cons=ring+0xe0` = 7 个 TD/ED 对已被控制器消费，但只有 2 个 ED
+  成功；其余 5 个可能是空/错误 TD，9 个在 alt0 前未消费；
+  (3) 下一轮优先 **trigger-first + 并发 8 URB**（`--trigger-first
+  --delay-ms 30 --transfers 8 --timeout-ms 500`），把 host 窗口放到 +32
+  frame 附近；或 16/32 URB；需新授权；
   (4) 不再改设备 patch，先解释现有 v14 行为。
 
 ## VM 可行性（2026-10-31 22:10）
