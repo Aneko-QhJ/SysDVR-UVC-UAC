@@ -566,4 +566,6 @@ payload / cave 592B）。
   排列停止；下一步只能解释/绕过 AppleUSBAudio request/frame，或换 host/OS。
   Debian raw 随后打通 claim/transfer（`valid=16 bytes=0`），但启动游戏触发
   系统 `usb` sysmodule fatal 2162-0002（stack 含 0x2c584/0x2a3f4/0x2a464）；
-  U2 实机线暂停，先查 crash 与零长度包，需新的明确授权。
+  U2 实机线暂停，先查 crash 与零长度包，需新的明确授权。v14（one-shot+
+  cancel+DCI9）实机无新 crash，但 host 仍 16 包 0 字节，设备 3072/3；
+  剩余问题是 data/timing，下一步 usbmon/时间戳，不再用 v11 train。

@@ -565,3 +565,17 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `-DUAC_U2_ONE_SHOT` + 超时 `usbDsEndpoint_Cancel`。payload 仍 29 条 /
   cave 592B。未部署、0 实机。
 - 下一轮 raw timing 应优先用 v14 fresh boot，而不是 v11 train。
+
+## 2026-10-31 23:30 v14 DCI9 实机（无崩溃，仍 0 字节）
+
+- v14 `4ba21107…` 一次 boot；Linux claim/alt1 成功；
+  `--trigger-first --delay-ms 30 --transfers 2`。
+- host：`transfer[0] status=0 valid=16 bad=0 bytes=0`；
+  `transfer[1] valid=1 bad=15`；总 bytes=0。
+- 设备：precheck `word=0x00c00584 dci=9`；one-shot post `size=3072`；
+  report `req=3072 xfer=3072 status=3`；complete 3072；无 cancel/timeout。
+- **没有新 crash/fatal/erpt 报告**：one-shot+cancel 消除了 v11 的
+  pending-request 崩溃。
+- DCI9 没有修复零字节；剩余问题是 data/timing（设备 report 3072，
+  host 16 包全 0），不是 pending/crash。下一步用 usbmon/时间戳或换
+  delay/transfers；需新授权。

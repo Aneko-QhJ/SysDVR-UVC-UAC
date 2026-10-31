@@ -1,15 +1,15 @@
-# 当前状态（2026-10-31 22:55，Asia/Shanghai）
+# 当前状态（2026-10-31 23:35，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 22:40 的 v11 Debian raw 测试：Linux VM
-> 成功 claim AS 接口，第一次 raw 16×192 transfer `valid=16 bad=0 bytes=0`
->（16 个包都完成但实际长度 0）；one-shot post 被第一次尝试消耗。随后
-> **启动游戏时系统 `usb` sysmodule fatal 2162-0002**（PC offset 0x19254，
-> stack 含 0x2c584/0x2a3f4/0x2a464）。已复制 crash/fatal/erpt 报告，卡恢复
-> `52069a44…`、删日志、安全弹出。**U2 硬件线暂停，先查 usb 崩溃。**
+> 最后一次实机是 2026-10-31 23:30 的 v14 DCI9 raw：Linux claim/alt1
+> 成功；one-shot post 完成 `3072/status=3`；host `transfer[0] valid=16
+> bytes=0`、`transfer[1] valid=1 bad=15`，仍无数据；**没有新的 crash/fatal
+> 报告**，说明 one-shot+cancel 消除了 v11 的 pending-request 崩溃。
+> DCI9 event filter 没有修复零字节；剩余问题是 data/timing。卡恢复
+> `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-10-31 22:55）
+## 当前进度（2026-10-31 23:35）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -35,8 +35,8 @@
 | Debian raw（v11） | **实机一次**：Linux claim 成功；raw 16×192 `valid=16 bad=0 bytes=0`；one-shot 被首次尝试消耗 | `private/runs/UAC-u2-v11-debian-raw-20261031` |
 | usb sysmodule fatal | **实机一次**：启动游戏时 `usb`（0100000000000006）fatal 2162-0002，PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464 | `private/runs/UAC-u2-v11-debian-raw-20261031/crash` |
 | U2 v13 one-shot+cancel | 已构建（`5bfcc67a…`，91101B），未部署、0 实机；一次 post + 超时 `usbDsEndpoint_Cancel`，移除 pending 第二请求 | `private/analysis/UAC-u2-v13-oneshot-cancel-20261031` |
-| U2 v14 DCI9 event | 已构建（`4ba21107…`，91101B），未部署、0 实机；UAC cave 的 `iso_event` 过滤从 A23 的 DCI 7 改为 UAC 的 DCI 9 | `private/analysis/UAC-u2-v14-dci9-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-debian-raw` |
+| U2 v14 DCI9 event | **实机一次**：claim/alt1 成功；one-shot 3072/3；host 16 包 0 字节；无新 crash（pending-request 崩溃消失） | `private/runs/UAC-u2-v14-dci9-raw-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-dci9-raw` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -71,16 +71,15 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，硬件暂停）：最可疑 crash 根因是 **v11 train 的第二个
-  `PostBufferAsync` 在 100 ms 超时后没有取消**；host 恢复 alt0/关闭 endpoint
-  时 usb 模块在 teardown 遇到 pending ISO request（stack `0x2c584` 位于
-  `0x2c520` unmap 路径，`0x2a3f4/0x2a464` 在 PostBufferAsync 附近）。
-  离线下一步：(1) 不再用 v11 train 做 raw 测试，改用 **v14**
-  `4ba21107…`（91101B，单 post + 超时 cancel + DCI9 event filter）；(2) raw host 用 fresh boot +
-  `--trigger-first --delay-ms 30` 或 `--transfers` 匹配 +32 frame；
-  (3) 若仍崩溃，再做“只 descriptor 编辑 / 只 NOP / 只 hook”三组隔离；
-  (4) 8 个 descriptor-parser NOP 是全局风险，下一版应只放宽 UAC 配置。
-  未解释前不再上机。详见 [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md)。
+- 下一步（离线，先解释零字节）：v14 已证明 one-shot+cancel 稳定、没有新
+  crash；DCI9 不是零字节的原因。设备 report 3072/3，host 16 包全 0，说明
+  数据没有落到 host 的 ISO 窗口，或 cave TD 没有真正送出 payload。离线优先：
+  (1) 对照 `trb0 ctl=0x41c01411`（frame 1040）与 host 提交时刻，确认 +32
+  frame 是否仍错位；(2) 用 usbmon/每包时间戳区分“空包”与“未发送”；
+  (3) 若仍错位，下一轮试 `--delay-ms 20/40` 或 `--transfers 4`，但需新
+  授权；(4) 8 个 descriptor-parser NOP 的全局风险仍未隔离，暂不动。
+  未解释前不再上机。详见 [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) 与
+  [UAC_U2_BURST.md](UAC_U2_BURST.md)。
 
 ## VM 可行性（2026-10-31 22:10）
 
@@ -105,6 +104,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 v14 实机（2026-10-31 23:30，DCI9；无崩溃、仍 0 字节）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v14 `4ba21107…`（91101B，one-shot + cancel + DCI9）一次 boot |
+| claim | `auto_detach=0`、`detach[3]=0`、`claim[3]=0`、`alt1=0` |
+| raw | `set_cur=3`、`submit=0`；`transfer[0] status=0 valid=16 bad=0 bytes=0`；`transfer[1] valid=1 bad=15` |
+| 设备 | precheck `word=0x00c00584 dci=9`；one-shot post `size=3072`；report `req=3072 xfer=3072 status=3`；complete 3072；无 cancel/timeout |
+| ring | 即时 `trb0 ctl=0x41c01411`（frame 1040）、`trb1 0x1c21`、box ISO2；完成后 box 被清 |
+| crash | **无新 crash/fatal/erpt 报告**；v11 的 pending-request 崩溃未复现 |
+| 判定 | **one-shot+cancel 稳定**；DCI9 没有修复零字节；问题在 data/timing，不在 pending/crash |
+| 下一步 | usbmon/时间戳 + 调整 delay/transfers；需新授权才上机 |
+| 证据 | `private/runs/UAC-u2-v14-dci9-raw-20261031`（日志 `70bec87e…`）、`private/card-cycles/20261031-u2-v14-dci9-raw` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 Debian raw 实机（2026-10-31 22:40，claim 成功、16 包 0 字节，随后 usb 崩溃）
 
@@ -512,8 +526,10 @@ ISO/触发。**v12 21:58 attrs 0x01**：word 0x00c00184、第 1 个 post 3072/3�
 第 2 个无 completion；host 仍 398 个 transaction error、无 WAV——attrs
 0x05→0x01 不是差异点。**Debian raw 22:40**：Linux claim 成功，raw 16×192
 `valid=16 bad=0 bytes=0`；启动游戏后系统 `usb` sysmodule fatal 2162-0002
-（PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。UAC 默认仍禁用（仅
-`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+（PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。**v14 23:30**：
+one-shot+cancel 稳定、无新 crash；DCI9 后 host 仍 `valid=16 bytes=0`，
+设备 3072/3。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+`52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

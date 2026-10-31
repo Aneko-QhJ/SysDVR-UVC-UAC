@@ -24,23 +24,17 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 22:55）
+## 当前边界（2026-10-31 23:35）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 22:40，Debian 13 VM + v11。Linux claim AS 成功
-  （`auto_detach=0`、`detach[3]=0`、`claim[3]=0`）；raw 16×192
-  `valid=16 bad=0 bytes=0`。首次尝试消耗 one-shot；`--trigger-first
-  --delay-ms 30` 只得到 packet0 0 字节、其余 bad。
-- **启动游戏后系统 `usb` sysmodule fatal 2162-0002**（PC 0x19254，stack
-  含 0x2c584/0x2a3f4/0x2a464）。已复制 crash/fatal/erpt 报告，卡恢复
-  `52069a44…`、删日志、安全弹出。
-- **U2 硬件线暂停**：最可疑 crash 根因是 v11 train 第二个 post 在 100 ms
-  超时后未取消；host 恢复 alt0 时 usb 模块在 teardown 遇到 pending ISO
-  request（stack `0x2c584` 在 `0x2c520` unmap 路径）。另发现 UAC cave
-  的 `iso_event` 仍过滤 A23 的 DCI 7，UAC DCI 是 9。离线已构建 **v14
-  `4ba21107…`**（单 post + 超时 cancel + DCI9，91101B）；下一轮 raw host
-  用 fresh boot + `--trigger-first --delay-ms 30`/`--transfers` 匹配
-  +32 frame。仍未解释前不上机。
+- 最后实机：2026-10-31 23:30 v14（`4ba21107…`）一次 boot。Linux claim/
+  alt1 成功；one-shot post `3072/status=3`；host `transfer[0] valid=16
+  bytes=0`、`transfer[1] valid=1 bad=15`。**没有新 crash/fatal/erpt 报告**，
+  v11 的 pending-request 崩溃未复现。
+- **one-shot+cancel 稳定；DCI9 没有修复零字节**。剩余问题在 data/timing：
+  设备 report 3072，host 16 包全 0；下一步用 usbmon/时间戳区分空包/未发送，
+  或换 delay/transfers（需新授权）。
+- 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。
