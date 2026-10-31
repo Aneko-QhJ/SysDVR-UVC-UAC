@@ -28,7 +28,7 @@
 | U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
 | U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
 | U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
-| U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
+| U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求；**one-shot 安全候选**（`55f2a4eb…`，无第二个 pending） | `private/runs/UAC-u2-v10-mfi-20261031` |
 | U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
 | Raw UAC host probe | **实机一次**：auto_detach ok，但 detach/claim `LIBUSB_ERROR_ACCESS`；未提交 ISO/未发 SET_CUR，设备无 U2 行 | `private/runs/UAC-u2-v11-raw-20261031` |
 | U2 v12 attrs 0x01 | **实机一次**：word 0x00c00184、first post 3072/3、second no completion；host 398 个 transaction error、无 WAV | `private/runs/UAC-u2-v12-attr01-20261031` |
@@ -69,16 +69,16 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（硬件暂停，先查 `usb` 崩溃）：Debian raw 已证明 Linux 能 claim AS，
-  但 raw transfer 16 包全部 `bytes=0`，且启动游戏时系统 `usb` sysmodule fatal
-  2162-0002（PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。在解释 crash
-  与零长度包之前，**不再部署 U2 构建、不再上机**。离线优先：
-  (1) 用 [crash 报告](../private/runs/UAC-u2-v11-debian-raw-20261031/crash) 对照
-  `usb.elf` 的 0x2c584/0x2a3f4/0x2a464 与 29 条 patch 区域，确认是否 patch
-  破坏了正常 USB 路径；(2) 加 raw per-packet 诊断/多 transfer 时序（工具已改，
-  未再上机）；(3) 若 crash 与 patch 有关，先回退/隔离 U2 patch。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
-  [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
+- 下一步（离线，硬件暂停）：最可疑 crash 根因是 **v11 train 的第二个
+  `PostBufferAsync` 在 100 ms 超时后没有取消**；host 恢复 alt0/关闭 endpoint
+  时 usb 模块在 teardown 遇到 pending ISO request（stack `0x2c584` 位于
+  `0x2c520` unmap 路径，`0x2a3f4/0x2a464` 在 PostBufferAsync 附近）。
+  离线下一步：(1) 不再用 v11 train 做 raw 测试，改用 v10 one-shot
+  `55f2a4eb…`（90997B，无第二个 pending）；(2) raw host 用 fresh boot +
+  `--trigger-first --delay-ms 30` 或 `--transfers` 匹配 +32 frame；
+  (3) 若仍崩溃，再做“只 descriptor 编辑 / 只 NOP / 只 hook”三组隔离；
+  (4) 8 个 descriptor-parser NOP 是全局风险，下一版应只放宽 UAC 配置。
+  未解释前不再上机。详见 [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md)。
 
 ## VM 可行性（2026-10-31 22:10）
 

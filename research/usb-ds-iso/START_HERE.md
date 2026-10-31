@@ -34,9 +34,12 @@
 - **启动游戏后系统 `usb` sysmodule fatal 2162-0002**（PC 0x19254，stack
   含 0x2c584/0x2a3f4/0x2a464）。已复制 crash/fatal/erpt 报告，卡恢复
   `52069a44…`、删日志、安全弹出。
-- **U2 硬件线暂停**：先解释 usb 崩溃与 16 包 0 字节，不再部署 U2 或上机。
-  离线优先对照 `usb.elf` 的 stack/patch 区域；若 crash 与 patch 有关，先
-  回退/隔离 U2 patch。
+- **U2 硬件线暂停**：最可疑 crash 根因是 v11 train 第二个 post 在 100 ms
+  超时后未取消；host 恢复 alt0 时 usb 模块在 teardown 遇到 pending ISO
+  request（stack `0x2c584` 在 `0x2c520` unmap 路径）。离线下一步：不再用
+  v11 train，改用 **v10 one-shot `55f2a4eb…`**（无第二个 pending）；
+  raw host 用 `--trigger-first --delay-ms 30`/`--transfers` 匹配 +32 frame；
+  仍未解释前不上机。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

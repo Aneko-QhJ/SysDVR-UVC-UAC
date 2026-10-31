@@ -541,3 +541,11 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   crash/fatal/erpt 报告已复制到 `private/runs/UAC-u2-v11-debian-raw-20261031/crash`。
 - 判定：Linux raw claim/transfer 路径可用，但数据为 0；U2 patch 与 usb
   sysmodule 崩溃相关。**硬件线暂停**，先查 crash 与零长度包。
+
+- **离线根因假设（2026-10-31 23:00）**：v11 train 第二个 post 在 100 ms
+  超时后 `break`，没有取消已提交的 request；host 恢复 alt0/关闭 endpoint
+  时 usb 模块在 teardown 遇到 pending ISO request，crash stack
+  `0x2c584`/`0x2a3f4`/`0x2a464` 与 unmap/PostBufferAsync 路径一致。
+  下一轮 raw 测试改用 v10 one-shot `55f2a4eb…`（无第二个 pending），
+  host 用 `--trigger-first --delay-ms` 匹配 cave 的 +32 frame；不再用
+  v11 train 上机。
