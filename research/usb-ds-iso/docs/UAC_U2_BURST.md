@@ -389,3 +389,19 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `private/runs/UAC-u2-v7-20261031`（日志 `1310a175…`、`capture.wav`
   `8e59a0da…`、内核 `kernel-usb-0x84.txt` `6b98ba9b…`）、
   `private/card-cycles/20261031-u2-v7`。
+
+## 2026-10-31 17:45 v7 时序实验（engine 先启动，post 后仍 transaction error）
+
+- `--hold-alt1` 成功；ffmpeg `:2` 8 s，CoreAudio engine 于 17:45:09.774
+  `starting`；17:45:15.429 `--trigger-only` 发 1 次 SET_CUR。
+- 设备侧：`obj=0x71b297b038`、`installed=1 table=0x71b29796f0`、post rc=0、
+  report count=1、complete `3072/3072`。ffmpeg 没有生成 WAV（挂起，已终止）。
+- 主机内核：第一条 EP `0x84` transaction error **17:45:15.609**（trigger 后
+  180 ms），到 17:45:29.994 共 **1394 个** `0xe00002ed`。
+- 判定：**不是 host 启动太早**。engine 比 trigger 早 5.7 s，错误与 cave
+  post 强相关；设备侧 3072 仍是 16×192 记账。剩余阻塞在 post/TRB/
+  doorbell 或端点上下文。
+- 下一步离线：读 endpoint `+0x42` DCI、`+0x40` cycle、doorbell 目标（9）
+  与 Isoch/ED 运行值，对比 A23 已工作的 EP `0x83`；下一次实机需新授权。
+- 证据：`private/runs/UAC-u2-v7-timing-20261031`（日志 `441533c8…`、内核
+  `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v7-timing`。

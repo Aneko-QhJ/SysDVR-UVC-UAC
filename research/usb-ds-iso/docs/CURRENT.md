@@ -1,22 +1,19 @@
-# 当前状态（2026-10-31 02:24，Asia/Shanghai）
+# 当前状态（2026-10-31 17:52，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 02:19–02:21 的 U2 v7（一次 boot）：
-> 安装对象 `obj=0x13f737b038`（manager `0x13f736d000` + `0xa1038`）、
-> `installed=1`、`table=0x13f73796f0`，门通过；**report count=1、
-> id=388、req/xfer=3072/3072、status=3，complete `rc=0`**；但 WAV
-> 41472 frames 全零。主机内核日志同时显示：02:20:05.496–02:20:08.051
-> 有 **143 个 EP `0x84` IsochronousRequest 以 `0xe00002ed`
-> （`kIOReturnNotResponding` / transaction error）完成**，abort 29/31/16 个
-> 请求；错误在 post 之前就开始。ffmpeg 于 02:20:03 启动、触发在 02:20:04–05，
-> 但 CoreAudio/AppleUSBAudio 直到 02:20:07.788 才 `starting`，16 ms burst
-> 早于 host 流真正启动；WAV 只有 0.86 s。故内核错误包含启动期失败，
-> **不能先断定 EP `0x84` 端点已死**；设备侧 3072 仍是 cave 的 16×192 记账。
-> 下一步：把触发延后到 host engine 启动后；若 WAV 仍零，再查端点/TRB。
-> 卡恢复 `52069a44…` 并安全弹出，无重试。
+> 最后一次实机是 2026-10-31 17:45 的 v7 时序实验（一次 boot）：
+> `--hold-alt1` 后 ffmpeg 打开，host engine 于 17:45:09.774 `starting`；
+> 17:45:15.429 才 `--trigger-only` 发 SET_CUR。设备侧仍为
+> `obj=0x71b297b038`、`installed=1 table=0x71b29796f0`、post rc=0、
+> report count=1、complete `3072/3072`；但 host 内核在 **17:45:15.609**
+> 起出现 EP `0x84` 的 `0xe00002ed` transaction error，到 17:45:29.994
+> 共 **1394 个**；ffmpeg 挂起、未生成 WAV。**时序假设被排除**：engine
+> 早于 trigger 5.7 s，错误与 cave post 强相关；剩余阻塞在 post/TRB/
+> doorbell 或端点上下文，不是 host 启动太早。卡恢复 `52069a44…`、安全
+> 弹出，无重试。
 
-## 当前进度（2026-10-31 02:24）
+## 当前进度（2026-10-31 17:52）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -32,7 +29,8 @@
 | U2 v5 候选读取 | 已构建，未部署；被 v6 取代 | `private/analysis/UAC-u2-v5-20261031` |
 | U2 v6 安装对象门 | **实机一次**：obj=`0x40e57b038`、`installed=1`、table 非零、门过、post rc=0，completion 空、WAV 零、无崩溃 | `private/runs/UAC-u2-v6-20261031` |
 | U2 v7 report 诊断 | **实机一次**：report count=1/id=388/3072/3072/status=3、complete rc=0；WAV 全零、无崩溃 | `private/runs/UAC-u2-v7-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v7` |
+| U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v7-timing` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -67,14 +65,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（host 时序优先，离线已备）：本次触发在 host engine `starting` 前约
-  3.7 s，16 ms burst 已结束，WAV 只有 0.86 s；先不要改设备/TRB。`uac-control`
-  已加 `--hold-alt1`（0→1 后不恢复）与 `--trigger-only`（只 GET_INTERFACE +
-  SET_CUR，不碰 alt）。实验顺序：hold alt1 → ffmpeg 录 8 s → 等 engine
-  `starting`/约 6 s → trigger-only → 收 WAV → `--alt=0` 恢复。若 WAV 出现
-  1 kHz 段，根因是 host 流启动时序；若 trigger-only 报 alt0，说明 AppleUSBAudio
-  在打开时重置了 alt，需要改成“先启动采集、等 engine 后再切 alt1”。下一次
-  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（离线，时序假设已排除）：engine 早于 trigger 5.7 s，但 trigger 后
+  180 ms 起 EP `0x84` 出现 1394 个 transaction error，错误与 cave post 强相关。
+  现在集中在 post/TRB/doorbell：(1) 读 endpoint object `+0x40` cycle、`+0x42`
+  DCI、`+0x18` producer，确认 doorbell 目标是否为 9；(2) 对比 A23 已工作的
+  EP `0x83` 与 UAC EP `0x84` 的 Isoch/ED TRB 运行值；(3) 检查 UAC 的
+  `bmAttributes=0x05`（async）是否使端点上下文与 A23 的 `0x01` 不同。先离线，
+  下一次实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -90,6 +87,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v7 时序实验（2026-10-31 17:45，时序假设被排除）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v7 `4db0adcc…`（90280B）一次 boot |
+| 顺序 | `--hold-alt1` 成功；ffmpeg `:2` 8 s；engine `starting` 17:45:09.774；17:45:15.429 `--trigger-only`；SET_CUR 1 次 |
+| precheck | `obj=0x71b297b038`、`installed=1 table=0x71b29796f0`、门通过 |
+| post/report | `post rc=0`、report count=1、complete `3072/3072` |
+| host 内核 | 第一条 EP `0x84` transaction error **17:45:15.609**（trigger 后 180 ms），到 17:45:29.994 共 **1394 个** `0xe00002ed` |
+| WAV | ffmpeg 挂起、未生成文件；已终止并用 `--alt=0` 恢复 |
+| 判定 | **不是 host 启动太早**：engine 比 trigger 早 5.7 s，错误与 cave post 强相关。设备侧 3072 仍是 cave 16×192 记账 |
+| 下一步 | 离线查 cave post/TRB/doorbell：endpoint `+0x42` DCI、`+0x40` cycle、doorbell 目标、Isoch/ED 运行值；对比 A23 EP0x83 |
+| 证据 | `private/runs/UAC-u2-v7-timing-20261031`（日志 `441533c8…`、内核 `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v7-timing` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v7 实机（2026-10-31 02:19–02:21，cave 记账 3072/3072，host 流启动晚于 burst）
 
@@ -357,12 +369,13 @@ v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要�
 但 completion 为空 `0x748c/0/0`、WAV 全零、无 crash。v7 `4db0adcc…`
 （90280B，仅多 report 日志）**02:19–02:21 实机一次**：同一对象/门，
 `report count=1 id=388 req=3072 xfer=3072 status=3`、complete `rc=0
-3072/3072`，v6 的空报告未复现。但 host engine 到 02:20:07.788 才 `starting`，
-触发在 02:20:04–05，16 ms burst 早于真正的流启动；WAV 只有 0.86 s。内核日志
-143 个 EP `0x84` IsochronousRequest 的 `0xe00002ed` 包含启动期失败，**不能先
-断定端点已死**；cave 的 3072 仍是 16×192 记账，不是 host 收到数据。下一步先做
-延迟触发的 host 时序实验；若 WAV 仍零，再查 EP `0x84` 的端点/ED/TRB。UAC 默认
-仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+3072/3072`，v6 的空报告未复现。**17:45 时序实验**：hold alt1 后 host engine
+17:45:09.774 `starting`，17:45:15.429 trigger；第一条 EP `0x84` transaction
+error 15.609，到 29.994 共 1394 个；ffmpeg 挂起、无 WAV。**时序假设被排除**，
+错误与 cave post 强相关；cave 的 3072 仍是 16×192 记账。下一步离线查
+post/TRB/doorbell（endpoint `+0x42` DCI、`+0x40` cycle、Isoch/ED 运行值），
+先不直接上硬件。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+`52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

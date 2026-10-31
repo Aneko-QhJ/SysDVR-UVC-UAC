@@ -542,8 +542,10 @@ payload / cave 592B）。
   `complete rc=0 3072/3072`，v6 空报告未复现；但 WAV 仍全零。
 - **host 内核（v7）**：143 个 EP `0x84` IsochronousRequest 以
   `0xe00002ed`（transaction error / not responding）完成，abort 29/31/16
-  个请求。不过 host engine 到 02:20:07.788 才 `starting`，触发在
-  02:20:04–05，16 ms burst 早于真正的流启动；WAV 只有 0.86 s。错误包含
-  启动期失败，不能先断定端点已死；cave 的 3072 是 16×192 记账，不是
-  host 数据。下一步先做延迟触发的 host 时序实验；若 WAV 仍零，再查
-  EP `0x84` 的 ISO 端点/ED/TRB。U2 实机线暂停，需新的明确授权。
+  个请求。host engine 到 02:20:07.788 才 `starting`，但 17:45 的
+  延迟触发实验排除了时序：hold alt1 后 engine 先启动 5.7 s，trigger 后
+  180 ms 起仍出现 1394 个 transaction error，ffmpeg 挂起、无 WAV。
+  错误与 cave post 强相关；cave 的 3072 是 16×192 记账，不是 host 数据。
+  下一步离线查 post/TRB/doorbell：endpoint `+0x42` DCI、`+0x40` cycle、
+  doorbell 目标（9）、Isoch/ED 运行值，对比 A23 EP `0x83`。U2 实机线
+  暂停，需新的明确授权。
