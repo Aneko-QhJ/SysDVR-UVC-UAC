@@ -31,10 +31,11 @@
   alt1 成功；one-shot post `3072/status=3`；host `transfer[0] valid=16
   bytes=0`、`transfer[1] valid=1 bad=15`。**没有新 crash/fatal/erpt 报告**，
   v11 的 pending-request 崩溃未复现。
-- **one-shot+cancel 稳定；DCI9 没有修复零字节**。剩余问题在 data/timing：
-  设备 report 3072，host 16 包全 0；下一步用 usbmon/时间戳区分空包/未发送，
-  或换 delay/transfers（需新授权）。
-- 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停。
+- **one-shot+cancel 稳定；DCI9 没有修复零字节**。第二次 v14 boot 用
+  submit-first `--transfers 8`：设备空 report `xfer=0 status=5`/`0x748c`，
+  无新 crash；host 输出丢失，且顺序重提交太慢，不是有效时序探测。
+- 下一步先改 host：每 URB 新 transfer、并发 8 个、缩短等待、无缓冲输出；
+  改完再申请实机。卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

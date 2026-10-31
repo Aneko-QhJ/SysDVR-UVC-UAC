@@ -569,3 +569,5 @@ payload / cave 592B）。
   U2 实机线暂停，先查 crash 与零长度包，需新的明确授权。v14（one-shot+
   cancel+DCI9）实机无新 crash，但 host 仍 16 包 0 字节，设备 3072/3；
   剩余问题是 data/timing，下一步 usbmon/时间戳，不再用 v11 train。
+  v14 第二次 boot 的 submit-first 8 URB 得到空 report `xfer=0/status5`，
+  无新 crash；host 工具需改为并发新 transfer + 无缓冲输出后再上机。

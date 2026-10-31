@@ -1,15 +1,14 @@
-# 当前状态（2026-10-31 23:35，Asia/Shanghai）
+# 当前状态（2026-10-31 23:55，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 23:30 的 v14 DCI9 raw：Linux claim/alt1
-> 成功；one-shot post 完成 `3072/status=3`；host `transfer[0] valid=16
-> bytes=0`、`transfer[1] valid=1 bad=15`，仍无数据；**没有新的 crash/fatal
-> 报告**，说明 one-shot+cancel 消除了 v11 的 pending-request 崩溃。
-> DCI9 event filter 没有修复零字节；剩余问题是 data/timing。卡恢复
-> `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-10-31 23:47 的 v14 第二次 boot：submit-first
+> `--transfers 8`。设备 one-shot post 3072，但 report `xfer=0 status=5`、
+> `0x748c`；host 输出被 SSH 缓冲丢失；**没有新 crash**。这不是有效的
+> 时序探测（顺序重提交 + 每 URB 20 s 太慢，且 host 输出未捕获）。v14
+> 本身仍稳定；卡恢复 `52069a44…`、安全弹出。
 
-## 当前进度（2026-10-31 23:35）
+## 当前进度（2026-10-31 23:55）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -36,7 +35,8 @@
 | usb sysmodule fatal | **实机一次**：启动游戏时 `usb`（0100000000000006）fatal 2162-0002，PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464 | `private/runs/UAC-u2-v11-debian-raw-20261031/crash` |
 | U2 v13 one-shot+cancel | 已构建（`5bfcc67a…`，91101B），未部署、0 实机；一次 post + 超时 `usbDsEndpoint_Cancel`，移除 pending 第二请求 | `private/analysis/UAC-u2-v13-oneshot-cancel-20261031` |
 | U2 v14 DCI9 event | **实机一次**：claim/alt1 成功；one-shot 3072/3；host 16 包 0 字节；无新 crash（pending-request 崩溃消失） | `private/runs/UAC-u2-v14-dci9-raw-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-dci9-raw` |
+| v14 multi-URB | **实机一次**（第二 boot）：submit-first `--transfers 8`；设备 report `xfer=0 status=5`/`0x748c`；无新 crash；host 输出丢失 | `private/runs/UAC-u2-v14-multitransfer-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-multitransfer` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -71,15 +71,16 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，先解释零字节）：v14 已证明 one-shot+cancel 稳定、没有新
-  crash；DCI9 不是零字节的原因。设备 report 3072/3，host 16 包全 0，说明
-  数据没有落到 host 的 ISO 窗口，或 cave TD 没有真正送出 payload。离线优先：
-  (1) 对照 `trb0 ctl=0x41c01411`（frame 1040）与 host 提交时刻，确认 +32
-  frame 是否仍错位；(2) 用 usbmon/每包时间戳区分“空包”与“未发送”；
-  (3) 若仍错位，下一轮试 `--delay-ms 20/40` 或 `--transfers 4`，但需新
-  授权；(4) 8 个 descriptor-parser NOP 的全局风险仍未隔离，暂不动。
-  未解释前不再上机。详见 [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) 与
-  [UAC_U2_BURST.md](UAC_U2_BURST.md)。
+- 下一步（离线）：v14 已稳定，但 multi-URB 实现无效（顺序重提交、每 URB
+  20 s、SSH 输出丢失）。先改 host 工具，不再上机：
+  (1) 每个 URB 分配新的 transfer，不在同一对象上反复 submit；
+  (2) 多个 URB **并发**提交（例如 8 个各 16×192，覆盖约 128 ms），
+  而不是等一个空 URB 完成再发下一个；
+  (3) stdout 设 `setvbuf(..., _IONBF, ...)`，并把结果直接写到 guest 文件，
+  避免 SSH 缓冲丢失；
+  (4) 缩短单 URB 等待（例如 200 ms），避免 160 s 挂起；
+  (5) 仍用 v14 one-shot；设备 post 只有一次，host 必须在 +32 frame 附近
+  有并发 URB。改完先离线编译；下一次实机需新授权。
 
 ## VM 可行性（2026-10-31 22:10）
 
@@ -528,8 +529,9 @@ ISO/触发。**v12 21:58 attrs 0x01**：word 0x00c00184、第 1 个 post 3072/3�
 `valid=16 bad=0 bytes=0`；启动游戏后系统 `usb` sysmodule fatal 2162-0002
 （PC 0x19254，stack 含 0x2c584/0x2a3f4/0x2a464）。**v14 23:30**：
 one-shot+cancel 稳定、无新 crash；DCI9 后 host 仍 `valid=16 bytes=0`，
-设备 3072/3。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+设备 3072/3。**v14 multi 23:47**：submit-first 8 URB 的空 report
+`xfer=0 status=5`/`0x748c`，无新 crash；host 输出丢失，不是有效时序探测。
+UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

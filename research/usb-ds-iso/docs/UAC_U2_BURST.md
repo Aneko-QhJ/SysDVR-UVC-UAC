@@ -579,3 +579,13 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - DCI9 没有修复零字节；剩余问题是 data/timing（设备 report 3072，
   host 16 包全 0），不是 pending/crash。下一步用 usbmon/时间戳或换
   delay/transfers；需新授权。
+
+## 2026-10-31 23:47 v14 第二次 boot：submit-first 8 URB（无效探测）
+
+- `uac-raw-probe --transfers 8`（submit-first）：设备 one-shot post 3072，
+  但 report `req=3072 xfer=0 status=5`、`complete rc=0x748c`；ring
+  `cons=ring+0x40`。**没有新 crash**。
+- host 输出被 SSH 缓冲丢失；工具在同一 transfer 上顺序 resubmit，每个空
+  URB 等 20 s，8 个约 160 s，不能作为有效时序探测。
+- 下一步先改 host：每 URB 新 transfer、8 个并发、缩短等待、无缓冲写文件；
+  再申请实机。v14 本身仍稳定。
