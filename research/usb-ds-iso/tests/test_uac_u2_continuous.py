@@ -109,6 +109,16 @@ class UacU2SubmitStateTests(unittest.TestCase):
                       '(ring && prod == cons) ? 1u : 0u'):
             self.assertIn(token, self.source)
 
+    def test_pre_state_is_read_before_the_submit(self):
+        pre = self.body.index('_uacLogSubmitState("pre", seq);')
+        submit = self.body.index("usbDsEndpoint_PostBufferAsync(")
+        post = self.body.index('_uacLogSubmitState("post", seq);')
+        complete = self.body.index("UAC U2 complete rc=0x%x")
+        done = self.body.index('_uacLogSubmitState("done", seq);')
+        self.assertLess(pre, submit)
+        self.assertLess(submit, post)
+        self.assertLess(complete, done)
+
     def test_ring_is_dumped_after_every_post(self):
         self.assertNotIn("if (n == 0) _uacLogRingState();", self.body)
         self.assertGreaterEqual(self.body.count("_uacLogRingState();"), 3)
