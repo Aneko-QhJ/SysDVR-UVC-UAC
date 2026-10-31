@@ -24,22 +24,21 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 18:05）
+## 当前边界（2026-10-31 18:15）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 18:00 v8（一次 boot）：precheck `dci=9 cycle=1`、
-  `obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`，门通过；post rc=0、
-  report count=1、complete `3072/3072`。host engine 18:00:10.309 `starting`，
-  18:00:15.992 trigger；18:00:16.194 起 EP `0x84` transaction error，到
-  18:00:39.999 共 **2255 个**；ffmpeg 再次挂起、无 WAV。completion 后的
-  ring box/trb 全零（可能已被 driver 清理）。已恢复 `52069a44…` 并安全弹出。
-- **DCI 已确认正确**（9）；completion 后的空 ring 不能证明 cave 未写。
-  v9 `0c339a15…`（90741B）在 post 返回后、eventWait 前立即 dump ring/box/
-  trb；未部署、0 实机。下一次实机需新的明确授权。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步是
-  **v9 一次授权 boot**：只需 hold alt1 → trigger-only → 1 s → `--alt=0`，
-  不启动 ffmpeg（避免再次挂起）；post 返回后立即 dump ring/box/trb。
-  若仍全零，查 ring 地址/cave 写入；若有数据但 ctl/frame 异常，再改 cave。
+- 最后实机：2026-10-31 18:07 v9（一次 boot，无 ffmpeg）：hold alt1 →
+  trigger-only → 1 s → alt0。precheck `dci=9 cycle=1`、`installed=1`；
+  post 返回后立即读到 `box magic=0x324f5349`（ISO2）、
+  `trb0 addr=0x80030000 len=192 ctl=0x0e801411`（frame 232）、
+  `trb1 ctl=0x00001c21`。没有 host 流时 report 为 `xfer=0 status=5`、
+  parse `0x748c`（预期错误完成）。已恢复 `52069a44…` 并安全弹出。
+- **cave 确实写了 ring/box/TRB，DCI=9**。v8 的 `3072/status=3` 依赖 host
+  完成；剩余问题是 host 为什么拒绝这些 TRB/端点上下文。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线读
+  post 时 MFI/当前 frame，确认 frame 232 是未来；对比 UAC
+  `bmAttributes=0x05`（async）与 A23 `0x01`，核对 host ISO interval/pipe。
+  下一次实机需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

@@ -548,5 +548,7 @@ payload / cave 592B）。
   错误与 cave post 强相关；cave 的 3072 是 16×192 记账，不是 host 数据。
   v8 随后确认 `dci=9 cycle=1`，但 completion 后的 ring/box/trb 全零
   （可能被 driver 清理），host 仍有 2255 个 transaction error。v9
-  `0c339a15…` 在 post 返回后、eventWait 前立即 dump ring；U2 实机线
-  暂停，需新的明确授权。
+  `0c339a15…` 在 post 返回后立即 dump：box magic ISO2、trb0
+  `0x0e801411`（frame 232）、trb1 `0x1c21`，证明 cave 写了 ring/TRB；
+  无 host 流时 `xfer=0 status=5`。剩余问题是 host 为何拒绝这些 TRB/
+  端点上下文；U2 实机线暂停，需新的明确授权。

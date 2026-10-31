@@ -1,18 +1,17 @@
-# 当前状态（2026-10-31 18:05，Asia/Shanghai）
+# 当前状态（2026-10-31 18:15，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-10-31 18:00 的 v8（一次 boot）：precheck
-> `dci=9 cycle=1`、`obj=0x1a88f7b038`、`installed=1 table=0x1a88f796f0`；
-> post rc=0、report count=1、complete `3072/3072`。host engine 于
-> 18:00:10.309 `starting`，18:00:15.992 trigger；第一条 EP `0x84`
-> transaction error 18:00:16.194，到 18:00:39.999 共 **2255 个**；ffmpeg
-> 再次挂起、无 WAV。completion 后的 ring dump 全零（box/trb 均为 0），
-> 可能是 driver 已清理；需要 post 返回后**立刻**转储。v9 `0c339a15…`
-> （90741B）已构建：在 post rc 后、eventWait 前调用 ring dump。卡恢复
-> `52069a44…`、安全弹出，无重试。
+> 最后一次实机是 2026-10-31 18:07 的 v9（一次 boot，无 ffmpeg）：
+> precheck `dci=9 cycle=1`、`obj=0x623957b038`、`installed=1`；post 返回后
+> 立即 dump 到 ring `prod=0x623957d200`、box magic=`0x324f5349`（ISO2）、
+> `trb0 addr=0x80030000 len=192 ctl=0x0e801411`（frame 232）、
+> `trb1 ctl=0x00001c21`。**cave 确实写了 ring/box/TRB**。没有 host 流时
+> report 为 `xfer=0 status=5`、parse `0x748c`（预期错误完成），说明 v8 的
+> `3072/status=3` 需要 host 完成。剩余问题在 host 为何拒绝这些 TRB/端点
+> 上下文。卡恢复 `52069a44…`、安全弹出，无重试。
 
-## 当前进度（2026-10-31 18:05）
+## 当前进度（2026-10-31 18:15）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -30,8 +29,8 @@
 | U2 v7 report 诊断 | **实机一次**：report count=1/id=388/3072/3072/status=3、complete rc=0；WAV 全零、无崩溃 | `private/runs/UAC-u2-v7-20261031` |
 | U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
 | U2 v8 DCI/TRB 诊断 | **实机一次**：dci=9/cycle=1、门通过、post/complete 3072；completion 后 ring dump 全零，host 2255 个 transaction error，无 WAV | `private/runs/UAC-u2-v8-dci-20261031` |
-| U2 v9 立即 ring dump | 已构建（`0c339a15…`，90741B），未部署、0 实机；post 返回后立刻 dump ring/box/trb | `private/analysis/UAC-u2-v9-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v8-dci` |
+| U2 v9 立即 ring dump | **实机一次**：ISO2 magic、trb0 `0x0e801411`/frame232、trb1 `0x1c21`；无 host 流时 `xfer=0 status=5` | `private/runs/UAC-u2-v9-ring-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v9-ring` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -66,13 +65,14 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（v9 一次授权 boot）：v8 已确认 `dci=9`，completion 后的 ring 全零很可能是
-  driver 清理，不能据此判断 cave 没写。v9 `0c339a15…`（90741B）在 `post rc` 后、
-  `eventWait` 前立刻 dump ring `+0xf80` box 和第一条 Isoch/ED。**这次不需要
-  ffmpeg**：hold alt1 → trigger-only → 等 1 s → `--alt=0`，避免 AVFoundation
-  再次挂起；post 本身会构建 TRB。若立刻 dump 仍全零，说明 cave 没写这个
-  ring/box 或 ring 地址不对；若有数据但 ctl/frame 异常，再改 cave/端点上下文。
-  下一次实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（离线）：v9 已证明 cave 写了 ISO2 box 和合法外观的 Isoch/ED TRB
+  （`trb0 ctl=0x0e801411`、frame 232；`trb1 ctl=0x1c21`），无 host 流时
+  `xfer=0 status=5`。现在要解释 host 为什么拒绝这些 TRB/端点上下文：
+  (1) 读 post 时的 MFI/当前 frame，确认 TRB frame 232 是未来而不是过去；
+  (2) 对比 UAC `bmAttributes=0x05`（async）与 A23 已工作的 `0x01`，以及
+  控制器端点上下文；(3) 核对 host ISO 请求的 interval/pipe 与描述符。
+  先离线定位，下一次实机需新的明确授权。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
@@ -88,6 +88,20 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 U2 v9 实机（2026-10-31 18:07，立即 ring dump：TRB 已写入）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v9 `0c339a15…`（90741B，29 条 / cave 592B）一次 boot |
+| host | hold alt1；trigger-only；1 s；`--alt=0`；**没有 ffmpeg** |
+| precheck | `dci=9 cycle=1`、`obj=0x623957b038`、`installed=1 table=0x62395796f0` |
+| post 后立即 | `prod=0x623957d200 cons=0x623957d000`；box magic=`0x324f5349`（ISO2）、completed=0、actual=0；`trb0 addr=0x80030000 len=192 ctl=0x0e801411`（frame 232）；`trb1 addr=0x623957d010 len=0 ctl=0x00001c21` |
+| completion | report count=1、`xfer=0 status=5`；ParseReportData `0x748c`（无 host 流，预期错误完成）；completion 后 cons=`0x623957d040` |
+| 判定 | **cave 确实写了 ring/box/TRB**；DCI=9。没有 host 流时完成是 error/0，说明 v8 的 3072/status=3 依赖 host 完成。剩余问题是 host 为什么拒绝这些 TRB/端点上下文 |
+| 下一步 | 离线读 post 时 MFI/当前 frame，确认 frame 232 是未来；对比 `bmAttributes=0x05` 与 A23 `0x01`；核对 host ISO interval/pipe |
+| 证据 | `private/runs/UAC-u2-v9-ring-20261031`（日志 `2e4f5f40…`）、`private/card-cycles/20261031-u2-v9-ring` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 U2 v8 实机（2026-10-31 18:00，DCI=9 但 post 后 ring 空）
 
@@ -391,9 +405,11 @@ v6 `73becbd5…`（90174B）改为跟随该指针读 `obj+0x1610/+0x1608`，要�
 error 15.609，到 29.994 共 1394 个；ffmpeg 挂起、无 WAV。**时序假设被排除**，
 错误与 cave post 强相关。v8 随后确认 `dci=9 cycle=1`，但 completion 后的
 ring/box/trb 全零（可能已被 driver 清理），host 仍有 2255 个 transaction
-error。v9 `0c339a15…` 在 post 返回后、eventWait 前立即 dump ring，待一次
-新授权 boot。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+error。**v9 18:07 无 ffmpeg**：post 返回后立即读到 box magic `0x324f5349`
+（ISO2）、`trb0 ctl=0x0e801411`（frame 232）、`trb1 ctl=0x1c21`，证明 cave
+确实写了 ring/TRB；没有 host 流时 report 为 `xfer=0 status=5`。剩余问题是
+host 为何拒绝这些 TRB/端点上下文（frame/MFI、`bmAttributes` 0x05、pipe）。
+UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

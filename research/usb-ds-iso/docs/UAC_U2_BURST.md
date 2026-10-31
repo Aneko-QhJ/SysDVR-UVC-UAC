@@ -420,3 +420,19 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   ring/box/trb；下一次不需要 ffmpeg，只需 hold alt1 → trigger-only →
   1 s → `--alt=0`，避免 AVFoundation 挂起。未部署，需新授权。
 - 证据：`private/runs/UAC-u2-v8-dci-20261031`、`private/card-cycles/20261031-u2-v8-dci`。
+
+## 2026-10-31 18:07 v9 立即 ring dump（TRB 已写入）
+
+- 无 ffmpeg：hold alt1 → trigger-only → 1 s → alt0。precheck `dci=9 cycle=1`、
+  `obj=0x623957b038`、`installed=1 table=0x62395796f0`。
+- post 返回后立即：`prod=ring+0x200 cons=ring`；box magic=`0x324f5349`
+  （ISO2）、completed=0、actual=0；`trb0 addr=0x80030000 len=192
+  ctl=0x0e801411`（frame 232）、`trb1 addr=ring+0x10 len=0 ctl=0x00001c21`。
+- completion：report count=1、`xfer=0 status=5`、ParseReportData `0x748c`
+  （没有 host 流，预期错误完成）；completion 后 cons=`ring+0x40`。
+- 判定：**cave 确实写了 ring/box/TRB**；DCI=9。v8 的 3072/status=3 依赖
+  host 完成；剩余问题是 host 为什么拒绝这些 TRB/端点上下文。
+- 下一步离线：读 post 时 MFI/当前 frame，确认 frame 232 是未来；对比
+  UAC `bmAttributes=0x05`（async）与 A23 `0x01`；核对 host ISO interval/pipe。
+- 证据：`private/runs/UAC-u2-v9-ring-20261031`（日志 `2e4f5f40…`）、
+  `private/card-cycles/20261031-u2-v9-ring`。
