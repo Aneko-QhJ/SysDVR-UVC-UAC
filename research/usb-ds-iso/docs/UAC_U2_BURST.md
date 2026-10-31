@@ -653,3 +653,22 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
 - host `uac-raw-probe --rearm --max-urbs N`：完成即补新 URB，滚动覆盖每个
   +32 frame TD，每个完成打印 `urb[n] t=<ms>`。
 - 命令/判定/停止条件见 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+
+## 2026-11-01 01:05 v15 实机（一次 boot，停在第 2 个 post）
+
+- v15 `1c9c6004…`；host `--trigger-first --delay-ms 30 --transfers 8
+  --rearm --max-urbs 64 --timeout-ms 1000`（Debian raw）。
+- 设备：seq1 `rc=0 urb=388`、`complete 3072/3072 status=3`；seq2 `rc=0
+  urb=404`、**100 ms 无 completion → `cancel=0x0`**；`train end posted=2
+  completed=1 pattern=1536`；其后 `SET_CUR data stage failed 0x25c8c`。
+- host：`urb[3] t=50ms 2496B` + `urb[4] t=66ms 576B` = **3072B**；
+  `urb[5..64]` 全 `bad=16 bytes=0`。窗口 8、共提交 64 个 URB，
+  **不是没 re-arm**。
+- ring：seq1 后 box ISO2、`trb0 ctl=0x00a01411`（frame 10）、prod=ring+0x200；
+  seq2 超时后 box/trb 全 0、prod=cons=ring。
+- 判定：第 1 个 burst 成功，第 2 次提交没有被服务（`rc=0` 却无 TD、
+  无 completion）。首要嫌疑是 cave `iso_enter` 的 `prod == cons` 门：
+  `fail_accept` 返回 0，调用方当成功。
+- 无新 crash/erpt；卡恢复 `52069a44…`、删日志、安全弹出；无重试。
+- 证据 `private/runs/UAC-u2-v15-continuous-20261101/`；v16 仪器化计划见
+  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。

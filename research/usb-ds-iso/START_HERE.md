@@ -24,17 +24,18 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 00:52）
+## 当前边界（2026-11-01 01:15）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 00:40 v14 重复验证。同一
-  `--trigger-first --delay-ms 30 --transfers 8 --timeout-ms 500`：
-  host **3072B**（768+2304），device `xfer=3072 status=3`、complete rc=0，
-  **无新 crash**。**2/2 可重复**。
-- 下一阶段：v15 连续 4-burst 已离线构建（`1c9c6004…`，91352B；payload 与
-  v14 逐字节相同），host `uac-raw-probe --rearm --max-urbs 64` 滚动窗口已
-  就绪；下一次一次 boot 验证 `posted=4 completed=?`。**仍未上机，需新授权**；
-  详见 [docs/UAC_U2_CONTINUOUS.md](docs/UAC_U2_CONTINUOUS.md)。
+- 最后实机：2026-11-01 01:05 v15 连续 4-burst（`1c9c6004…`）。设备只完成
+  第 1 个 burst（`3072/3`）；第 2 个 post `rc=0` 后 100 ms 无 completion
+  被 cancel，`train end posted=2 completed=1`。host 收到 3072B（urb3/4），
+  其余全 transaction error；**无 crash**。host 全程有 URB 在飞，排除
+  “没 re-arm”；首要嫌疑是 cave 的 `prod == cons` 门拒绝第 2 次提交。
+- 下一阶段：v16 只改 app 的状态仪器化（每次 post 前记录 `ring/prod/cons/
+  copy/cycle`，post 后立即 dump box/trb 与请求表项），一次 boot 即可判定
+  是“门拒绝”还是“驱动/门铃路径”。**需新授权**；详见
+  [docs/UAC_U2_CONTINUOUS.md](docs/UAC_U2_CONTINUOUS.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停，下一次需新授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备

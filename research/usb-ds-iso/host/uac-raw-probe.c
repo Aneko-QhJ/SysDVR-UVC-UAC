@@ -249,6 +249,10 @@ int main(int argc, char **argv)
             }
             for (unsigned i = 0; i < transfers; ++i) {
                 if (!states[i].done) continue;
+                /* Consume the completion exactly once.  Leaving done set when
+                   the resubmit budget is exhausted made the next loop pass
+                   count the same URB again and underflowed in_flight. */
+                states[i].done = 0;
                 struct libusb_transfer *t = xfers[i];
                 unsigned valid = 0, bad = 0, bytes = 0;
                 packet_stats(t, packets, &valid, &bad, &bytes);
@@ -258,7 +262,7 @@ int main(int argc, char **argv)
                 printf("urb[%u] t=%llums status=%d valid=%u bad=%u bytes=%u\n",
                        ++done_urbs, now_ms() - started, t->status, valid, bad,
                        bytes);
-                --in_flight;
+                if (in_flight > 0) --in_flight;
                 if (submitted < budget && now_ms() < deadline) {
                     rc = submit_iso(t, h, endpoint, bufs[i], packets,
                                     timeout_ms, &states[i]);
@@ -272,10 +276,14 @@ int main(int argc, char **argv)
                 }
             }
         }
-        if (in_flight > 0) {
-            printf("cancel remaining=%u/%u\n", in_flight, submitted);
-            for (unsigned i = 0; i < transfers; ++i)
-                if (!states[i].done) libusb_cancel_transfer(xfers[i]);
+        unsigned remaining = 0;
+        for (unsigned i = 0; i < transfers; ++i) {
+            if (states[i].done) continue;
+            libusb_cancel_transfer(xfers[i]);
+            ++remaining;
+        }
+        if (remaining) {
+            printf("cancel remaining=%u/%u\n", remaining, submitted);
             for (unsigned n = 0; n < 20; ++n) {
                 struct timeval tv = {0, 5000};
                 libusb_handle_events_timeout(ctx, &tv);

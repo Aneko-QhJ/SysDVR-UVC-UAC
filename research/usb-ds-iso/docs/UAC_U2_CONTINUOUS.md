@@ -1,8 +1,10 @@
-# UAC U2 连续 producer（v15，离线候选）
+# UAC U2 连续 producer（v15，实机一次失败）
 
-> 状态：**离线已构建，0 实机**。硬件授权仍是 `remaining=0`、
-> `acquisition_enabled=false`、`next_hardware_authorized=false`；
-> 下一次上机需要新的明确授权（见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。
+> 状态：**实机一次（2026-11-01 01:05）**：第 1 个 burst 完成 3072/3，
+> 第 2 个 post `rc=0` 后 100 ms 无 completion，被 `usbDsEndpoint_Cancel`
+> 取消，`train end posted=2 completed=1`；host 只收到一个 3072B burst，
+> 后 3 个没有数据。无 crash。硬件授权已用尽（`remaining=0`），下一次上机
+> 需要新的明确授权（见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。
 > 当前事实以 [CURRENT.md](CURRENT.md) 为准。
 
 ## 问题卡
@@ -74,12 +76,62 @@ v15 保留 v14 的**单请求不变量**，只把“1 次”扩成“顺序 4 �
 - 该工具在 macOS 上只做编译检查；实机走 Debian raw host（macOS 无法从
   AppleUSBAudio 取回 AS 接口，见 [UAC_U2_BURST.md](UAC_U2_BURST.md)）。
 
-实机命令（**需新授权**）：
+实机命令（v15 用过一次，授权已用尽）：
 
 ```sh
 ./uac-raw-probe --trigger-first --delay-ms 30 --transfers 8 \
     --rearm --max-urbs 64 --timeout-ms 1000
 ```
+
+> 2026-11-01 01:05 的实机暴露出 rearm 循环的一个计数 bug：`--max-urbs`
+> 用完后，已完成的 transfer 仍带着 `done=1` 被下一轮重复计数，
+> `in_flight` 无符号下溢，日志出现 `cancel remaining=4294967241/64`。
+> 数据总量不受影响（`bytes=3072` 只计一次），但 `bad/valid` 计数被放大。
+> **已修复**：处理完成时先清 `done`、`in_flight` 递减加保护、取消数量重新
+> 计数；`tests/test_uac_u2_continuous.py` 已加断言。
+
+## 2026-11-01 01:05 实机结果（一次 boot，失败）
+
+命令同上。host：claim/detach/alt1/SET_CUR 全成功；设备日志见
+`private/runs/UAC-u2-v15-continuous-20261101`。
+
+| 项 | 结果 |
+| --- | --- |
+| 设备 seq=1 | `post rc=0x0 urb=388`；`report req=3072 xfer=3072 status=3`；`complete rc=0 3072/3072` |
+| 设备 seq=2 | `post rc=0x0 urb=404`；**`no completion within 100ms seq=2 cancel=0x0`** |
+| 设备摘要 | **`train end posted=2 completed=1 pattern=1536`** |
+| host | `urb[3] t=50ms 2496B` + `urb[4] t=66ms 576B` = **3072B**；`urb[5..64]` 全部 `bad=16 bytes=0` |
+| host 总计 | 64 个真实 URB，`valid=57 bad=967 bytes=3072`（日志里的 1847 是上述计数 bug 放大后的值） |
+| ring | seq=1 后 box `ISO2`、`trb0 ctl=0x00a01411`（frame 10）、prod=ring+0x200；seq=2 超时后 box/trb 全 0、prod=cons=ring |
+| crash | **无**：无新 crash/erpt，设备全程在线，日志无 fatal |
+| 结论 | **只有第 1 个 burst 送达**；第 2 个请求没有被 host 服务，100 ms 超时后取消。 |
+
+关键判断：本轮 host 在整段时间里**持续有 URB 在飞**（窗口 8，共提交 64 个），
+所以“host 没窗口/没 re-arm”不再是解释。第 2 个请求在驱动里 `rc=0`，但
+没有任何 completion，host 侧对应时段全是 transaction error（没有 TD 被服务）。
+
+## 下一步候选：v16 状态仪器化（离线，需新授权）
+
+最可能的失败点是 cave 的接受门（`iso_enter` 开头）：
+
+```asm
+ldp x8, x9, [x1, #0x18]   ; prod, cons
+cmp x8, x9
+b.ne fail_accept          ; 环非空 -> 返回 0，不建 TRB、不响铃
+```
+
+`fail_accept` 返回 0，调用方把它当成功（`PostBufferAsync rc=0`），随后没有
+TD、没有 completion——与本次观察完全一致。现在缺的是“第 2 次 post 那一刻
+prod/cons 到底是什么”。
+
+v16（只改 app，不动 payload）：
+1. 每次 post **之前**记录 `ring prod cons copy=state[0x28] cycle=state[0x40]`；
+2. 每次 post **之后**（不只 seq=1）立即 dump box/trb 与请求表项；
+3. 用一次 boot 判断：若 `prod != cons` → 门因环非空拒绝；若 `prod == cons`
+   但 ring 仍空 → 问题在驱动提交/门铃路径，再考虑 v17 在 cave 里加
+   进入/拒绝码计数器。
+
+这一步只需要新的构建 + 一次授权 boot，不改 payload、不改 host 命令。
 
 ## 离线证据（2026-11-01 00:52）
 
@@ -102,7 +154,7 @@ v15 保留 v14 的**单请求不变量**，只把“1 次”扩成“顺序 4 �
 | 现象 | 解释 | 下一步 |
 | --- | --- | --- |
 | `posted=4 completed=4`，host 总字节 ≥ 6144 | 连续数据路径成立 | 再提高 burst 数/加长窗口；随后才谈 PCM |
-| `posted=2 completed=1`，第 2 个 `no completion ... cancel=0` | 与 v11 相同的“第二个请求没有 host 窗口” | 检查 host 是否真的 re-arm（`resubmit` 行）；调窗口/延迟 |
+| `posted=2 completed=1`，第 2 个 `no completion ... cancel=0` | **本轮实测**；host 全程有 URB，排除 host 窗口 | v16 记录 post 前的 prod/cons，判断 cave 门是否拒绝 |
 | 第 1 个就 `complete ... transferred=0` | host 端无数据（旧 0 字节现象） | 停，回到 timing/usbmon 分析 |
 | `post skipped: ...` | 门未通过（端点/安装对象/DCI） | 停，对照 precheck 字段 |
 | 任一 crash/fatal | 停止，取 crash 报告，不重试 | 交回离线分析 |

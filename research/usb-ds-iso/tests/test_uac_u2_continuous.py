@@ -143,9 +143,12 @@ class UacRawProbeRearmTests(unittest.TestCase):
     def test_completions_are_replaced_to_keep_the_window_full(self):
         for token in ("unsigned in_flight = submitted;",
                       "if (!states[i].done) continue;",
+                      "states[i].done = 0;",
+                      "if (in_flight > 0) --in_flight;",
                       "submit_iso(t, h, endpoint, bufs[i], packets,",
                       "++in_flight;",
-                      "cancel remaining=%u/%u"):
+                      "unsigned remaining = 0;",
+                      'printf("cancel remaining=%u/%u\\n", remaining, submitted);'):
             self.assertIn(token, self.text)
 
     def test_binary_rejects_bad_rearm_bounds(self):
