@@ -33,8 +33,15 @@ uac-raw-probe --trigger-first --delay-ms 30 --transfers 8 --timeout-ms 500
   `device-log-trigger.txt`）
 - `private/card-cycles/20261031-u2-v14-trigger-concurrent`
 
+## 重复验证
+
+2026-11-01 00:40 同一命令再跑一次：host 再次收到 **3072B**（768+2304），
+device `xfer=3072/status3`、complete rc=0，无新 crash。**2/2 可重复**。
+
+证据：`private/runs/UAC-u2-v14-trigger-repeat-20261101`。
+
 ## 下一步
 
-1. 同一命令再跑一次确认可重复性（需新授权）；
-2. 之后设计连续/多 burst producer，把 16 ms 成功扩展为持续音频；
+1. 设计连续/多 burst producer，把 16 ms 成功扩展为持续音频；
+2. host 需持续 re-arm 并发 URB，覆盖每个 burst；
 3. 8 个 descriptor-parser NOP 的全局风险仍需后续隔离。

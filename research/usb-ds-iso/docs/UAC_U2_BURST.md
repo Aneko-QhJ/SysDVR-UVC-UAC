@@ -632,3 +632,11 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   URB 把 host 窗口放到 +32 frame TD；cave 累计 3072 后调用
   `complete_original`，host/设备两边一致。
 - 下一步：同一命令重复确认；再做多 burst/连续 producer。
+
+## 2026-11-01 00:40 重复验证成功
+
+- 同一 v14 + `--trigger-first --delay-ms 30 --transfers 8 --timeout-ms 500`
+  再跑一次：host **3072B**（768+2304），device `xfer=3072/status3`、
+  complete rc=0，无新 crash。
+- **2/2 可重复**。下一阶段：连续/多 burst producer，保留 v14 的
+  cancel/无 pending 语义；host 持续 re-arm 并发 URB。

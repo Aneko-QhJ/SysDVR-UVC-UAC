@@ -1,11 +1,11 @@
-# 当前状态（2026-11-01 00:30，Asia/Shanghai）
+# 当前状态（2026-11-01 00:45，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 00:25 的 v14：`--trigger-first --delay-ms 30
-> --transfers 8`。host 收到 **完整 3072B**（1344+1728），device
-> `xfer=3072 status=3`、complete rc=0，**无新 crash**。这是首次端到端
-> raw UAC ISO 数据成功；卡恢复 `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-11-01 00:40 的 v14 重复验证：同一命令再次收到
+> **完整 3072B**（768+2304），device `xfer=3072 status=3`、complete rc=0，
+> **无新 crash**。trigger-first 30 ms + 并发 8 URB 已 **2/2 可重复**。
+> 卡恢复 `52069a44…`、删日志、安全弹出。
 
 ## 当前进度（2026-11-01 00:30）
 
@@ -37,7 +37,8 @@
 | v14 multi-URB | **实机一次**（第二 boot）：submit-first `--transfers 8`；设备 report `xfer=0 status=5`/`0x748c`；无新 crash；host 输出丢失 | `private/runs/UAC-u2-v14-multitransfer-20261031` |
 | v14 concurrent 8 | **实机一次**：host 收到 **384B**（transfer[7] 2×192），其余空；设备 report 仍 empty status5；无新 crash | `private/runs/UAC-u2-v14-concurrent-20261031` |
 | **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-trigger-concurrent` |
+| **v14 trigger repeat** | **实机一次，成功**：host **3072B**（768+2304）；device `xfer=3072 status=3`、complete rc=0；无新 crash；**2/2 可重复** | `private/runs/UAC-u2-v14-trigger-repeat-20261101` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -72,12 +73,15 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（成功后的验证/扩展）：先按同一命令再跑一次，确认 3072B 可重复
-  （需新授权；一次 boot，不启动游戏）。可重复后：
-  (1) 用同一 trigger-first+并发窗口做多 burst/连续 producer，把 16 ms 成功
-  扩成持续音频；(2) 再回到 macOS AppleUSBAudio 验证是否有改善（但它仍是
-  产品 host）；(3) 8 个 descriptor-parser NOP 的全局风险仍需隔离。
-  未重复验证前不继续改设备 patch。详见 [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md)。
+- 下一步（离线，连续 producer）：3072B 已 2/2 可重复，下一阶段不再是
+  one-shot，而是把 16 ms 成功扩成持续音频。离线设计：
+  (1) 设备侧连续 post 多个 3072B（每个 +32 frame 窗口），但必须保留
+  v14 的 cancel/无 pending 语义，避免 v11 crash；
+  (2) host 侧 trigger-first + 并发 URB 需要持续 re-arm，覆盖每个 burst；
+  (3) 先用 2-4 个 burst 验证连续性，再考虑 macOS AppleUSBAudio；
+  (4) 8 个 descriptor-parser NOP 的全局风险仍未隔离。
+  先离线实现/构建，下一次实机需新授权。详见
+  [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md)。
 
 ## VM 可行性（2026-10-31 22:10）
 
