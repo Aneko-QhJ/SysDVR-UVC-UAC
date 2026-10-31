@@ -37,7 +37,8 @@
   v9 `0c339a15…`（90741B）在 post 返回后、eventWait 前立即 dump ring/box/
   trb；未部署、0 实机。下一次实机需新的明确授权。
 - 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步是
-  **v9 一次授权 boot**：确认 cave 是否真的写了 ring box 和 Isoch/ED；
+  **v9 一次授权 boot**：只需 hold alt1 → trigger-only → 1 s → `--alt=0`，
+  不启动 ffmpeg（避免再次挂起）；post 返回后立即 dump ring/box/trb。
   若仍全零，查 ring 地址/cave 写入；若有数据但 ctl/frame 异常，再改 cave。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已

@@ -417,5 +417,6 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   `0xe00002ed`；ffmpeg 再次挂起、无 WAV。
 - 判定：DCI 正确；空 ring 可能是 driver 清理，不能据此判断 cave 未写。
 - v9 `0c339a15…`（90741B）已构建：post rc 后、eventWait 前立即 dump
-  ring/box/trb；未部署，下一次需新授权。
+  ring/box/trb；下一次不需要 ffmpeg，只需 hold alt1 → trigger-only →
+  1 s → `--alt=0`，避免 AVFoundation 挂起。未部署，需新授权。
 - 证据：`private/runs/UAC-u2-v8-dci-20261031`、`private/card-cycles/20261031-u2-v8-dci`。

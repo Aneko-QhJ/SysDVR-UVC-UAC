@@ -68,11 +68,11 @@
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
 - 下一步（v9 一次授权 boot）：v8 已确认 `dci=9`，completion 后的 ring 全零很可能是
   driver 清理，不能据此判断 cave 没写。v9 `0c339a15…`（90741B）在 `post rc` 后、
-  `eventWait` 前立刻 dump ring `+0xf80` box 和第一条 Isoch/ED。一次 boot，host
-  顺序同 v8（hold alt1 → ffmpeg → 等 engine → trigger-only）。若立刻 dump 仍全零，
-  说明 cave 没写这个 ring/box 或 ring 地址不对；若有数据但 ctl/frame 异常，再改
-  cave/端点上下文。下一次实机需新的明确授权。详见
-  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+  `eventWait` 前立刻 dump ring `+0xf80` box 和第一条 Isoch/ED。**这次不需要
+  ffmpeg**：hold alt1 → trigger-only → 等 1 s → `--alt=0`，避免 AVFoundation
+  再次挂起；post 本身会构建 TRB。若立刻 dump 仍全零，说明 cave 没写这个
+  ring/box 或 ring 地址不对；若有数据但 ctl/frame 异常，再改 cave/端点上下文。
+  下一次实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
