@@ -573,3 +573,5 @@ payload / cave 592B）。
   无新 crash；host 工具改为并发独立 transfer 后，v14 并发 8 URB 首次
   收到 384B（2×192），但只有最后一个 URB 命中、设备 report 仍为空。
   下一步解释 16 TD/cons=e0 与 host URB7，试 16/32 URB 或 trigger-first。
+  v14 trigger-first 30 ms + 并发 8 URB 随后成功：host 完整 3072B
+  （1344+1728），device xfer=3072/status3、complete rc=0、无 crash。

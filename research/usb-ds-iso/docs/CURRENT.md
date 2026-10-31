@@ -1,14 +1,13 @@
-# 当前状态（2026-11-01 00:10，Asia/Shanghai）
+# 当前状态（2026-11-01 00:30，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 00:05 的 v14 并发 8 URB：host 终于收到
-> **384 字节**（transfer[7] 的 2×192），其余 126 包为空；设备 report
-> 仍是 `xfer=0 status=5`/`0x748c`，**无新 crash**。这证明 raw host 数据
-> 路径可用，但 cave/entry report 仍不完整，host 覆盖也不足。卡恢复
-> `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-11-01 00:25 的 v14：`--trigger-first --delay-ms 30
+> --transfers 8`。host 收到 **完整 3072B**（1344+1728），device
+> `xfer=3072 status=3`、complete rc=0，**无新 crash**。这是首次端到端
+> raw UAC ISO 数据成功；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 00:10）
+## 当前进度（2026-11-01 00:30）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -37,7 +36,8 @@
 | U2 v14 DCI9 event | **实机一次**：claim/alt1 成功；one-shot 3072/3；host 16 包 0 字节；无新 crash（pending-request 崩溃消失） | `private/runs/UAC-u2-v14-dci9-raw-20261031` |
 | v14 multi-URB | **实机一次**（第二 boot）：submit-first `--transfers 8`；设备 report `xfer=0 status=5`/`0x748c`；无新 crash；host 输出丢失 | `private/runs/UAC-u2-v14-multitransfer-20261031` |
 | v14 concurrent 8 | **实机一次**：host 收到 **384B**（transfer[7] 2×192），其余空；设备 report 仍 empty status5；无新 crash | `private/runs/UAC-u2-v14-concurrent-20261031` |
-| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-concurrent` |
+| **v14 trigger 8** | **实机一次，成功**：host **3072B**（1344+1728）；device `xfer=3072 status=3`、complete rc=0；无新 crash | `private/runs/UAC-u2-v14-trigger-success-20261031` |
+| 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v14-trigger-concurrent` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
   alt0-filter NOP，共 26 条编辑，NSP `abdaff61…`（87461B）；该基础已被
@@ -72,18 +72,12 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线解释“只有 2 包”）：并发 8 URB 已打通 host 数据路径
-  （transfer[7] 收到 384B），但其余 126 包为空，设备 report 仍
-  `xfer=0 status=5`/`0x748c`。离线优先：
-  (1) cave 的 `iso_event` 只有在 **16 个 ED 都成功、actual 累计 3072** 时才
-  调用 `complete_original`；host 只收到 2 包（384B），所以 cave 没有完成
-  请求，host 恢复 alt0 后 driver 以 status5/`0x748c` 空报告收尾；
-  (2) ring `cons=ring+0xe0` = 7 个 TD/ED 对已被控制器消费，但只有 2 个 ED
-  成功；其余 5 个可能是空/错误 TD，9 个在 alt0 前未消费；
-  (3) 下一轮优先 **trigger-first + 并发 8 URB**（`--trigger-first
-  --delay-ms 30 --transfers 8 --timeout-ms 500`），把 host 窗口放到 +32
-  frame 附近；或 16/32 URB；需新授权；
-  (4) 不再改设备 patch，先解释现有 v14 行为。
+- 下一步（成功后的验证/扩展）：先按同一命令再跑一次，确认 3072B 可重复
+  （需新授权；一次 boot，不启动游戏）。可重复后：
+  (1) 用同一 trigger-first+并发窗口做多 burst/连续 producer，把 16 ms 成功
+  扩成持续音频；(2) 再回到 macOS AppleUSBAudio 验证是否有改善（但它仍是
+  产品 host）；(3) 8 个 descriptor-parser NOP 的全局风险仍需隔离。
+  未重复验证前不继续改设备 patch。详见 [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md)。
 
 ## VM 可行性（2026-10-31 22:10）
 
@@ -108,6 +102,21 @@
 | 诊断 | 超时/无完成/报错时读 `[obj+0x1608]` 表项：`+0x10` IOVA、`+0x20` requested、`+0x28` status、`+0x2c` transferred |
 | 状态 | **已实机一次**（2026-10-31 02:08–02:10）；见下节 |
 | 证据 | `private/analysis/UAC-u2-v6-20261031`（`build-notes.txt`、`SHA256SUMS`、`build-result.json`） |
+
+## 最近一次 v14 成功实机（2026-11-01 00:25，完整 3072B）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建 | v14 `4ba21107…`（one-shot+cancel+DCI9）一次 boot |
+| host | `uac-raw-probe --trigger-first --delay-ms 30 --transfers 8 --timeout-ms 500` |
+| host 结果 | transfer[1] **1344B** + transfer[2] **1728B** = **3072B**；总 `valid=49 bad=79 bytes=3072` |
+| 设备 | `report req=3072 xfer=3072 status=3`；`complete rc=0 requested=3072 transferred=3072` |
+| ring | `trb0 ctl=0x69e01411`（frame 1694）、`trb1 0x1c21`；完成后 box 清空 |
+| crash | **无新 crash/fatal/erpt 报告** |
+| 判定 | **首次端到端 raw UAC ISO 数据成功**：host 完整 16×192，设备 3072/3，无 pending/crash |
+| 关键 | trigger-first 30 ms + 8 并发 URB 把 host 窗口放到 +32 frame TD；之后 URB 的空/错误包不影响已收满的 3072B |
+| 证据 | `private/runs/UAC-u2-v14-trigger-success-20261031`（日志 `57e61d89…`）、`private/card-cycles/20261031-u2-v14-trigger-concurrent` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
 
 ## 最近一次 v14 并发实机（2026-11-01 00:05，host 收到 384B）
 
@@ -550,8 +559,10 @@ one-shot+cancel 稳定、无新 crash；DCI9 后 host 仍 `valid=16 bytes=0`，
 `xfer=0 status=5`/`0x748c`，无新 crash；host 输出丢失，不是有效时序探测。
 **v14 concurrent 00:05**：并发 8 URB，`transfer[7]` 收到 **384B**（2×192），
 总 `valid=128 bytes=384`；设备 report 仍空 status5，无新 crash——raw host
-数据路径首次打通。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+数据路径首次打通。**v14 trigger 00:25，成功**：trigger-first 30 ms +
+并发 8 URB，host **3072B**（1344+1728），设备 `xfer=3072 status=3`、
+complete rc=0，无新 crash——首次端到端完整 UAC ISO 数据。UAC 默认仍禁用
+（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

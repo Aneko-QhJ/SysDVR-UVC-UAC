@@ -24,20 +24,18 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-10-31 23:35）
+## 当前边界（2026-11-01 00:30）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-10-31 23:30 v14（`4ba21107…`）一次 boot。Linux claim/
-  alt1 成功；one-shot post `3072/status=3`；host `transfer[0] valid=16
-  bytes=0`、`transfer[1] valid=1 bad=15`。**没有新 crash/fatal/erpt 报告**，
-  v11 的 pending-request 崩溃未复现。
-- **one-shot+cancel 稳定；DCI9 没有修复零字节**。第二次 v14 boot 用
-  submit-first `--transfers 8`：设备空 report `xfer=0 status=5`/`0x748c`，
-  无新 crash；host 输出丢失，且顺序重提交太慢，不是有效时序探测。
-- host 工具并发 8 URB 已打通数据：`transfer[7]` 收到 **384B**（2×192），
-  总 `valid=128 bytes=384`；设备 report 仍空 status5，无新 crash。下一步
-  离线解释“只有 2 包/空 report”，下一轮候选 16/32 URB 或 trigger-first；
-  需新授权。卡恢复 `52069a44…`、安全弹出；硬件线暂停。
+- 最后实机：2026-11-01 00:25 v14，`--trigger-first --delay-ms 30
+  --transfers 8 --timeout-ms 500`。host 收到 **完整 3072B**
+  （transfer[1]=1344 + transfer[2]=1728），设备 `report xfer=3072
+  status=3`、`complete rc=0`，**无新 crash**。
+- **首次端到端 raw UAC ISO 数据成功**；v14 one-shot+cancel 无 pending，
+  trigger-first 30 ms + 8 并发 URB 把 host 窗口放到 +32 frame TD。
+- 下一步：同一命令重复一次确认可重复；再做多 burst/连续 producer；
+  8 个 descriptor-parser NOP 的全局风险仍需隔离。需新授权才上机。
+- 卡恢复 `52069a44…`、删日志、安全弹出；硬件线暂停。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

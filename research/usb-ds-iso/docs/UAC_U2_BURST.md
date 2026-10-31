@@ -619,3 +619,16 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   其余 5 个可能是空/错误 TD，另外 9 对在 alt0 前未消费。
 - 下一轮优先 trigger-first + 并发 8 URB（`--delay-ms 30 --transfers 8
   --timeout-ms 500`），把 host 窗口放到 +32 frame 附近；需新授权。
+
+## 2026-11-01 00:25 v14 成功：完整 3072B
+
+- `uac-raw-probe --trigger-first --delay-ms 30 --transfers 8 --timeout-ms 500`。
+- host：transfer[1] 1344B（7 包）+ transfer[2] 1728B（9 包）= **3072B**；
+  总 `valid=49 bad=79 bytes=3072`。
+- device：`report req=3072 xfer=3072 status=3`；`complete rc=0
+  requested=3072 transferred=3072`；无 cancel/timeout；**无新 crash**。
+- ring：`trb0 ctl=0x69e01411`（frame 1694）、`trb1 0x1c21`；完成后 box 清空。
+- 结论：**首次端到端 raw UAC ISO 数据成功**。trigger-first 30 ms + 8 并发
+  URB 把 host 窗口放到 +32 frame TD；cave 累计 3072 后调用
+  `complete_original`，host/设备两边一致。
+- 下一步：同一命令重复确认；再做多 burst/连续 producer。
