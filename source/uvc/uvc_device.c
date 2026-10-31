@@ -2244,6 +2244,56 @@ static void _uacLogInstallState(void)
     svcCloseHandle(h);
 }
 
+/* The cave still writes its ISO2 mailbox even with the report hook removed:
+   ring+0xf80 magic, +0xf90 completed bitmap, +0xf94 actual sum, +0xf98 first
+   TRB, +0xfbc retained control.  Log the first Isoch/ED words too, so a
+   wrong frame/type/endpoint is visible on the next run. */
+static void _uacLogRingState(void)
+{
+    if (!g_uacUsbPid) return;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
+
+    u8 state[0x48] = {0};
+    Result rc = svcReadDebugProcessMemory(state, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ, sizeof(state));
+    u64 ring = 0, prod = 0, cons = 0;
+    if (R_SUCCEEDED(rc)) {
+        memcpy(&ring, state + 0x10, sizeof(ring));
+        memcpy(&prod, state + 0x18, sizeof(prod));
+        memcpy(&cons, state + 0x20, sizeof(cons));
+    }
+    LOG("UAC U2 ring dci=%u cycle=%u prod=0x%llx cons=0x%llx ring=0x%llx rd=0x%x\n",
+        state[0x42], state[0x40], (unsigned long long)prod,
+        (unsigned long long)cons, (unsigned long long)ring, rc);
+    if (R_SUCCEEDED(rc) && ring) {
+        u32 box[4] = {0};
+        rc = svcReadDebugProcessMemory(box, h, ring + 0xF80, sizeof(box));
+        if (R_SUCCEEDED(rc)) {
+            LOG("UAC U2 ring box magic=0x%08x completed=0x%08x actual=%u first=0x%08x\n",
+                box[0], box[1], box[2], box[3]);
+        }
+        u8 trb[0x20] = {0};
+        if (R_SUCCEEDED(rc)) {
+            rc = svcReadDebugProcessMemory(trb, h, ring, sizeof(trb));
+        }
+        if (R_SUCCEEDED(rc)) {
+            u64 addr0 = 0, addr1 = 0;
+            u32 len0 = 0, ctl0 = 0, len1 = 0, ctl1 = 0;
+            memcpy(&addr0, trb, 8);
+            memcpy(&len0, trb + 8, 4);
+            memcpy(&ctl0, trb + 12, 4);
+            memcpy(&addr1, trb + 16, 8);
+            memcpy(&len1, trb + 24, 4);
+            memcpy(&ctl1, trb + 28, 4);
+            LOG("UAC U2 trb0 addr=0x%llx len=%u ctl=0x%08x trb1 addr=0x%llx len=%u ctl=0x%08x\n",
+                (unsigned long long)addr0, len0, ctl0,
+                (unsigned long long)addr1, len1, ctl1);
+        }
+    }
+    svcCloseHandle(h);
+}
+
 static void _postUacBurst(void)
 {
     /* The host may trigger many times while chasing an alt1 window; log every
@@ -2265,8 +2315,9 @@ static void _postUacBurst(void)
         memcpy(&prod, ep.state + 0x18, sizeof(prod));
         memcpy(&cons, ep.state + 0x20, sizeof(cons));
     }
-    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx obj=0x%llx installed=%u flag1=%u table=0x%llx install_ok=%u mgr_ok=%u mgr_installed=%u mgr_flag1=%u mgr_table=0x%llx\n",
-        read_ok, word, ep.state[6], ep.speed, (unsigned long long)ring,
+    LOG("UAC U2 precheck ok=%u word=0x%08x int=%u dci=%u cycle=%u speed=%u ring=0x%llx prod=0x%llx cons=0x%llx obj=0x%llx installed=%u flag1=%u table=0x%llx install_ok=%u mgr_ok=%u mgr_installed=%u mgr_flag1=%u mgr_table=0x%llx\n",
+        read_ok, word, ep.state[6], ep.state[0x42], ep.state[0x40],
+        ep.speed, (unsigned long long)ring,
         (unsigned long long)prod, (unsigned long long)cons,
         (unsigned long long)ep.install_obj, ep.installed, ep.installed1,
         (unsigned long long)ep.table_ptr, ep.install_ok, ep.mgr_ok,
@@ -2275,6 +2326,14 @@ static void _postUacBurst(void)
     if (!read_ok || word != 0x00C00584u || ep.state[6] != 4 || ep.speed != 3 ||
         ring == 0 || prod != cons) {
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
+        return;
+    }
+    /* 0x2fdfc stores a DCI-like index in endpoint+0x42: 0x84 -> 9,
+       0x83 -> 7.  The cave's doorbell tail writes that value into the
+       device doorbell.  A wrong value would point the burst at another
+       endpoint, so never post with a mismatched DCI. */
+    if (ep.state[0x42] != 9) {
+        LOG("UAC U2 post skipped: endpoint dci=%u (want 9)\n", ep.state[0x42]);
         return;
     }
     /* The installer writes exactly 1 at install_obj + 0x1610 and the
@@ -2320,6 +2379,7 @@ static void _postUacBurst(void)
     if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
         LOG("UAC U2 no completion within 100ms\n");
         _uacLogInstallState();
+        _uacLogRingState();
         return;
     }
     eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
@@ -2328,6 +2388,7 @@ static void _postUacBurst(void)
     if (R_FAILED(rc)) {
         LOG("UAC U2 report rc=0x%x\n", rc);
         _uacLogInstallState();
+        _uacLogRingState();
         return;
     }
     u32 requested = 0, transferred = 0;
@@ -2341,6 +2402,7 @@ static void _postUacBurst(void)
     LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u\n",
         prc, requested, transferred);
     _uacLogInstallState();
+    _uacLogRingState();
 }
 #endif
 

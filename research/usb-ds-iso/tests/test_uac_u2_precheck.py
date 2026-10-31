@@ -164,6 +164,7 @@ class UacU2PrecheckTests(unittest.TestCase):
         self.assertEqual((imm, off), (0x22000, 0xA58))
         self.assertEqual(0xDA000 + imm + off, 0xFCA58)
         self.assertIn("#define UAC_U2_SPEED_OFFSET 0xFCA58ULL", self.source)
+        self.assertIn("_uacLogRingState", self.source)
 
     def test_precheck_reads_the_fields_the_cave_checks(self):
         start = self.source.index("static void _postUacBurst(void)")
@@ -173,6 +174,7 @@ class UacU2PrecheckTests(unittest.TestCase):
         self.assertLess(precheck, post)  # never post before the state read
         for token in ("word != 0x00C00584u", "ep.state[6] != 4", "ep.speed != 3",
                       "ring == 0", "prod != cons", "installed=%u flag1=%u table=0x%llx",
+                      "ep.state[0x42] != 9",
                       "ep.installed != 1 || ep.table_ptr == 0",
                       "UAC U2 post skipped: install object not ready"):
             self.assertIn(token, body)

@@ -30,6 +30,7 @@
 | U2 v6 安装对象门 | **实机一次**：obj=`0x40e57b038`、`installed=1`、table 非零、门过、post rc=0，completion 空、WAV 零、无崩溃 | `private/runs/UAC-u2-v6-20261031` |
 | U2 v7 report 诊断 | **实机一次**：report count=1/id=388/3072/3072/status=3、complete rc=0；WAV 全零、无崩溃 | `private/runs/UAC-u2-v7-20261031` |
 | U2 v7 时序实验 | **实机一次**：engine 先启动 5.7 s，trigger 后 180 ms 起 EP0x84 持续 transaction error；ffmpeg 挂起、无 WAV | `private/runs/UAC-u2-v7-timing-20261031` |
+| U2 v8 DCI/TRB 诊断 | 已构建（`ba596bb8…`，90690B），未部署、0 实机；门 DCI==9，打印 ring box/trb0/trb1 | `private/analysis/UAC-u2-v8-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v7-timing` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -65,13 +66,13 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线，时序假设已排除）：engine 早于 trigger 5.7 s，但 trigger 后
-  180 ms 起 EP `0x84` 出现 1394 个 transaction error，错误与 cave post 强相关。
-  现在集中在 post/TRB/doorbell：(1) 读 endpoint object `+0x40` cycle、`+0x42`
-  DCI、`+0x18` producer，确认 doorbell 目标是否为 9；(2) 对比 A23 已工作的
-  EP `0x83` 与 UAC EP `0x84` 的 Isoch/ED TRB 运行值；(3) 检查 UAC 的
-  `bmAttributes=0x05`（async）是否使端点上下文与 A23 的 `0x01` 不同。先离线，
-  下一次实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（v8 一次授权 boot）：已离线构建 `ba596bb8…`（90690B）。v8 在 post
+  前要求 endpoint `+0x42` DCI == 9（不是就只记 skip、不 post），并在
+  completion/超时后打印 ring `+0xf80` box（magic/completed/actual/first）、
+  第一条 Isoch/ED 的 addr/len/ctl。用来区分“DCI/frame/type 错”与“控制器
+  端点上下文缺失”。host 顺序同 17:45 时序实验（hold alt1 → ffmpeg → 等
+  engine → trigger-only）。下一次实机需新的明确授权。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）
