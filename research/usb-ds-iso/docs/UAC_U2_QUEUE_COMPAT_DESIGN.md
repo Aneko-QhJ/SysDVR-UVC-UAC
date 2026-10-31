@@ -557,4 +557,7 @@ payload / cave 592B）。
   train 实机：第 1 个缓冲 `3072/3072 status=3`，第 2 个 100 ms 无
   completion，停在 2/32；host 仍 403 个 transaction error、无 WAV。
   **加长 app 侧 train 不能修复 host 流**；剩余问题在 host 为什么拒绝第一个
-  已填充 burst。U2 实机线暂停，需新的明确授权。
+  已填充 burst。A23 对照：A23 的 `first_trb_control=0x47C01411`（frame
+  1148、endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9），
+  Isoch/ED 结构相同，cave TRB 不是差异点；差异在 AppleUSBAudio 的端点/
+  流行为或 raw host 路径。U2 实机线暂停，需新的明确授权。

@@ -98,6 +98,7 @@
 | train | 第 1 个缓冲 `complete 3072/3072 status=3`；第 2 个 `rc=0 urb=404` 但 100 ms 内无 completion；停在 2/32 |
 | ring | `trb0 ctl=0x02b01411`（frame 688）、`trb1 ctl=0x1c21`；box magic ISO2 |
 | host 内核 | 18:25:10.071–14.220 共 403 个 EP `0x84` `0xe00002ed`；trigger 前已有 16 请求 abort |
+| A23 对照 | A23 单 burst `first_trb_control=0x47C01411`（frame 1148、endpoint_index 7）；UAC v11 `0x02b01411`（frame 688、dci 9）。Isoch/ED 结构相同，只有 frame/EP index 不同 → **cave TRB 不是差异点** |
 | WAV | 无（ffmpeg 挂起，killed） |
 | 判定 | **加长 app 侧 burst 没有修复 host 流**：第一个 16 ms 设备侧完成，host 仍 transaction error；第二个缓冲没有 completion。问题在 host/frame/端点路径，不是缓冲数量 |
 | 下一步 | 离线解释“host 拒绝第一个已填充 burst”与 A23 raw libusb 差异；暂不继续加 train 代码 |

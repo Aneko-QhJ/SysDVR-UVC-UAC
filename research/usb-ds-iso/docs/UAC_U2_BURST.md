@@ -477,3 +477,8 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   下一次实机需新授权。
 - 证据：`private/runs/UAC-u2-v11-train-20261031`（日志 `f5cc8cf6…`、内核
   `kernel-usb-0x84-filtered.txt`）、`private/card-cycles/20261031-u2-v11-train`。
+
+- **A23 对照**：A23 单 burst 的 `first_trb_control=0x47C01411`（frame 1148、
+  endpoint_index 7），UAC v11 是 `0x02b01411`（frame 688、dci 9）；Isoch/ED
+  结构相同，只有 frame/EP index 不同。**cave TRB 本身不是 UAC 失败的解释**，
+  差异在 host 音频驱动/端点请求路径。
