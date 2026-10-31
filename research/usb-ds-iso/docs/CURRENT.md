@@ -30,6 +30,7 @@
 | U2 v10 MFI/frame | **实机一次**：MFI 经 dmnt 不可读（`rd=0xd401`）；trb0 frame 1514；无 host 流 `xfer=0 status=5`；v8 host 日志在 trigger 前每 ~0.5 s abort 16 请求 | `private/runs/UAC-u2-v10-mfi-20261031` |
 | U2 v11 burst train | **实机一次**：第 1 个缓冲 3072/3072，第 2 个 100 ms 无 completion（停在 2/32）；host 403 个 transaction error，无 WAV | `private/runs/UAC-u2-v11-train-20261031` |
 | Raw UAC host probe | **实机一次**：auto_detach ok，但 detach/claim `LIBUSB_ERROR_ACCESS`；未提交 ISO/未发 SET_CUR，设备无 U2 行 | `private/runs/UAC-u2-v11-raw-20261031` |
+| U2 v12 attrs 0x01 | 已构建（`25513302…`，91163B），未部署、0 实机；AS endpoint attrs 0x05→0x01，cave word 0x00C00184 | `private/analysis/UAC-u2-v12-attr01-20261031` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261031-u2-v11-raw` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -65,12 +66,14 @@
   **先提交 ISO transfer、再发 SET_CUR 触发**（原来顺序相反，TD 会落在宿主窗口外）。
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 向 EP `0x84` post 一次 3072B，并等一次完成（100ms 上限，不重试）。
-- 下一步（离线）：raw host 路径已在 macOS 上被 `LIBUSB_ERROR_ACCESS` 阻断，
-  只能走 AppleUSBAudio（或换 host/OS）。下一步不再试 detach/claim，改为：
-  (1) 设计连续 UAC producer，让 AppleUSBAudio 一直有 1 ms 数据；
-  (2) 对比 A23 raw libusb 与 audio 驱动在 request/frame 上的差异；
-  (3) 评估是否有其他 host（非 macOS）可验证设备 ISO 路径。先离线，下一次
-  实机需新的明确授权。详见 [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
+- 下一步（v12 一次授权 boot）：raw host 已被 `LIBUSB_ERROR_ACCESS` 阻断，
+  只能走 AppleUSBAudio。v12 `25513302…`（91163B）把 UAC AS 端点
+  `bmAttributes` 从 `0x05`（ISO async）改成 `0x01`（ISO no-sync，匹配 A23
+  vendor 端点），cave/expected word 改 `0x00C00184`。一次 boot：hold alt1 →
+  ffmpeg 8 s → 等 engine → trigger-only → 收 WAV。若 host 开始收数，
+  attrs 就是差异；若仍 transaction error，再换地址 0x83/MPS 或连续
+  producer。下一次实机需新的明确授权。详见
+  [UAC_U2_BURST.md](UAC_U2_BURST.md) 与
   [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md)。
 
 ## U2 v6 离线修正（2026-10-31 02:10，已实机一次）

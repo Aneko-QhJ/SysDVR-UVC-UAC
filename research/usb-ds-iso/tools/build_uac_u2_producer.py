@@ -299,6 +299,7 @@ def endpoint_constants_ok(code, require_report=True):
 
 
 def main():
+    global ENDPOINT_WORD
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--nso", type=Path, default=DEFAULT_NSO)
     parser.add_argument("--work", type=Path, default=WORK)
@@ -308,9 +309,13 @@ def main():
                         help="add the 0x302c0 error-completion breaker edit")
     parser.add_argument("--asm", type=Path, default=ASM,
                         help="cave assembly (default patches/iso_burst_uac84.S)")
+    parser.add_argument("--endpoint-word", type=lambda x: int(x, 0),
+                        default=ENDPOINT_WORD,
+                        help="endpoint descriptor word (default 0x00C00584)")
     parser.add_argument("--no-report", action="store_true",
                         help="omit the 0x2cbe0 report hook (driver report builder)")
     args = parser.parse_args()
+    ENDPOINT_WORD = args.endpoint_word
     work = args.work.resolve()
     args.asm = args.asm.resolve()
     nso = validate_module(args.nso.read_bytes())

@@ -27,6 +27,8 @@ def main():
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--define", action="append", default=[],
+                        help="extra compiler define (without -D)")
     args = parser.parse_args()
 
     args.work = args.work.resolve()
@@ -37,7 +39,9 @@ def main():
     outputs.mkdir(parents=True, exist_ok=True)
 
     defines = (
-        "-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING " f"-I{args.work}"
+        "-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING "
+        + "".join(f"-D{d} " for d in args.define)
+        + f"-I{args.work}"
     )
     cmd = [
         "make", "-B", f"-j{args.jobs}", "TARGET=exefs",

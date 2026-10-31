@@ -1,4 +1,9 @@
 #include "uac_standard.h"
+#ifdef UAC_U2_ATTR01
+#define UAC_ISO_EP_ATTRS (USB_TRANSFER_TYPE_ISOCHRONOUS | UAC_ISO_USAGE_DATA)
+#else
+#define UAC_ISO_EP_ATTRS (USB_TRANSFER_TYPE_ISOCHRONOUS | UAC_ISO_SYNC_TYPE_ASYNC | UAC_ISO_USAGE_DATA)
+#endif
 #include "uac_descriptors.h"
 
 #include <stdio.h>
@@ -336,7 +341,7 @@ size_t UacBuildAsConfiguration(uint8_t as_interface, uint8_t ep_address,
     put8(&b, USB_DT_ENDPOINT_SIZE);
     put8(&b, USB_DT_ENDPOINT);
     put8(&b, ep_address);
-    put8(&b, (uint8_t)(USB_TRANSFER_TYPE_ISOCHRONOUS | UAC_ISO_SYNC_TYPE_ASYNC | UAC_ISO_USAGE_DATA));
+    put8(&b, (uint8_t)UAC_ISO_EP_ATTRS);
     put16(&b, UAC_ISO_PACKET_SIZE);
     put8(&b, 4);
 
@@ -425,7 +430,7 @@ bool UacLintConfiguration(const uint8_t *ac, size_t ac_len,
     // Isochronous endpoint and its class-specific companion.
     if (as[36] != USB_DT_ENDPOINT_SIZE || as[37] != USB_DT_ENDPOINT) return fail(err, err_cap, "endpoint header");
     if (!(as[38] & USB_ENDPOINT_IN) || as[38] == USB_ENDPOINT_IN) return fail(err, err_cap, "endpoint address");
-    if (as[39] != (USB_TRANSFER_TYPE_ISOCHRONOUS | UAC_ISO_SYNC_TYPE_ASYNC | UAC_ISO_USAGE_DATA)) {
+    if (as[39] != UAC_ISO_EP_ATTRS) {
         return fail(err, err_cap, "endpoint attributes");
     }
     if (get16(as, 40) != UAC_ISO_PACKET_SIZE || as[42] != 4) return fail(err, err_cap, "endpoint rate");

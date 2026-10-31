@@ -503,3 +503,13 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   detach/claim。
 - 证据：`private/runs/UAC-u2-v11-raw-20261031`（`raw-claim-only.txt`、日志
   `c7b7399d…`）、`private/card-cycles/20261031-u2-v11-raw`。
+
+## 2026-10-31 v12：AS 端点 attrs 0x01（离线）
+
+- raw host 被 macOS `LIBUSB_ERROR_ACCESS` 阻断后，下一变量是 UAC AS 端点的
+  `bmAttributes`：从 `0x05`（ISO async）改成 `0x01`（ISO no-sync，匹配 A23
+  vendor 端点），cave/expected word 改 `0x00C00184`。
+- NSP `25513302…`（91163B，29 条 / cave 592B）；`-DUAC_U2_ATTR01`。
+  未部署、0 实机。
+- 下一次：一次 boot，hold alt1 → ffmpeg 8 s → 等 engine → trigger-only →
+  收 WAV；若 host 开始收数，attrs 就是差异。

@@ -33,9 +33,10 @@
   日志无 `UAC U2` 行。已恢复 `52069a44…` 并安全弹出。
 - **macOS raw libusb 路径不可用**。只能走 AppleUSBAudio 连续流，或换
   host/OS；不再试 detach/claim。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线设计
-  连续 UAC producer / 比较 A23 raw 与 audio 驱动 request/frame；下一次实机
-  需新的明确授权。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v12
+  `25513302…`（91163B）已构建：UAC AS 端点 attrs `0x05`→`0x01`
+  （匹配 A23），cave/expected word `0x00C00184`。下一次一次授权 boot
+  （hold alt1 → ffmpeg → 等 engine → trigger-only）验证 attrs 假设。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

@@ -2108,6 +2108,11 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
    transfer before sending this SET_CUR trigger.  Post exactly once per boot;
    a timeout is reported, never retried or cancelled here. */
 #define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16)
+#ifdef UAC_U2_ATTR01
+#define UAC_U2_EP_WORD 0x00C00184u  /* addr 0x84, attrs 0x01, MPS192 */
+#else
+#define UAC_U2_EP_WORD 0x00C00584u  /* addr 0x84, attrs 0x05, MPS192 */
+#endif
 /* Endpoint 0x84 object inside usb:ds, from the 0x302e0 submit path:
    manager = module base + 0xD3000 (device) + 0x7000; the object is at
    manager + 0x22000 + ((0x84 & 0xf) << 1 | 1) * 0x48 + 0x78.  The
@@ -2336,7 +2341,7 @@ static void _postUacBurst(void)
         (unsigned long long)ep.table_ptr, ep.install_ok, ep.mgr_ok,
         ep.mgr_installed, ep.mgr_installed1,
         (unsigned long long)ep.mgr_table_ptr);
-    if (!read_ok || word != 0x00C00584u || ep.state[6] != 4 || ep.speed != 3 ||
+    if (!read_ok || word != UAC_U2_EP_WORD || ep.state[6] != 4 || ep.speed != 3 ||
         ring == 0 || prod != cons) {
         LOG("UAC U2 post skipped: endpoint not ready for the cave\n");
         return;
