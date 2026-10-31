@@ -436,3 +436,13 @@ blr  [vtable + 136]     ; 再次进入 0x302e0
   UAC `bmAttributes=0x05`（async）与 A23 `0x01`；核对 host ISO interval/pipe。
 - 证据：`private/runs/UAC-u2-v9-ring-20261031`（日志 `2e4f5f40…`）、
   `private/card-cycles/20261031-u2-v9-ring`。
+
+## 2026-10-31 18:12 v10：MFI/frame 诊断（离线）
+
+- v9 已读到 `trb0 ctl=0x0e801411`（frame 232）和 ISO2 box，下一步核对这个
+  frame 是否等于 cave 从 `manager+8 -> regs+0x48` 读到的 MFI 计算值
+  `((mfi>>3)+32)&0x7ff`。
+- v10 `55f2a4eb…`（90997B）在 ring dump 中额外打印 `mfi/frame/regs`；
+  payload 不变（29 条 / cave 592B）。未部署、0 实机。
+- 下一次：一次 boot，hold alt1 + trigger-only，无 ffmpeg；若 frame 相等，
+  剩余嫌疑转向端点上下文/TRB 地址/attrs；若不等，先修 MFI 读取。

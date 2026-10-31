@@ -180,6 +180,7 @@ class UacU2NoReportPayloadTests(unittest.TestCase):
         self.assertIn('LOG("UAC U2 report data count=%u urb=%u', source)
         self.assertIn('LOG("UAC U2 report[%u] id=%u req=%u xfer=%u status=%u', source)
         self.assertIn('LOG("UAC U2 ring dci=%u cycle=%u', source)
+        self.assertIn('mfi=0x%x frame=%u regs=0x%llx', source)
         self.assertIn('LOG("UAC U2 trb0 addr=0x%llx len=%u ctl=0x%08x', source)
         self.assertIn("ep.installed != 1 || ep.table_ptr == 0", source)
         self.assertIn("install object not ready", source)

@@ -35,10 +35,10 @@
   parse `0x748c`（预期错误完成）。已恢复 `52069a44…` 并安全弹出。
 - **cave 确实写了 ring/box/TRB，DCI=9**。v8 的 `3072/status=3` 依赖 host
   完成；剩余问题是 host 为什么拒绝这些 TRB/端点上下文。
-- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。下一步离线读
-  post 时 MFI/当前 frame，确认 frame 232 是未来；对比 UAC
-  `bmAttributes=0x05`（async）与 A23 `0x01`，核对 host ISO interval/pipe。
-  下一次实机需新的明确授权。
+- 当前工作：U0、U1a、U1b 通过；U2 host 16/16 与 PCM 未测。v10
+  `55f2a4eb…`（90997B）已构建：在 ring dump 里额外打印 MFI 和计算 frame，
+  用来核对 v9 的 TRB frame 232。下一次只需 hold alt1 + trigger-only
+  （无 ffmpeg）一次 boot；需新的明确授权。
 - 最近一次短包实机：2026-10-27 513..528，主机收到 384B 正确短包；设备
   `capture`/`EXE3` 保存失败 `0xD401`，非严格通过，不补试。路径修正版已
   打包并绑定新 recipe 入口、通过包/入口审计，短包复测同样需要新授权。

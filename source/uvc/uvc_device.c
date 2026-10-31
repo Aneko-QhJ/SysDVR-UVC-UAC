@@ -2263,9 +2263,18 @@ static void _uacLogRingState(void)
         memcpy(&prod, state + 0x18, sizeof(prod));
         memcpy(&cons, state + 0x20, sizeof(cons));
     }
-    LOG("UAC U2 ring dci=%u cycle=%u prod=0x%llx cons=0x%llx ring=0x%llx rd=0x%x\n",
+    u64 regs = 0;
+    u32 mfi = 0;
+    Result mrc = svcReadDebugProcessMemory(&regs, h,
+        g_uacUsbBase + 0xDA008ULL, sizeof(regs));
+    if (R_SUCCEEDED(mrc) && regs) {
+        mrc = svcReadDebugProcessMemory(&mfi, h, regs + 0x48, sizeof(mfi));
+    }
+    const u32 frame = ((mfi >> 3) + 32) & 0x7FF;
+    LOG("UAC U2 ring dci=%u cycle=%u prod=0x%llx cons=0x%llx ring=0x%llx mfi=0x%x frame=%u regs=0x%llx rd=0x%x\n",
         state[0x42], state[0x40], (unsigned long long)prod,
-        (unsigned long long)cons, (unsigned long long)ring, rc);
+        (unsigned long long)cons, (unsigned long long)ring, mfi, frame,
+        (unsigned long long)regs, R_SUCCEEDED(rc) ? mrc : rc);
     if (R_SUCCEEDED(rc) && ring) {
         u32 box[4] = {0};
         rc = svcReadDebugProcessMemory(box, h, ring + 0xF80, sizeof(box));
