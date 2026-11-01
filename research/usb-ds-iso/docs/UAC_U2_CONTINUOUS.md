@@ -296,3 +296,49 @@ TD 的帧号比当前 MFI 晚 32 ms，加 16 ms burst 和 ~12 ms 事件/驱动�
 `0x2c584/0x2a3f4/0x2a464`），与 2026-11-01 01:41 v16 r1 boot 崩溃同签名；
 发生在 `train end` 之后，数据路径不受影响。已复制 1 份新 crash 报告
 （`20d493b5…`），erpt 27 不变。
+
+#### 崩溃的静态定位
+
+崩溃报告（`01793521640_0100000000000006.log`，`20d493b5…`）的 PC 是
+`[ad8d36f2]+0x1927c`（`svc #0x26`），LR `+0x9668`——即空消息的通用
+`svcBreak` 路径（`0x9650`：`mov w0,wzr; w2=4; bl 0x1927c`）。栈从内到外：
+
+| 帧 | 位置 | 含义 |
+| --- | --- | --- |
+| `0x40d0` | `bl 0x9540` 的断言点（固定空消息） | 状态机/内存管理断言 |
+| `0x3ce0` | `0x3c50` 内 `cbz x0,0x3d1c` 的返回点 | DMA/地址空间映射（`0x3d40`）失败路径 |
+| `0x2c584` | `0x2c520` 内 `bl 0x3c50` 的返回点 | 端点 buffer 提交（映射 buffer） |
+| `0x2a3f4` | `bl 0x2c520` 的返回点 | 提交包装 |
+| `0x2a464` | `0x2a330` 的调用点 | 上层提交/teardown |
+
+`0x3c50` 先检查 `(size|addr) & 0xfff`，不对就返回 `0x1ce8c`，不会断言；
+断言发生在 `0x3d40` 的 DMA/IOMMU 映射内部（rodata 附近是
+`EndpointTerminateComplete`/`ResettingPort`/`CtrlTransferBuffer` 等状态名）。
+因此这是一条**提交/DMA 映射路径的断言**，触发点在 host 重枚举后的
+`SET_INTERFACE(0) iface=3`，与 cave 的 lead/日志改动无直接关系；与 v16 r1
+boot 崩溃同栈，说明它属于 U2 patch 的 alt0/控制路径遗留风险。
+
+可评估的规避方向（下一轮只选一个）：
+
+1. **host 侧**：收尾时不触发重枚举（probe 保持接口占用/延迟关闭，或先关机
+   再释放），避免 host 再发 `SET_INTERFACE(0)`；
+2. **app 侧**：alt0 的 `SET_INTERFACE(0)` 不再走 `_ctrlAck`，改为先 cancel/
+   停止端点（或直接 stall），看断言是否消失；
+3. **接受已知风险**：数据完成后立即关机，接受“数据成功 + 收尾崩溃”，
+   把该崩溃留作独立课题。
+
+## v25 lead-4 候选（离线，0 实机）
+
+v24 的 `wait_ms≈60` 里 32 ms 是 cave 的 TD 帧 lead（`frame = MFI/8 + 32`）。
+v25 只把这一条改成 `+4`：
+
+- assembly `patches/iso_burst_uac84_dci9_lead4.S`；与 v23/v24 的 cave 只差
+  **1 个字节 / 1 条指令**（`0x11008129 add #32` → `0x11001129 add #4`）；
+- app 与 v24 相同：`-DUAC_U2_BURSTS=4 -DUAC_U2_LIGHT_LOG`；
+- NSP `c27e9103…`（91996B）、NSO `994e7c05…`、cave 620/684B、29 条 edits；
+- 期望：`wait_ms 60→~32`、gap 96→~66 ms，4/4 burst 不变；
+- 判定：gap ~66 且 4/4 → lead 是有效杠杆，下一步压 report/loop 或流水线；
+  无数据/部分 → 4 ms lead 没落进 host 窗口，停，回退 32 再查 host 提交时序。
+
+一次 boot 仍按 v24 的纪律：VM 开机前 suspend、主界面后 attach、probe 一次；
+出现 v24 同款收尾崩溃时数据仍有效，但按规则停止并读卡。

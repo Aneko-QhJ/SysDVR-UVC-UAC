@@ -60,6 +60,7 @@
 | **v23 安装器/上下文（离线）** | 安装器只遍历描述符；`0x2feb0` 才写上下文 + commit（`regs+0x58`）+ 清 halt；错误路径 `0x30ff4` 不 commit | `private/analysis/UAC-u2-v23-rearm-20261101`、[UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) |
 | **v23 re-arm（实机一次，成功）** | **4/4 burst**：host **12288B**（4×3072，t=34/194/356/498 ms）；设备 seq1..4 都 `complete 3072/3`、`train end posted=4 completed=4`；无新 crash/erpt；重放 `0x2feb0` 的 commit+unhalt 就是缺失步骤 | `private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm` |
 | **v24 light-log（实机一次：数据成功，收尾崩溃）** | **12288B（4×3072）**；gap **96/96/96 ms**（v23 160/162/142）；timing `post=0 wait=59–61 report=19–20 loop=3–14`；96 ms ≈ 32 ms cave 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop；`train end posted=4 completed=4` 后在 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c，与 v16 r1 同栈） | `private/runs/UAC-u2-v24-light-20261101`、`private/card-cycles/20261101-u2-v24-light`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
+| **v25 lead-4（离线）** | **0 实机**：cave 的 TD 帧 lead `32→4`（与 v23/v24 只差 1 字节 / 1 条指令）；app 与 v24 相同（`BURSTS=4` + `LIGHT_LOG`）；NSP `c27e9103…`（91996B）；期望 wait 60→~32、gap 96→~66 ms | `private/analysis/UAC-u2-v25-lead4-20261101`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -96,15 +97,16 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v24 数据成功、收尾崩溃；先离线评估）：(1) v24 证明 dmnt dump 占
-  v23 gap 的 ~64 ms；剩下 96 ms 的主项是 cave 的 `MFI/8 + 32` 帧 lead。
-  下一候选把 32 改成 4（`patches/iso_burst_uac84_dci9_rearm.S` 一行），期望
-  `wait_ms` 60→~32、gap→~66 ms；(2) 收尾崩溃发生在 host 重枚举后的
-  `SET_INTERFACE(0) iface=3`，栈与 v16 r1 boot 崩溃相同（`0x2c584/0x2a3f4/
-  0x2a464`），与 cave 改动无直接关系；下一轮要决定“先只改 lead、接受收尾
-  崩溃”还是“先规避 host 重枚举”；(3) 之后才谈流水线/持续流、PCM/时钟、
-  与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离；
-  (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
+- 下一步（v25 lead-4 已离线构建；收尾崩溃待选规避）：(1) v24 的 96 ms gap
+  里 ~32 ms 是 cave 的 TD 帧 lead；v25 `c27e9103…`（91996B，cave 只改
+  `add #32→#4`）把这一项压到 4 ms，期望 `wait_ms` 60→~32、gap→~66 ms；
+  (2) 收尾崩溃已静态定位为提交/DMA 映射路径的断言（`0x2c520→0x3c50→0x3d40
+  →0x40d0`，`svcBreak` 空消息），触发在 host 重枚举后的
+  `SET_INTERFACE(0) iface=3`，与 v16 r1 boot 崩溃同栈；下一轮三选一：
+  host 收尾不重枚举 / app 的 alt0 先 cancel 再 ack / 接受已知风险；
+  (3) 之后才谈流水线/持续流、PCM/时钟、与视频共存；(4) `ISO_ENTRY=0x270`
+  与 8 个 descriptor-parser NOP 仍未隔离；(5) 任何跨进程写/重编程先离线
+  验证，上机一次、失败即停。详见
   [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 最近一次实机：v24 light-log（2026-11-01 16:2x，数据成功、收尾崩溃）

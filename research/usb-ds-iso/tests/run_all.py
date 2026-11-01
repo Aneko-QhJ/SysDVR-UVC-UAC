@@ -22,6 +22,7 @@ QUICK = [
     "test_uac_u2_precheck.py",
     "test_uac_u2_endpoint_context.py",
     "test_uac_u2_light_log.py",
+    "test_uac_u2_lead.py",
     "test_uac_u2_breaker.py",
     "test_uac_u2_safecave.py",
     "test_uac_u2_queue_compat.py",
