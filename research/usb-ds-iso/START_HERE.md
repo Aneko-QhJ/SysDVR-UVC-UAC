@@ -25,25 +25,22 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 15:05）
+## 当前边界（2026-11-01 16:10）
 
-- 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 14:4x **v22 alt-cycle**。host `cycle0` 3072B、
-  `cycle1..3` 全 0；设备有 4 次 post（alt0 清 `burstPosted` 生效），但只有
-  seq1 完成；每周期 precheck 的 install object/table 相同、installed=1。
-- 结论：**alt0→alt1 不重装端点**，v22 否掉“每个 burst 用新端点”。
-- **v23 离线（15:0x）**：安装器 `0x295d0` 只遍历描述符；装点的是
-  `0x2fd30 → 0x2feb0`（写 64B 端点上下文 + `regs+0x58` commit + 清
-  `regs+0x54/0x50` halt）。完成错误路径 `0x30ff4` 重写 ring/上下文却
-  **不 commit**（候选机制：第二个 TD 集因此不再被取指）。附带发现 DCI-9 cave 的
-  `ISO_ENTRY=0x270` 指向 DCI 7 对象（cave 事件路径自 v14 起未执行），本轮不修。
-- 下一阶段：**v23 候选已离线构建、preflight 完成**（`d984f729…`，91927B，
-  cave 620B，每 burst 重放 `0x2feb0`；重建哈希一致、host 源 `0f4bbe3d…`、
-  还原包 `52069a44…` 在位）；单次运行手册与授权请求见
-  `private/analysis/UAC-u2-v23-rearm-20261101/run-plan.md`（部署 + 一次开机
-  + 读卡恢复，三项分别授权）。用 v16 r2 的 host 命令 + `-DUAC_U2_BURSTS=4`
-  一次 boot；4 个 burst 都成功 → commit 是缺失步骤；仍只有 seq1 → 下一轮
-  做只读上下文诊断。**上机需新授权**；详见
+- 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`
+  （v23 的单次授权已用完；下一次需新的明确授权）。
+- 最后实机：2026-11-01 16:0x **v23 re-arm，成功**。host `bytes=12288`
+  （4 个 3072B burst，t=34/194/356/498 ms）；设备 `posted=4 completed=4`，
+  seq1..4 每个 `complete 3072/3`，无 crash；卡 erpt 27 / crash 21 与部署前
+  相同。
+- 结论：**缺失步骤是端点上下文 commit（`regs+0x58`）+ 清 halt
+  （`regs+0x54/0x50`）**。每 burst 重放驱动端点 setup `0x2feb0` 后，v22 之前
+  “只有第一个 TD 集被取指”的墙被打破（第一次 >1 burst，12288B）。
+- 附带发现：DCI-9 cave 的 `ISO_ENTRY=0x270` 仍指向 DCI 7 对象，cave 事件
+  路径自 v14 起未执行；本轮未修，需单独一轮。
+- 下一阶段：把“每 burst 重放 `0x2feb0`”收敛为“首 burst 后只做 commit/清
+  halt”或让 ring 跨 burst 连续，验证 8/16 burst 与更短间隔，再做持续流/
+  时钟；**上机需新授权**；详见
   [docs/UAC_U2_ENDPOINT_CONTEXT.md](docs/UAC_U2_ENDPOINT_CONTEXT.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。

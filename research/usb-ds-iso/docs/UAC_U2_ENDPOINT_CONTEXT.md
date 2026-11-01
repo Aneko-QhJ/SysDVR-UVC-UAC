@@ -1,9 +1,10 @@
 # UAC U2：端点上下文、安装器与缺失的 commit（v23 离线）
 
-> 状态：**v23 离线完成，0 实机**。本轮只读 `usb.elf`（`0x295d0` 安装器、
-> `0x2fd30/0x2feb0` 端点 setup、`0x30b50` 上下文安装、四个 ring 复位站点），
-> 并构建一个只改 cave 的候选。**上机需新的明确授权**；当前事实仍以
-> [CURRENT.md](CURRENT.md) 为准，burst 线的历史见
+> 状态：**v23 实机一次，成功**。离线部分只读 `usb.elf`（`0x295d0` 安装器、
+> `0x2fd30/0x2feb0` 端点 setup、`0x30b50` 上下文安装、四个 ring 复位站点）；
+> 2026-11-01 16:0x 用 `d984f729…` 一次 boot：host **12288B（4×3072）**，
+> 设备 `posted=4 completed=4`、seq1..4 都 `complete 3072/3`，无 crash。
+> 当前事实仍以 [CURRENT.md](CURRENT.md) 为准，burst 线的历史见
 > [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 结论（一句话）
@@ -13,7 +14,7 @@
 物理地址 + DCS），再写 `regs+0x58` **commit** 并清 `regs+0x54/0x50` 的 halt。
 完成错误路径 `0x30ff4` 在 burst 之后重写了同一份 ring/上下文，却**不 commit、
 不清 halt**（这一半是静态事实）。由此推断控制器保持旧状态、第二套 TD 不再被
-取指（这一半要靠实机 v23 确认）。v23 候选在每个 burst 前重放一次 `0x2feb0`。
+取指（这一半已由 v23 实机确认，§9）。v23 候选在每个 burst 前重放一次 `0x2feb0`。
 
 ## 地址与对象（本模块布局，全部由指令推导）
 
@@ -127,7 +128,7 @@ if regs+0x50 & bit: 清 bit；轮询 regs+0x5C；ack regs+0x5C   ; 0x3003C..0x30
 `complete_original(w4=192, w3=0, w5=1)`（`0x31CF0` → `0x31D2C..0x31D6C`），
 **不碰 ring**。
 
-## 5. 为什么“只有第一个 TD 集被取指”（候选机制）
+## 5. 为什么“只有第一个 TD 集被取指”（v23 已确认）
 
 **直接证据**：安装路径会 commit 并清 halt；错误复位路径 `0x30FF4` 会重写
 ring/上下文但不 commit、不清 halt。实机日志（v16 的 `done` 行、v19 在
@@ -135,7 +136,7 @@ ring/上下文但不 commit、不清 halt。实机日志（v16 的 `done` 行、
 路径清零；四条站点里只有 `0x30FF4` 在控制器事件路径上，因此归因到它是推断，
 不是直接观测。
 
-**推断（待 v23 确认）**：控制器因此仍停在 halt/旧 dequeue，后续门铃不再取指。
+**v23 实机确认**：控制器因此仍停在 halt/旧 dequeue，后续门铃不再取指（§9）。
 
 1. 安装时 `0x295d0(Configured)` → `0x2FD30` → `0x2FEB0`：上下文 state=1、
    dequeue=ring base、DCS=1，commit + 清 halt。第一个 burst 的 TD 集在 base
@@ -180,7 +181,7 @@ DCI 7 端点，`[0xFC270+0x10]` 为 0，`iso_event` 在 `cbz x5` 处直接
 | 行为 | `prod==cons` 门通过后：保存 `x0/x1/x2/x30` → `bl 0x2FEB0(manager, ep)` → 恢复 → 重载 `x8/x10`、重算 `x6` → 原有 TD 写入/mailbox/Link 修正/门铃 |
 | payload | 29 条 edits / cave **620B**（limit 684）/ cave 前缀 `dci9_noreport` 不变 |
 | NSP | `d984f729…`（91927B），`-DUAC_U2_BURSTS=4`（v15/v16 的 4-burst 顺序 train） |
-| 工作目录 | `private/analysis/UAC-u2-v23-rearm-20261101`（未部署、0 实机） |
+| 工作目录 | `private/analysis/UAC-u2-v23-rearm-20261101`（已实机一次，见 §9） |
 | 风险 | 在提交路径里重入驱动 setup：每次 post 多一次 4KB memset + 上下文重装；halt 握手最坏会 `sleep(50us)` 轮询到 100ms（发生在 post 之前，app 的 100ms 完成超时从 post 之后才开始）；只写本端点自己的 ring/上下文/寄存器 |
 
 判定（一次 boot、失败即停）：
@@ -205,11 +206,35 @@ TR dequeue + DCS）在 post 前后、完成前后的值。若 state 变成 2/3/4
   存在时实际汇编一次）。
 - `make check` 见本轮提交信息。
 
-## 9. 下一步
+## 9. 2026-11-01 16:0x v23 实机：4/4 burst 成功
 
-1. 上表 v23 判定；失败则做只读上下文诊断，再决定是否手写 commit（`regs+0x58`
-   + 清 halt）而不是调用整个 `0x2FEB0`。
-2. 若 v23 成功：把“每 burst 重放 setup”改成“首 burst 后只做 commit”，
-   再进入流水线/持续流与时钟；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
+一次部署、一次 boot、一次 probe；纪律：VM 在开机时 suspend，主界面后经
+`prlsrvctl usb set` + 一次 VM suspend/resume 完成枚举，probe 只跑一次。
+
+| 项 | 结果 |
+| --- | --- |
+| host | `claim/alt1/SET_CUR` ok；`done transfers=62 packets=16 valid=217 bad=775 bytes=12288`；四个 3072B burst（t=34/194/356/498 ms，2688+384 / 2304+768 / 384+2688 / 192+2880） |
+| 设备 | seq1..4 每个 `post rc=0`、`complete rc=0 requested=3072 transferred=3072 status=3`；`UAC U2 train end posted=4 completed=4 pattern=3072` |
+| ring | 每 burst 后 prod/cons/copy 仍被驱动复位回 base；下一个 burst 仍被取指——**commit/unhalt 就是差异** |
+| crash | 无；日志无 crash/fatal/erpt，卡 erpt 27 / crash 21 与部署前相同 |
+| 证据 | `private/runs/UAC-u2-v23-rearm-20261101`（`host-raw.txt` `205b3fee…`、`device-log-v23.txt` `c10005d2…`、`device-config.txt` `15422226…`）、`private/card-cycles/20261101-u2-v23-rearm` |
+| 收尾 | 恢复 `52069a44…`、删 `/logfile.txt`、安全弹出；无重试 |
+
+结论：**“只有安装后第一个 TD 集被取指”的原因是完成错误路径 `0x30ff4`
+复位 ring/上下文后没有 commit、没有清 halt**；每 burst 重放驱动 setup
+`0x2feb0` 后控制器重新取指，4 个顺序 burst 全部完成。这是 burst 线第一次
+拿到超过 1 个 burst（12288B）。
+
+代价与下一轮：当前每 burst 多一次 4KB memset + 上下文重装 + commit + 清 halt
+（`0x2feb0` 全量）。下一步把它收敛为“首 burst 后只做 commit/清 halt”，或让
+ring 跨 burst 连续，再验证 8/16 burst 与更短间隔。
+
+## 10. 下一步
+
+1. v23 已成功（§9）。下一轮把“每 burst 重放 `0x2feb0`”收敛为“首 burst 后
+   只做 commit（`regs+0x58`）+ 清 halt”，或让 ring 跨 burst 连续（不 memset、
+   不重置 base），用 8/16 个 burst 验证；仍一次 boot、失败即停。
+2. 之后进入持续流（PCM/时钟/与视频共存）；UAC 默认仍禁用（仅
+   `UAC_HOST_PROBE`）。
 3. 修 `ISO_ENTRY`（0x3xx）与 8 个 descriptor-parser NOP 的全局风险仍待单独
    隔离。

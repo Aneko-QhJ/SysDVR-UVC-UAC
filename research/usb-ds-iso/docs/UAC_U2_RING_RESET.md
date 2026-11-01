@@ -1,14 +1,14 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
 > 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成，
-> v21 否掉 idle cancel，v22 否掉 alt 重装，v23 离线读完安装器与端点上下文**。
+> v21 否掉 idle cancel，v22 否掉 alt 重装，v23 实机成功（4/4 burst）**。
 > SET_INTERFACE(0)→(1) 并不会重新安装端点（install object/table 不变、
-> installed 仍为 1），只有第一个 burst 被取指。v23 静态结论：安装器
-> `0x295d0` 只遍历描述符；装点的是 `0x2fd30 → 0x2feb0`（写 64B 上下文 +
-> `regs+0x58` commit + 清 halt），而完成错误路径 `0x30ff4` 重写 ring/上下文
-> 却**不 commit**——所以 cave 的“写 TD + 门铃”无法让控制器重新取指。
-> 候选 `patches/iso_burst_uac84_dci9_rearm.S`（每 burst 重放 `0x2feb0`）
-> 已构建（`d984f729…`，91927B），**0 实机**，详见
+> installed 仍为 1），只有第一个 TD 集被取指。v23 结论：安装器 `0x295d0`
+> 只遍历描述符；装点的是 `0x2fd30 → 0x2feb0`（写 64B 上下文 + `regs+0x58`
+> commit + 清 halt），完成错误路径 `0x30ff4` 重写 ring/上下文却**不 commit**。
+> 每 burst 重放 `0x2feb0` 后，host 收到 **12288B（4×3072）**，设备
+> `posted=4 completed=4`、seq1..4 都 `complete 3072/3`，无 crash——
+> 第一个 TD 集之后的墙被打破。详见
 > [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)。
 > v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
 > seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
@@ -443,3 +443,21 @@ v23 候选：`patches/iso_burst_uac84_dci9_rearm.S`，在 `prod==cons` 门之后
 cave 620B（limit 684）、29 条 edits、NSP `d984f729…`（91927B）、
 `-DUAC_U2_BURSTS=4`，工作目录 `private/analysis/UAC-u2-v23-rearm-20261101`。
 **未部署、0 实机**；上机需新授权，一次 boot、失败即停。
+## 2026-11-01 16:0x v23 实机：4/4 burst 成功
+
+`d984f729…`（91927B，cave 620/684B，每 burst 重放 `0x2feb0`）一次 boot：
+
+- host：`claim/alt1/SET_CUR` ok；`done transfers=62 packets=16 valid=217
+  bad=775 bytes=12288`；四个 3072B burst（t=34/194/356/498 ms）。
+- 设备：seq1..4 每个 `post rc=0`、`complete rc=0 requested=3072
+  transferred=3072 status=3`；`UAC U2 train end posted=4 completed=4`；
+  每 burst 后 prod/cons/copy 仍被驱动复位回 base，但下一个 burst 被取指。
+- 判定：**commit（`regs+0x58`）+ 清 halt（`regs+0x54/0x50`）就是缺失步骤**；
+  `0x30ff4` 复位 ring/上下文不 commit，旧代码第二个 TD 集因此不被取指。
+- crash：无；卡 erpt 27 / crash 21 与部署前相同。
+- 证据：`private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm`。
+- 收尾：恢复 `52069a44…`、删 `/logfile.txt`、安全弹出；无重试。
+
+下一轮：把“每 burst 重放 `0x2feb0`”收敛为“首 burst 后只 commit/清 halt”或
+ring 跨 burst 连续，再验证 8/16 burst 与更短间隔。
+
