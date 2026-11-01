@@ -198,6 +198,34 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
    排队，说明驱动本身支持多请求）；
 3. 接受 ~96 ms gap，先把 PCM/时钟/与视频共存做对，再回头攻连续流。
 
+### 2026-11-02 01:4x v28 多段单 transfer（离线构建，0 实机）
+
+- 依据 v27：端点单 transfer，第二次 post 不达 cave。v28 不再排队，改为
+  **一次请求承载 2 段 3072B（6144B = 32×192B = 32 ms）**。
+- cave `patches/iso_burst_uac84_dci9_pipe_multi.S`（**676/684 B**，比 v26B
+  多 4 B）：
+  - 请求长度门 6144：`mov w9,#0x1800; cmp w3,w9`（6144 不是 12 位立即数）；
+  - **TD 数由请求长度推导**：包循环结束条件从固定 16 次改为
+    `x16 = buffer + w3(uxtw)`、`cmp x2,x16`——32 个 Isoch+ED 对；
+  - 事件侧 ED 槽上界 `512 → 1024`；完成门从 `sum == 3072` 改为
+    **32 位 ED 位图全满**（`cmn w6,#1`），`actual` 仍累加供日志；
+  - 帧游标不变，写完一套后 `cursor = frame + 32`。
+- 为什么先到 2 段：事件位图是 32 位，32 个 ED 正好填满；4 段需要 64 位
+  位图或分块完成（留 v29）。
+- app：`UAC_U2_SEGMENTS`（1..2）、`UAC_U2_BURST_BYTES = 192*16*segments`、
+  `UAC_U2_BUF_BYTES` 按页对齐；多段构建与 `UAC_U2_PIPELINE` 互斥
+  （编译期 `#error`），并打印 `UAC U2 multi segments=2 size=6144`。
+- 构建：`-DUAC_U2_SEGMENTS=2 -DUAC_U2_BURSTS=1 -DUAC_U2_LIGHT_LOG`；NSP
+  `85861e90…`（92167B）、NSO `149d21ec…`；payload 29 条 / cave
+  `f5f7776b…`；工作目录 `private/analysis/UAC-u2-v28-multi-20261102`。
+- 期望（一次 boot）：`post rc=0 size=6144`、`UAC U2 multi segments=2
+  size=6144`、`report req=6144 xfer=6144 status=3`、`complete 6144`；host
+  一个 32-packet URB 收满 6144B；线 gap ≈ 32 ms 数据 + ~76 ms 固定开销
+  （占空比 ~30%，v24 为 16%）。
+- 判别/停止：`PostBufferAsync` 拒绝 6144 或 cave 未被进入（无 TD、无
+  completion）→ 驱动/控制器对单次 transfer 长度有上限，记录 rc 后停；
+  崩溃即停、读卡。**未部署、0 实机。**
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

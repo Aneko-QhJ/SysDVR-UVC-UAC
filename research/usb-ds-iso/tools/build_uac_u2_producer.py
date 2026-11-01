@@ -207,7 +207,8 @@ def render(edits):
     return "\n".join(lines) + "\n"
 
 
-def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True):
+def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
+             segments=1):
     return {
         "schema": "UAC-u2-producer-payload-1",
         "assembly": str(asm.relative_to(ROOT)),
@@ -221,7 +222,8 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True):
         "cave_sha256": sha256(code),
         "endpoint": {"word": hex(ENDPOINT_WORD), "address": "0x84",
                      "attributes": "0x05", "max_packet": 192, "interval": 4},
-        "burst_bytes": BURST_BYTES,
+        "segments": segments,
+        "burst_bytes": BURST_BYTES * segments,
         "edit_count": len(edits),
         "counts": {"cave": 1, "branch": (3 if report else 2) + (1 if breaker else 0),
                    "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)},
@@ -273,6 +275,9 @@ def check(nso, work):
         raise SystemExit("cave bytes/hash mismatch")
     if not endpoint_constants_ok(code, require_report=report):
         raise SystemExit("cave does not encode endpoint 0x84 / MPS192 / attrs 0x05")
+    segments = doc.get("segments", 1)
+    if doc["burst_bytes"] != BURST_BYTES * segments:
+        raise SystemExit("burst_bytes does not match segments")
     print(f"ok: {len(doc['edits'])} edits, cave {len(code)}/{doc['cave_limit']} B")
 
 
@@ -310,6 +315,8 @@ def main():
                         help="add the 0x302c0 error-completion breaker edit")
     parser.add_argument("--asm", type=Path, default=ASM,
                         help="cave assembly (default patches/iso_burst_uac84.S)")
+    parser.add_argument("--segments", type=int, default=1, choices=(1, 2),
+                        help="v28 only: 3072 B segments in one transfer (1..2)")
     parser.add_argument("--endpoint-word", type=lambda x: int(x, 0),
                         default=ENDPOINT_WORD,
                         help="endpoint descriptor word (default 0x00C00584)")
@@ -331,14 +338,15 @@ def main():
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report)
     header = render(edits)
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
-                   report=report)
+                   report=report, segments=args.segments)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
     (work / "manifest.json").write_text(json.dumps(doc, indent=2) + "\n")
     print(
         f"wrote {work / 'uac_u2_payload.h'}: {len(edits)} edits, "
-        f"cave {len(code)}/{CAVE_END - CAVE} B, endpoint {ENDPOINT_WORD:#010x}"
+        f"cave {len(code)}/{CAVE_END - CAVE} B, "
+        f"endpoint {ENDPOINT_WORD:#010x}, {args.segments} segment(s)"
     )
 
 

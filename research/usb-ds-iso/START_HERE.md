@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 01:27）
+## 当前边界（2026-11-02 01:4x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -38,9 +38,11 @@
   crash/erpt（27/21）。
 - 结论：**usb:ds 端点是单 transfer**，两 buffer 流水线走不通，v26A/v26B 路线
   终止；可用基线是 v24 单 burst `2b7680ef…`（4/4、gap ~96 ms）。
-- 下一阶段：回到 v24 基线；v28 二选一——**加大单次 transfer**（2–4 段
-  3072B，占空比 ~45%）或**研究驱动单 transfer 的条件**（`0x2c520` 何时跳过
-  cave、UVC ISO 端点为何能持续排队）。详见
+- 下一阶段：v28 `85861e90…` 已离线构建（一次 6144B = 2×3072B transfer，
+  cave 的 TD 数按请求长度推成 32 对，app `-DUAC_U2_SEGMENTS=2`），待一次
+  boot；判据：`post rc=0 size=6144`、`report req=6144 xfer=6144 status=3`、
+  host 6144B；若被驱动/控制器拒绝，记录 rc 后转「单 transfer 上限」研究或
+  4 段方案（64 位位图/分块完成）。详见
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

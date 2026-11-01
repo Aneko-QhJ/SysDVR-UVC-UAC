@@ -79,7 +79,27 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #error "UAC_U2_BURSTS must be 1..4: only one request may be pending at a time"
 #endif
 #endif
-static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][0x1000];
+/* v28: one transfer carries UAC_U2_SEGMENTS x 16 frames.  v27 proved the
+   usb:ds AS endpoint is single-transfer (a second post while one request is
+   in flight never reaches the cave and completes xfer=0/status=5), so the
+   burst is widened by making one request larger instead of posting twice.
+   The v28 cave builds one Isoch+ED pair per 192 B frame of the request; its
+   ED bitmap is 32 bits, so two segments is the ceiling (32 x 192 B =
+   6144 B = 32 ms). */
+#ifndef UAC_U2_SEGMENTS
+#define UAC_U2_SEGMENTS 1
+#endif
+#if UAC_U2_SEGMENTS < 1 || UAC_U2_SEGMENTS > 2
+#error "UAC_U2_SEGMENTS must be 1..2 (the cave's ED bitmap is 32 bits)"
+#endif
+#define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16 * UAC_U2_SEGMENTS)
+/* One DMA row per post: rounded up to a page so every row stays 0x1000
+   aligned (the cave's TDs point into it). */
+#define UAC_U2_BUF_BYTES ((UAC_U2_BURST_BYTES + 0xFFFu) & ~0xFFFu)
+#if defined(UAC_U2_PIPELINE) && UAC_U2_SEGMENTS > 1
+#error "a pipeline build keeps two transfers in flight; v28 uses one multi-segment transfer"
+#endif
+static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES];
 #endif
 
 static UvcDeviceContext g_uvcCtx;
@@ -2126,13 +2146,12 @@ static void _handleAlt1Setup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #endif
 
 #ifdef UAC_U2_PATCH
-/* U2: one bounded 3072-byte URB (16 x 192 B) on AS alt1 EP 0x84.  usb:ds has
-   no working ISO submit path of its own (the original branch returns
-   0x1908c), so the runtime cave builds the 16 Isoch+ED TRBs and rings the
-   doorbell.  The host must already be polling: uac-burst submits its ISO
-   transfer before sending this SET_CUR trigger.  Post exactly once per boot;
-   a timeout is reported, never retried or cancelled here. */
-#define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * 16)
+/* U2: one bounded URB on AS alt1 EP 0x84, UAC_U2_BURST_BYTES long (16 x 192 B
+   per segment).  usb:ds has no working ISO submit path of its own (the
+   original branch returns 0x1908c), so the runtime cave builds the Isoch+ED
+   TRBs and rings the doorbell.  The host must already be polling: uac-burst
+   submits its ISO transfer before sending this SET_CUR trigger.  Post exactly
+   once per boot; a timeout is reported, never retried or cancelled here. */
 #ifdef UAC_U2_ATTR01
 #define UAC_U2_EP_WORD 0x00C00184u  /* addr 0x84, attrs 0x01, MPS192 */
 #else
@@ -2533,6 +2552,12 @@ static void _postUacBurst(void)
     LOG("UAC U2 train begin count=%u pattern=%u\n", UAC_U2_TRAIN_POSTS,
         g_uacCtx.patternFrame);
     LOG("UAC U2 pattern 1kHz 16ms train=%u\n", UAC_U2_TRAIN_POSTS);
+#if UAC_U2_SEGMENTS > 1
+    /* v28: one request carries the whole burst; the cave sizes its TD set
+       from this length, so log it once with the segment count. */
+    LOG("UAC U2 multi segments=%u size=%u\n", UAC_U2_SEGMENTS,
+        UAC_U2_BURST_BYTES);
+#endif
 
     /* Sequential train: every buffer is posted only after the previous
        completion, so the driver never holds two ISO requests at once (the

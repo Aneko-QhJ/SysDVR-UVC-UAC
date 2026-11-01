@@ -63,6 +63,9 @@ def main():
         markers.append(b"UAC U2 pipe end")
     else:
         markers.append(b"UAC U2 complete")
+    if any(d.startswith("UAC_U2_SEGMENTS=") and d != "UAC_U2_SEGMENTS=1"
+           for d in args.define):
+        markers.append(b"UAC U2 multi")
     for marker in markers:
         if marker not in elf.read_bytes():
             raise SystemExit(f"missing compile-time marker {marker!r}")
