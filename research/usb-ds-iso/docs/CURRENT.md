@@ -60,6 +60,7 @@
 | **v26A 流水线（实机一次，部分）** | 8 post / 8 completion，但**只有偶数 buffer 上线**（4×3072B，12288B；gap 79/64/80 ms）；奇数 `xfer=0 status=5`——两套 TD 共用 `MFI/8+32` 窗口。收尾 usb `svcBreak` 再次出现（`--keep-alt` 没能阻止内核/枚举的 alt0） | `private/runs/UAC-u2-v26a-pipe-20261101`、`private/card-cycles/20261101-u2-v26a-pipe`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v26B 帧游标（实机一次，否掉当前形态）** | 与 v26A 完全相同：8 post/8 report，偶数 `3072/3`、奇数 `0/5`，host 4×3072B（gap 80/80/65）——**游标没有改变行为**。无新 crash 报告，新增 1 份 erpt `760e51fa` | `private/runs/UAC-u2-v26b-cursor-20261102`、`private/card-cycles/20261102-u2-v26b-cursor`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v27 游标诊断（离线）** | **0 实机**：v26B cave + `-DUAC_U2_CURSOR_DIAG`；`_uacLogCursor` 读 `ring+0xFB8` 与 ring prod/cons/cycle，每个 post 前后/reap/结束各一行；NSP `bdb80208…`（92862B）；用于区分“游标没生效”与“驱动复位清掉奇数 set” | `private/analysis/UAC-u2-v27-cursor-diag-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v27 游标诊断（实机一次，已判读）** | **驱动是单 transfer**：偶数 post 写入 `prod=+0x200`、`cur=frame+16`（906→1006→1105→1205），奇数 post 后 `prod/cons/cur` 全不变、cave 未被调用，随后 `xfer=0 status=5`；每次完成 ring 复位。两 buffer 流水线走不通；本轮无新 crash/erpt | `private/runs/UAC-u2-v27-cursor-diag-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -96,7 +97,12 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v27 读-only 诊断已离线构建，等待部署）：(0) v27
+- 下一步（v27 定性：驱动单 transfer，流水线路线终止）：(0) 回到 v24
+  单 burst 基线（`2b7680ef…` / lead 32，已证明 4/4、gap ~96 ms）作为可用
+  配置；(0b) v28 二选一：**加大单次 transfer**（一次提交 2–4 段 3072B，
+  cave TD 数按请求长度，摊薄固定开销，占空比 ~45%）或**研究驱动单
+  transfer 的原因**（0x2c520 在什么条件下跳过 cave；UVC ISO 端点为何能
+  持续排队）；(0c) 读-only 诊断确认：游标机制本身正确，问题在驱动；(0d)(0) v27
   `bdb80208…`（92862B，v26B cave + `UAC_U2_CURSOR_DIAG`）在每次 post 前后
   读 `ring+0xFB8` 游标与 ring `prod/cons/cycle`，一次 boot 判读：
   `cur` 前进且奇数 buffer 时在前 → 驱动/控制器复位；`cur` 恒 0 → scratch

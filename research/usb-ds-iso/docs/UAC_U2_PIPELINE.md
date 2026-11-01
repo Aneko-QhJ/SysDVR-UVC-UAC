@@ -175,6 +175,29 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
     scratch；
 - 本轮只验证读数，不改数据面行为；crash 仍按老规矩停、读卡。
 
+### 2026-11-02 01:3x v27 诊断结果：**驱动是单 transfer，流水线走不通**
+
+- `cur` 证明游标本身工作正常：每个偶数 post 后 `prod=ring+0x200`、
+  `cur = frame+16`（906→1006→1105→1205）；
+- 每个奇数 post 后 `prod/cons/cur` **完全不变**——第二次
+  `usbDsEndpoint_PostBufferAsync` 返回 `rc=0`，但驱动**没有调用 cave**
+  （没有建 TD），随后以 `xfer=0 status=5` 完成；
+- 每次 transfer 完成（`done`）后 ring 都被复位：`prod=cons=ring`、`cur=0`；
+- 结论：**usb:ds 的端点 API 是单 transfer 的**。一个 transfer 在飞时再
+  post 一个 buffer，驱动只会把它记成错误完成；`prod!=cons` 的流水线路径
+  在真实驱动里不会被调用。v26A/v26B 的“两套 TD 排队”方案到此为止。
+
+修正后的路线（按代价排序）：
+
+1. **加大单次 transfer**：一个请求提交 2–4 个 3072B 段（32–64 ms 数据），
+   cave 的 TD 数从固定 16 改为按请求长度；每次 transfer 的固定开销
+   （32 ms lead + ~12 ms 事件 + ~20 ms report + ~12 ms loop）被摊薄，
+   但 transfer 之间仍有 ~76 ms 空档，只是占空比从 16% 升到 ~45%；
+2. **研究驱动为什么单 transfer**：`0x2c520` 提交路径在什么条件下跳过
+   cave（忙标志/队列），是否有第二条提交路径（UVC 的 ISO 端点能持续
+   排队，说明驱动本身支持多请求）；
+3. 接受 ~96 ms gap，先把 PCM/时钟/与视频共存做对，再回头攻连续流。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
