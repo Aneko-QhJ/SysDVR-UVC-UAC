@@ -90,7 +90,11 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v23 候选已离线构建，等待新授权）：(1) 在 cave 的 `prod==cons`
+- 下一步（v23 候选已离线构建，preflight 完成，等待新授权）：(0) 离线准备已
+  完成：候选重建哈希逐字节一致、host 源 `0f4bbe3d…`（与 v22 相同）、还原包
+  `52069a44…` 在位；单次运行手册与授权请求见
+  `private/analysis/UAC-u2-v23-rearm-20261101/run-plan.md`（§3 列明部署、
+  一次开机、读卡恢复三项）；(1) 在 cave 的 `prod==cons`
   门之后重放驱动端点 setup `0x2feb0`（memset ring、上下文 state=1、dequeue
   =base、`regs+0x58` commit、清 `regs+0x54/0x50` halt）；(2) 一次 boot 用
   v16 r2 的 host 命令（`--trigger-first --delay-ms 30 --transfers 8 --rearm

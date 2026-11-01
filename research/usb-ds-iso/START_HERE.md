@@ -37,8 +37,11 @@
   `regs+0x54/0x50` halt）。完成错误路径 `0x30ff4` 重写 ring/上下文却
   **不 commit**（候选机制：第二个 TD 集因此不再被取指）。附带发现 DCI-9 cave 的
   `ISO_ENTRY=0x270` 指向 DCI 7 对象（cave 事件路径自 v14 起未执行），本轮不修。
-- 下一阶段：**v23 候选已离线构建**（`d984f729…`，91927B，cave 620B，
-  每 burst 重放 `0x2feb0`）；用 v16 r2 的 host 命令 + `-DUAC_U2_BURSTS=4`
+- 下一阶段：**v23 候选已离线构建、preflight 完成**（`d984f729…`，91927B，
+  cave 620B，每 burst 重放 `0x2feb0`；重建哈希一致、host 源 `0f4bbe3d…`、
+  还原包 `52069a44…` 在位）；单次运行手册与授权请求见
+  `private/analysis/UAC-u2-v23-rearm-20261101/run-plan.md`（部署 + 一次开机
+  + 读卡恢复，三项分别授权）。用 v16 r2 的 host 命令 + `-DUAC_U2_BURSTS=4`
   一次 boot；4 个 burst 都成功 → commit 是缺失步骤；仍只有 seq1 → 下一轮
   做只读上下文诊断。**上机需新授权**；详见
   [docs/UAC_U2_ENDPOINT_CONTEXT.md](docs/UAC_U2_ENDPOINT_CONTEXT.md)。
