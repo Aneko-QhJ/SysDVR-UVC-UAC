@@ -58,7 +58,7 @@
 | **v24 light-log（实机一次：数据成功，收尾崩溃）** | **12288B（4×3072）**；gap **96/96/96 ms**（v23 160/162/142）；timing `post=0 wait=59–61 report=19–20 loop=3–14`；96 ms ≈ 32 ms cave 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop；`train end posted=4 completed=4` 后在 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c，与 v16 r1 同栈） | `private/runs/UAC-u2-v24-light-20261101`、`private/card-cycles/20261101-u2-v24-light`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | **v25 lead-4（实机一次，否掉）** | **1536B（10/16 ED）**，report `xfer=0 status=5`、`complete rc=0x748c`；`wait_ms=16`、ring `cons=+0x140`；train 在 seq1 后停止。4 ms lead 太小，回退 32 ms；无新 crash/erpt，`--keep-alt` 跳过了 `SET_INTERFACE(0)` | `private/runs/UAC-u2-v25-lead4-20261101`、`private/card-cycles/20261101-u2-v25-lead4` |
 | **v26A 流水线（实机一次，部分）** | 8 post / 8 completion，但**只有偶数 buffer 上线**（4×3072B，12288B；gap 79/64/80 ms）；奇数 `xfer=0 status=5`——两套 TD 共用 `MFI/8+32` 窗口。收尾 usb `svcBreak` 再次出现（`--keep-alt` 没能阻止内核/枚举的 alt0） | `private/runs/UAC-u2-v26a-pipe-20261101`、`private/card-cycles/20261101-u2-v26a-pipe`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
-| **v26B 帧游标（离线实现）** | **0 实机**：cave `patches/iso_burst_uac84_dci9_pipe_cursor.S` 672/684B（+36B：`frame = max(MFI/8+32, cursor)`，写完 `cursor = frame+16`，scratch 在 `ring+0xf80+0x38`）；app 与 v26A 相同；NSP `116a1204…`（92342B）；期望 8/8 buffer 连续上线 | `private/analysis/UAC-u2-v26b-cursor-20261101`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v26B 帧游标（实机一次，否掉当前形态）** | 与 v26A 完全相同：8 post/8 report，偶数 `3072/3`、奇数 `0/5`，host 4×3072B（gap 80/80/65）——**游标没有改变行为**。无新 crash 报告，新增 1 份 erpt `760e51fa` | `private/runs/UAC-u2-v26b-cursor-20261102`、`private/card-cycles/20261102-u2-v26b-cursor`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -95,7 +95,10 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v26B 帧游标已离线构建，等待部署）：(0) v26B `116a1204…`
+- 下一步（v26B 游标未改变奇偶模式；二选一）：(0') 先做**读-only 诊断**：
+  app 在每次 post 前后读 `ring+0xfb8` 游标与 ring `prod/cons/cycle`，确认
+  游标是否写入/读到、ring 是否中途被复位；或做**门铃假设**实验：非空路径
+  不再敲门铃，看控制器能否连续取指（若停止，则“两套排队”不成立）；(0) v26B `116a1204…`
   （92342B，cave 672/684B，app 同 v26A）修 v26A 的同帧窗口问题：cave 用
   `frame = max(MFI/8+32, cursor)`、写完 `cursor = frame+16`，scratch 在
   `ring+0xf80+0x38`；一次 boot 期望 8×3072B 连续上线、`pipe end posted=8

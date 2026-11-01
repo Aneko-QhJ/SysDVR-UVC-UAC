@@ -144,6 +144,20 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
 5. 收尾崩溃仍未解决，需在 app 的 alt0 处理里先 cancel，或单独研究内核
    重绑/重枚举路径。
 
+### 2026-11-02 01:0x 实机：帧游标没有改变奇偶模式
+
+- 设备：同样 8 post / 8 report，偶数 buf `3072/3`、奇数 buf `0/5`；
+  `pipe end posted=8 completed=8 bytes=12288`；最终 ring 回 base；
+- host：4×3072B（t=31/111/191/256 ms，gap 80/80/65），与 v26A 几乎相同；
+- 判定：**游标没有改变行为**。消歧需要下一步之一：
+  1. **诊断**：app 在每次 post 前后读 `ring+0xfb8`（游标 scratch）与
+     ring 的 prod/cons/cycle（dmnt，读-only），确认游标是否被写入/读到、
+     ring 是否在中途被复位；
+  2. **门铃假设**：奇数 set 可能在偶数 set 的完成复位中被清掉（门铃合并 /
+     服务错误复位）。候选：非空路径**不再敲门铃**，看控制器是否连续取指；
+     若停止，则每个 TD 集都需要自己的门铃，“两套排队”不成立。
+- 收尾：本轮无新 crash 报告（crash 21），新增 1 份 erpt `760e51fa`。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
