@@ -1,10 +1,15 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
 > 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成，
-> v21 否掉 idle cancel，v22 否掉 alt 重装**。SET_INTERFACE(0)→(1) 并不会
-> 重新安装端点（install object/table 不变、installed 仍为 1），只有第一个
-> burst 被取指。剩下的杠杆是**安装时写入控制器 ring/dequeue 的那段上下文**
-> （`0x295d0` 安装路径），cave 只写 TD + 门铃无法复位它。
+> v21 否掉 idle cancel，v22 否掉 alt 重装，v23 离线读完安装器与端点上下文**。
+> SET_INTERFACE(0)→(1) 并不会重新安装端点（install object/table 不变、
+> installed 仍为 1），只有第一个 burst 被取指。v23 静态结论：安装器
+> `0x295d0` 只遍历描述符；装点的是 `0x2fd30 → 0x2feb0`（写 64B 上下文 +
+> `regs+0x58` commit + 清 halt），而完成错误路径 `0x30ff4` 重写 ring/上下文
+> 却**不 commit**——所以 cave 的“写 TD + 门铃”无法让控制器重新取指。
+> 候选 `patches/iso_burst_uac84_dci9_rearm.S`（每 burst 重放 `0x2feb0`）
+> 已构建（`d984f729…`，91927B），**0 实机**，详见
+> [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)。
 > v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
 > seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
 > `usbDsEndpoint_Cancel`（空闲时）复位端点，验证控制器 dequeue 是否随之
@@ -412,3 +417,29 @@ seq2..4 post rc=0 → 100 ms 无 completion → cancel
   异常（不排除 crash）。因此只跑一次、失败即停。
 - 4 个 burst 仍是 64 ms，不构成持续音频；PCM/时钟/共存仍未测。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
+
+## 2026-11-01 15:0x v23 离线：安装器只是描述符遍历器，缺的是 commit
+
+读 `usb.elf` 的结论（细节、地址表与指令出处见
+[UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)）：
+
+- `0x295d0` 只在总线状态 4→5（`SET_CONFIGURATION`）里遍历描述符，调用
+  `vtable[+96]`（= `0x2fd30`）装端点、再把 `install_obj+0x14D0+idx*16`
+  置 1；函数体内没有任何寄存器/上下文访问。
+- `0x2fd30 → 0x2fd80 + 0x2feb0`：建/找端点对象、分配 ring、memset、把
+  base/enqueue/dequeue/cycle 复位，`0x30b50` 写 64B 端点上下文（state=1、
+  TR dequeue 物理地址 + DCS），然后写 `regs+0x58` **commit**、清
+  `regs+0x54/0x50` 的 halt。
+- 完成错误路径 `0x30ff4`（码 3/4/5/9/10/14/15/31、`0xDB`/`0xDE`）在 burst
+  之后 memset ring、重装同一份上下文，却**不 commit、不清 halt**，反而置
+  `regs+0x50`。这就是“只有第一个 TD 集被取指”的机制：v16/v19 观察到
+  burst 完成后 prod/cons/copy 回 base，而控制器仍停在旧状态。
+- 附带发现：UAC 的 DCI-9 cave 仍用 `ISO_ENTRY=0x270`（DCI 7 的对象），
+  UAC 配置里该槽为空，`iso_event` 一直落到 `event_original`；v19/v20 对
+  cave 事件分支的评价需要用这个前提重读。本轮不修（一次一个变量）。
+
+v23 候选：`patches/iso_burst_uac84_dci9_rearm.S`，在 `prod==cons` 门之后
+保存 `x0/x1/x2/x30`、`bl 0x2feb0`、恢复并重载 `x8/x10`，其余 cave 不变；
+cave 620B（limit 684）、29 条 edits、NSP `d984f729…`（91927B）、
+`-DUAC_U2_BURSTS=4`，工作目录 `private/analysis/UAC-u2-v23-rearm-20261101`。
+**未部署、0 实机**；上机需新授权，一次 boot、失败即停。

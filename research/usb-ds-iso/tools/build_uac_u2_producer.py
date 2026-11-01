@@ -60,6 +60,7 @@ LINKER = (
     "doorbell_tail = 0x31c74; reject_original = 0x30394;\n"
     "event_original = 0x30f70; complete_original = 0x2a980; "
     "report_epilogue = 0x2cbe4; copy_original = 0x60e50;\n"
+    "rearm_endpoint = 0x2feb0; /* driver endpoint setup: commit + unhalt */\n"
 )
 
 

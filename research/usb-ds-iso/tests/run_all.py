@@ -20,6 +20,7 @@ QUICK = [
     "test_uac_u2_cave_replay.py",
     "test_uac_u2_retrigger.py",
     "test_uac_u2_precheck.py",
+    "test_uac_u2_endpoint_context.py",
     "test_uac_u2_breaker.py",
     "test_uac_u2_safecave.py",
     "test_uac_u2_queue_compat.py",

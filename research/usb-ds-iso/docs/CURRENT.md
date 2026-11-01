@@ -1,19 +1,20 @@
-# 当前状态（2026-11-01 15:20，Asia/Shanghai）
+# 当前状态（2026-11-01 15:05，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 14:4x 的 **v22 alt-cycle**：host `cycle0` 3072B、
-> `cycle1..3` 全 0；设备有 **4 次 post**（alt0 清 `burstPosted` 生效），但
-> 只有 seq1 `complete 3072/3`，seq2..4 均无 completion。每个周期的 precheck
-> 显示同一个 install object/table、installed=1——**SET_INTERFACE(0)→(1)
-> 并不会重新安装端点**。**v22 否掉“每个 burst 用新端点”。**
-> 所有尝试（位置、per-ED、cancel、alt 重装）都失败，共同点是安装后只有
-> 第一个 TD 集能被取指；剩下的杠杆是安装时对控制器 ring/dequeue 的编程
-> （安装器 `0x295d0`），下一步 v23 先离线读它。**上机需新授权**；详见
+> 最后一次实机仍是 2026-11-01 14:4x 的 **v22 alt-cycle**（`cycle0` 3072B、
+> `cycle1..3` 全 0，4 次 post 只有 seq1 完成）。2026-11-01 15:0x 离线完成
+> **v23 安装器/端点上下文分析**：安装器 `0x295d0` 只是描述符遍历器；真正装点
+> 的是 `0x2fd30 → 0x2feb0`（写 64B 上下文 + `regs+0x58` commit + 清 halt），
+> 而完成错误路径 `0x30ff4` 重写 ring/上下文却**不 commit**——候选机制：
+> 控制器因此不再取指，待 v23 实机确认。候选 `patches/iso_burst_uac84_dci9_rearm.S`（每 burst
+> 重放 `0x2feb0`）已构建（`d984f729…`，91927B），**未部署、0 实机**。
+> 附带发现 DCI-9 cave 的 `ISO_ENTRY=0x270` 指向 DCI 7 对象，cave 事件路径
+> 自 v14 起从未执行（本轮不修）。**上机需新授权**；详见
+> [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) 与
 > [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
-> 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 15:20）
+## 当前进度（2026-11-01 15:05）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -52,6 +53,7 @@
 | **v20 per-ED 完成** | **实机一次，per-ED 不是差异点**：seq1 正常 3072/3，但 `done` 仍 prod=cons=ring、seq2 仍不被取指 | `private/runs/UAC-u2-v20-per-ed-20261101` |
 | **v21 idle cancel** | **实机一次，no-op**：`idle cancel rc=0x0` 但 `after-cancel` 与 pre 相同、seq2 仍失败 | `private/runs/UAC-u2-v21-idle-cancel-20261101` |
 | **v22 alt-cycle** | **实机一次，否掉**：4 次 post 但只有 seq1 完成；alt 重装不改变 install object/table（installed=1），`cycle1..3` 全 0 | `private/runs/UAC-u2-v22-alt-cycle-20261101` |
+| **v23 安装器/上下文（离线）** | **0 实机**：安装器只遍历描述符；`0x2feb0` 才写上下文 + commit（`regs+0x58`）+ 清 halt；错误路径 `0x30ff4` 不 commit（候选机制：第二个 TD 集因此不被取指）。候选 `d984f729…`（91927B，cave 620B，重放 `0x2feb0`） | `private/analysis/UAC-u2-v23-rearm-20261101`、[UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -88,13 +90,16 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v23，需新授权）：(1) v22 证明 alt0→alt1 不重装端点（install
-  object/table 不变、installed=1），只有第一个 TD 集能被取指；(2) 剩下的杠杆
-  是安装器 `0x295d0` 在 Configured 时写入的控制器 ring/dequeue/cycle 编程；
-  (3) v23 先离线读安装器与寄存器写入，确定为什么第一次之后不再取指；候选
-  修法是 cave 在 post 前按安装路径重写 dequeue，或在完成路径调用安装器的安全
-  子集；(4) 任何跨进程写/重编程先离线验证，上机一次、失败即停；(5) 8 个
-  descriptor-parser NOP 的全局风险仍未隔离。详见
+- 下一步（v23 候选已离线构建，等待新授权）：(1) 在 cave 的 `prod==cons`
+  门之后重放驱动端点 setup `0x2feb0`（memset ring、上下文 state=1、dequeue
+  =base、`regs+0x58` commit、清 `regs+0x54/0x50` halt）；(2) 一次 boot 用
+  v16 r2 的 host 命令（`--trigger-first --delay-ms 30 --transfers 8 --rearm
+  --max-urbs 64 --timeout-ms 1000`）+ app `-DUAC_U2_BURSTS=4`；4 个 burst
+  各 3072B → commit 就是缺失步骤，进入持续流；仍只有 seq1 → 下一轮做只读
+  上下文诊断（读 `[manager+0x22050]+dci*0x40` 的 state/dequeue）；任一 crash
+  立即停；(3) 只改一个变量：`ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP
+  的风险本轮不动；(4) 任何跨进程写/重编程先离线验证，上机一次、失败即停。
+  详见 [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) 与
   [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 最近一次实机：v20 per-ED（2026-11-01 03:0x，per-ED 不是差异点）
@@ -691,9 +696,12 @@ per-ED 完成对 seq1 正常（3072/3），但 `done` 仍 prod=cons=ring、seq2 
 `after-cancel` 与 pre 完全相同，seq2 仍失败——**空闲 cancel 是 no-op**。
 只有“刚安装的端点”能收到第一个 burst。**v22 14:4x 实机**：4 次 post 但只有
 seq1 完成；alt0→alt1 不重装端点（install object/table 不变、installed=1），
-`cycle1..3` 全 0——**alt 重装被否**。剩下的杠杆是安装器 `0x295d0` 写入的
-控制器 ring/dequeue 编程；下一步 v23 先离线读它（需新授权）。UAC 默认仍
-禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+`cycle1..3` 全 0——**alt 重装被否**。**v23 15:0x 离线**：安装器 `0x295d0`
+只遍历描述符，装点的是 `0x2fd30 → 0x2feb0`（64B 上下文 + `regs+0x58`
+commit + 清 halt）；完成错误路径 `0x30ff4` 重写 ring/上下文却不 commit，
+候选机制是第二个 TD 集因此不再被取指。候选（每 burst 重放 `0x2feb0`）已构建、0 实机，
+上机需新授权。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
+`52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
