@@ -350,3 +350,23 @@ v25 只把这一条改成 `+4`：
 
 一次 boot 仍按 v24 的纪律：VM 开机前 suspend、主界面后 attach、probe 一次；
 出现 v24 同款收尾崩溃时数据仍有效，但按规则停止并读卡。
+
+### 2026-11-01 22:5x 实机结果：lead-4 太短，v25 否掉
+
+一次部署、一次 boot、一次 probe（`--keep-alt`）：
+
+- host：`claim/alt1/SET_CUR` ok；`done ... bytes=1536`，只有
+  `urb[1] t=18ms` 收到 1536B（9/16 包），之后无数据；
+- 设备：`train begin count=4`，seq1 `post rc=0`、report
+  `req=3072 xfer=0 status=5`、`complete rc=0x748c`，
+  `train end posted=1 completed=1 pattern=768`（parse 失败后循环 break）；
+  timing `loop=10 post=0 wait=16 report=18 online=45`；
+  ring `prod=+0x200 cons=+0x140`、box `ISO2`、TD frame `0x1f0/0x1fa`；
+- 判定：**4 ms 帧 lead 太小**。TD 帧几乎与当前 MFI 同步，控制器在取指时
+  已经错过前几帧，10/16 ED 完成即报错；回退 32 ms（v24 cave）；
+- 收尾：无新 crash/erpt（27/21）；`--keep-alt` 打印了跳过
+  `SET_INTERFACE(0)` 的行，收尾崩溃规避被执行，但本轮 train 提前失败，
+  不能单独判定规避有效。
+
+下一轮：v24 cave（lead 32）+ `--keep-alt` 复验 4/4 与收尾无崩溃；之后进入
+“ring 连续 / 双 buffer 在飞”的流水线设计。
