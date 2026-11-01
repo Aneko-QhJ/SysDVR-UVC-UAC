@@ -26,6 +26,7 @@ WORK19 = ROOT / "private/analysis/UAC-u2-v19-event-code-20261101"
 ASM19 = ROOT / "patches/iso_burst_uac84_dci9_eventcode.S"
 ASM20 = ROOT / "patches/iso_burst_uac84_dci9_pered.S"
 WORK20 = ROOT / "private/analysis/UAC-u2-v20-per-ed-20261101"
+WORK21 = ROOT / "private/analysis/UAC-u2-v21-idle-cancel-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -70,15 +71,19 @@ class UacU2SequentialTrainTests(unittest.TestCase):
         report = self.body.index("usbDsEndpoint_GetReportData(")
         self.assertLess(post, wait)
         self.assertLess(wait, report)
-        # The loop only advances after a completion; the single break path
-        # cancels before leaving, so no second request can be pending.
+        # The loop only advances after a completion; the timeout path cancels
+        # before leaving, so no request can be pending.  v21 adds a second,
+        # gated idle cancel outside that path.
         self.assertIn("for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n)", self.body)
-        self.assertEqual(self.body.count("usbDsEndpoint_Cancel("), 1)
-        cancel = self.body.index("usbDsEndpoint_Cancel(")
-        timeout = self.body.index("no completion within 100ms")
-        leave = self.body.index("break;", timeout)
-        self.assertLess(cancel, timeout)
-        self.assertLess(timeout, leave)
+        timeout_cancel = self.body.index("usbDsEndpoint_Cancel(", wait)
+        timeout_log = self.body.index("no completion within 100ms", wait)
+        leave = self.body.index("break;", timeout_log)
+        self.assertLess(wait, timeout_cancel)
+        self.assertLess(timeout_cancel, timeout_log)
+        self.assertLess(timeout_log, leave)
+        idle = self.body.index("UAC U2 idle cancel")
+        self.assertLess(idle, wait)
+        self.assertIn("#ifdef UAC_U2_IDLE_CANCEL", self.body[:idle])
 
     def test_waveform_phase_continues_across_bursts(self):
         self.assertIn("u32 patternFrame;", self.source)
@@ -327,6 +332,58 @@ class UacU2PerEdBuildTests(unittest.TestCase):
             import hashlib
             self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
                              build["output"]["sha256"])
+
+
+class UacU2IdleCancelTests(unittest.TestCase):
+    """v21: cancel the endpoint while idle between bursts."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+        cls.body = post_body(cls.source)
+
+    def test_idle_cancel_is_gated_and_logged(self):
+        for token in ("#ifdef UAC_U2_IDLE_CANCEL",
+                      "if (seq > 1) {",
+                      "usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn)",
+                      "UAC U2 idle cancel seq=%u rc=0x%x",
+                      '_uacLogSubmitState("after-cancel", seq);'):
+            self.assertIn(token, self.source)
+
+    def test_idle_cancel_runs_before_the_post(self):
+        cancel = self.body.index("UAC U2 idle cancel")
+        submit = self.body.index("usbDsEndpoint_PostBufferAsync(")
+        self.assertLess(cancel, submit)
+
+
+class UacU2IdleCancelBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK21 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK21}; run the offline build")
+        cls.doc = json.loads((WORK21 / "manifest.json").read_text())
+
+    def test_payload_is_the_v16_cave(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        self.assertEqual(self.doc["cave_sha256"], old["cave_sha256"])
+
+    def test_build_enables_the_idle_cancel(self):
+        build = json.loads((WORK21 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=4", build["defines"])
+        self.assertIn("-DUAC_U2_IDLE_CANCEL", build["defines"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
+            elf = nsp.parent / "exefs.elf"
+            if elf.is_file():
+                self.assertIn(b"UAC U2 idle cancel seq=%u rc=0x%x",
+                              elf.read_bytes())
 
 
 class UacU2RingAdvanceBuildTests(unittest.TestCase):

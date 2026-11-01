@@ -2511,6 +2511,18 @@ static void _postUacBurst(void)
         if (seq > 1) _uacAdvanceRing(seq, seq - 1);
 #endif
         _uacLogSubmitState("pre", seq);
+#ifdef UAC_U2_IDLE_CANCEL
+        if (seq > 1) {
+            /* v21: the timeout cancel already resets the ring to base; test
+               whether cancelling while idle also resets the endpoint /
+               controller dequeue, so the next TD set at the base is fetched.
+               No request is pending here, so this only asks the driver to
+               reset the endpoint. */
+            Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+            LOG("UAC U2 idle cancel seq=%u rc=0x%x\n", seq, cancel);
+            _uacLogSubmitState("after-cancel", seq);
+        }
+#endif
         armDCacheFlush(buf, UAC_U2_BURST_BYTES);
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 

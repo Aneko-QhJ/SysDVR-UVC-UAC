@@ -1,6 +1,7 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
-> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成**。
+> 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成；
+> v21 idle-cancel 候选已离线构建（`ed52a9d7…`，0 实机）**。
 > v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
 > seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
 > `usbDsEndpoint_Cancel`（空闲时）复位端点，验证控制器 dequeue 是否随之
@@ -290,18 +291,36 @@ seq2 post  box ISO2, trb0 ctl=0x2fe01411 → 100 ms 无 completion → cancel
 “一次完成 vs 每 ED 完成”不影响复位；复位来自完成的清理路径
 （`0x2c7b4` 附近）或端点/控制器状态本身。
 
-## v21 方向：burst 之间复位端点（app-only，需新授权）
+## v21 idle cancel（已离线构建，0 实机，需新授权）
 
-1. 在每个 burst 完成后、下一个 post 之前，调用一次
-   `usbDsEndpoint_Cancel(endpoint)`（此时没有在飞请求），记录返回值；
-2. `Cancel` 是我们已经观察到会“把 ring 复位到 base”的路径（v15/v16 超时
-   cancel 后 prod=cons=ring），它很可能同时复位驱动的端点状态；如果它也让
-   控制器 dequeue 重启，第 2 套写在 base 的 TD 就应该能被取指；
-3. 若 idle `Cancel` 返回错误或干扰后续提交，退回 v17 的 +0x200 位置组合
-   （cancel 后 cave 仍写 base，但 prod 被驱动复位；如需要再叠加 ring advance）；
-4. 一次 boot、失败即停、读卡恢复。
+v20 证明 per-ED 完成不改变复位的结论后，v21 改为在 **burst 之间复位端点**
+（只改 app，payload 回到 v16 的单次完成 cave）：
 
-## 风险## 风险
+- 在每个 burst 完成后、下一个 post 之前，且此时没有在飞请求，调用一次
+  `usbDsEndpoint_Cancel(endpoint)`；
+- 记录 `UAC U2 idle cancel seq=%u rc=0x%x`，并在 cancel 之后立即再 dump 一次
+  `UAC U2 state after-cancel …`，看 prod/cons/copy/cycle 是否变化；
+- 超时 cancel 已观察到会把 ring 复位回 base；如果空闲 cancel 也让控制器
+  dequeue 重启，那么写回 base 的第 2 套 TD 就应该能被取指。
+
+| 项 | 值 |
+| --- | --- |
+| 构建 | `ed52a9d7…`（91954B），cave `806f54cb…` / 592B（与 v14/v16 相同） |
+| defines | `-DUAC_U2_BURSTS=4 -DUAC_U2_IDLE_CANCEL` |
+| 工作目录 | `private/analysis/UAC-u2-v21-idle-cancel-20261101` |
+
+一次 boot 的判定：
+
+| 观察 | 结论 |
+| --- | --- |
+| `idle cancel rc=0x0`，seq2 收到数据 | idle cancel 复位了端点/控制器 dequeue；继续做 4-burst |
+| `idle cancel rc=0x0`，seq2 仍无 completion | cancel 没有重启控制器；回到端点状态/控制器 halt 分析 |
+| `idle cancel` 返回错误，后续 post 也失败 | cancel 干扰了端点；停，退回无 cancel 版本再想别的复位路径 |
+| 任一 crash/fatal | 立即停，读卡取报告 |
+
+停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 风险## 风险## 风险
 
 - 这是**跨进程写**（app 通过 dmnt 写 usb 模块的 ring 字段），写点与 cave
   提交时的写点相同，但发生在驱动空闲期；若假设错误，可能让后续请求状态

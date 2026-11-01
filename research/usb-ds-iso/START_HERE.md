@@ -24,17 +24,17 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 03:20）
+## 当前边界（2026-11-01 14:30）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
 - 最后实机：2026-11-01 03:0x **v20 per-ED**（VM 开机前 suspend，attach 后
-  立即 probe）。host 仍只有 3072B；设备 seq1 的 per-ED 完成正常
-  （3072/3072、status=3、complete rc=0），但 `done` 仍然 **prod=cons=ring**，
-  seq2 仍 100 ms 无 completion。
+  立即 probe）。host 仍只有 3072B；seq1 的 per-ED 完成正常，但 `done` 仍然
+  **prod=cons=ring**，seq2 仍 100 ms 无 completion。
 - 结论：**per-ED 完成不是差异点**；驱动的 ring 复位与“第 2 套 TD 不被取指”
-  没变。复位来自完成清理路径或端点/控制器状态。
-- 下一阶段：**v21**（app-only）：每个 burst 完成后、下一个 post 前调用一次
-  空闲的 `usbDsEndpoint_Cancel`，看它是否复位端点/控制器 dequeue；**需新授权**；
+  没变。
+- 下一阶段：**v21 `ed52a9d7…`（91954B）已离线构建**（0 实机）：burst 2..N
+  之前、无在飞请求时调用一次 `usbDsEndpoint_Cancel`，记录 rc 与
+  `after-cancel` 状态，验证它是否复位端点/控制器 dequeue。**需新授权**；
   详见 [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。

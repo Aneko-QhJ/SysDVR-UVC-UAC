@@ -1,18 +1,17 @@
-# 当前状态（2026-11-01 03:20，Asia/Shanghai）
+# 当前状态（2026-11-01 14:30，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 03:0x 的 **v20 per-ED**（VM 开机前 suspend，
-> attach 后立即 probe）：host 仍只有 3072B（urb2 576B + urb3 2496B）；
-> 设备 seq1 的 per-ED 完成正常（report 3072/3072 status=3、complete rc=0），
-> 但 `done` 仍然 **prod=cons=ring**、seq2 仍 100 ms 无 completion。
-> 结论：**per-ED 完成不是差异点**，驱动的 ring 复位和“第 2 套 TD 不被取指”
-> 完全没变。下一步 **v21**：在 burst 之间（空闲时）调用一次
-> `usbDsEndpoint_Cancel` 复位端点，看控制器 dequeue 是否随之重启；app-only，
-> 需新授权。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
-> 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-11-01 03:0x 的 **v20 per-ED**：seq1 的 per-ED 完成正常
+> （3072/3072 status=3），但 `done` 仍然 **prod=cons=ring**、seq2 仍 100 ms
+> 无 completion。**per-ED 完成不是差异点**。
+> 2026-11-01 14:30 离线完成 **v21 idle-cancel 候选**（`ed52a9d7…`，91954B，
+> payload 回到 v16 的单次完成 cave）：burst 2..N 之前、无在飞请求时调用一次
+> `usbDsEndpoint_Cancel`，记录返回值与 `after-cancel` 状态。**0 实机**，
+> 下一次上机需新授权；详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+> 上一轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 03:20）
+## 当前进度（2026-11-01 14:30）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -49,6 +48,7 @@
 | **v18 事件掩码仪器化** | **实机一次，掩码假设被否**：`mask=0/bit9=0/ep10=0` 始终成立；seq2 `td@cons` 有效仍无 completion；新焦点是 0xdb/0xde 的门铃 ack | `private/runs/UAC-u2-v18-event-mask-20261101` |
 | **v19 事件完成码** | **实机一次，完成码被驱动清掉**：post 时 box `ISO2`，`eventWait` 后全 0；成功 ED 的码是 1（cave 检查），driver 的 code-1 路径是 per-ED 完成 + cons 更新 | `private/runs/UAC-u2-v19-event-code-20261101` |
 | **v20 per-ED 完成** | **实机一次，per-ED 不是差异点**：seq1 正常 3072/3，但 `done` 仍 prod=cons=ring、seq2 仍不被取指 | `private/runs/UAC-u2-v20-per-ed-20261101` |
+| **v21 idle cancel** | **离线已构建，0 实机**：`ed52a9d7…`（91954B），payload 回到 v16；burst 2..N 前空闲 `usbDsEndpoint_Cancel` + after-cancel 状态 | `private/analysis/UAC-u2-v21-idle-cancel-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -85,13 +85,13 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v21，需新授权）：(1) v19/v20 已否掉完成方式——per-ED 对 seq1 正常，
-  但驱动的 ring 复位（prod=cons=ring）和第 2 套 TD 不被取指没变；(2) v21 在
-  每个 burst 完成后、下一个 post 前调用一次空闲的 `usbDsEndpoint_Cancel`，
-  记录返回值与状态（已知超时 cancel 会把 ring 复位回 base，它可能同时复位
-  端点/控制器 dequeue）；(3) 若 idle cancel 报错或干扰提交，退回 v17 的
-  +0x200 位置组合；(4) 一次 boot、失败即停；(5) 8 个 descriptor-parser NOP
-  的全局风险仍未隔离。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+- 下一步（v21 已离线构建，等待新授权）：(1) v19/v20 已否掉完成方式；v20 的
+  `done` 仍 prod=cons=ring、seq2 仍不被取指；(2) v21 `ed52a9d7…` 只改 app：
+  burst 2..N 之前、无在飞请求时调用一次 `usbDsEndpoint_Cancel`，记录 rc 与
+  `after-cancel` 状态，验证它是否复位端点/控制器 dequeue；(3) 一次 boot：
+  seq2 收到数据 → cancel 有效；仍无 completion → cancel 没重启控制器；
+  cancel 报错/干扰 → 停；(4) 任一 crash 立即停；(5) 8 个 descriptor-parser
+  NOP 的全局风险仍未隔离。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 最近一次实机：v20 per-ED（2026-11-01 03:0x，per-ED 不是差异点）
 
