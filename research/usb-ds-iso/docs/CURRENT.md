@@ -56,6 +56,7 @@
 | **v23 re-arm（实机一次，成功）** | **4/4 burst**：host **12288B**（4×3072，t=34/194/356/498 ms）；设备 seq1..4 都 `complete 3072/3`、`train end posted=4 completed=4`；无新 crash/erpt；重放 `0x2feb0` 的 commit+unhalt 就是缺失步骤 | `private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm` |
 | **v24 light-log（实机一次：数据成功，收尾崩溃）** | **12288B（4×3072）**；gap **96/96/96 ms**（v23 160/162/142）；timing `post=0 wait=59–61 report=19–20 loop=3–14`；96 ms ≈ 32 ms cave 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop；`train end posted=4 completed=4` 后在 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c，与 v16 r1 同栈） | `private/runs/UAC-u2-v24-light-20261101`、`private/card-cycles/20261101-u2-v24-light`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | **v25 lead-4（实机一次，否掉）** | **1536B（10/16 ED）**，report `xfer=0 status=5`、`complete rc=0x748c`；`wait_ms=16`、ring `cons=+0x140`；train 在 seq1 后停止。4 ms lead 太小，回退 32 ms；无新 crash/erpt，`--keep-alt` 跳过了 `SET_INTERFACE(0)` | `private/runs/UAC-u2-v25-lead4-20261101`、`private/card-cycles/20261101-u2-v25-lead4` |
+| **v26A 流水线（设计稿）** | **离线**：16 ms 定时投递、2 buffer 在飞；ring 非空时 cave 在 `prod` 写下一套 TD、不重放 `0x2feb0`，让控制器跨 burst 连续取指；8 buffer 一次 boot 判定 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -92,15 +93,15 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v25 否掉；复验 + 流水线设计）：(1) 用 v24 cave（`2b7680ef…`，
-  lead 32）+ `--keep-alt` 复验一次：期望 4/4、12288B、gap ≈96 ms，且收尾
-  无新 crash——这同时验证回退与收尾规避；(2) 离线设计“ring 连续 / 双
-  buffer 在飞”的流水线：允许 `prod!=cons` 时在 `prod` 写下一套 TD、去掉每
-  burst 的 `0x2feb0` 重放，让控制器跨 burst 连续取指（当前 32 ms lead 下
-  每 burst 之间仍空 ~80 ms）；(3) 之后才谈 8/16 burst、持续流、PCM/时钟、
-  与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离；
-  (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
-  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+- 下一步（v25 否掉；v26A 流水线设计已成稿）：(1) 先用 v24 cave
+  （`2b7680ef…`，lead 32）+ `--keep-alt` 复验一次：期望 4/4、12288B、
+  gap ≈96 ms、收尾无新 crash——同时验证回退与收尾规避；(2) **v26A** 设计见
+  [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)：16 ms 定时投递、2 个 buffer 在飞，
+  ring 非空时 cave 直接在 `prod` 写下一套 TD、不重放 `0x2feb0`，让控制器
+  跨 burst 连续取指；先离线构建 + 单测，再一次 boot（8 buffer）；(3) 之后
+  才谈 16/32 buffer、PCM/时钟、与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个
+  descriptor-parser NOP 仍未隔离；(5) 任何跨进程写/重编程先离线验证，
+  上机一次、失败即停。
 
 ## 最近一次实机：v25 lead-4（2026-11-01 22:5x，否掉）
 
