@@ -1,9 +1,10 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
 > 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成，
-> v21 否掉 idle cancel；v22 alt-cycle 候选已离线构建（`8335b6f1…`，0 实机）**。
-> 共识：只有“新安装的端点”能收第一次 burst；v22 让每个 burst 都重新走一次
-> alt0→alt1 安装。
+> v21 否掉 idle cancel，v22 否掉 alt 重装**。SET_INTERFACE(0)→(1) 并不会
+> 重新安装端点（install object/table 不变、installed 仍为 1），只有第一个
+> burst 被取指。剩下的杠杆是**安装时写入控制器 ring/dequeue 的那段上下文**
+> （`0x295d0` 安装路径），cave 只写 TD + 门铃无法复位它。
 > v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
 > seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
 > `usbDsEndpoint_Cancel`（空闲时）复位端点，验证控制器 dequeue 是否随之
@@ -369,6 +370,40 @@ seq2 post         prod=ring+0x200, box ISO2
 | 任一 crash/fatal | 立即停，读卡取报告 |
 
 停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 2026-11-01 14:4x v22 实机：alt 重装不成立
+
+host：`cycle0` 3072B（valid=57 bad=71），`cycle1..3` 全 0（valid=1 bad=127 每个）；
+alt0/alt1/SET_CUR 每个周期都成功；设备在线、无新 crash/fatal/erpt。
+
+设备（`private/runs/UAC-u2-v22-alt-cycle-20261101`）：
+
+```text
+4 次 post（seq=1..4，每次 1/1）        ← alt0 清 burstPosted 生效
+seq1 complete 3072/3
+seq2..4 post rc=0 → 100 ms 无 completion → cancel
+每个周期 precheck：同一个 install obj/table、installed=1、ring/prod/cons 在 base
+```
+
+结论：
+
+- **alt0→alt1 不会重新安装端点**：install object/table 一模一样、installed
+  仍是 1；驱动只在 Configured 路径跑安装器。
+- 因此“每个 burst 都用新端点”这条路走不通；v22 否掉。
+- 目前所有尝试（位置、per-ED、cancel、alt 重装）都失败，共同点是
+  **安装后只有第一个 TD 集能被取指**。剩下的杠杆是安装时对控制器
+  ring/dequeue 的编程（安装器 `0x295d0` 及其寄存器写入），cave 的“写 TD +
+  门铃”路径无法复位它。
+
+## v23 方向（离线优先，需新授权才能上机）
+
+1. 静态读安装器 `0x295d0` 与它写入的端点上下文/寄存器（ring base、dequeue、
+   cycle），确认控制器为什么在第一个 TD 集后不再取指；
+2. 候选修法：cave 在每次 post 前按安装路径重写 dequeue/ring 寄存器，或在
+   完成路径里调用安装器的一个安全子集；任何跨进程写/重编程都要先离线验证；
+3. 若不成立，考虑换 host 侧路径（AppleUSBAudio 连续流）或重新评估
+   A23 与 UAC 的端点安装差异；
+4. 上机仍需新授权、一次 boot、失败即停。
 
 ## 风险## 风险## 风险## 风险
 

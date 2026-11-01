@@ -25,17 +25,18 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 15:10）
+## 当前边界（2026-11-01 15:20）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 14:3x **v21 idle cancel**。`idle cancel rc=0` 但
-  `after-cancel` 与 `pre` 相同、seq2 仍失败——**空闲 cancel 是 no-op**。
-- 共识：只有“刚安装的端点”能收到第一个 burst。
-- 下一阶段：**v22 `8335b6f1…`（91936B）已离线构建**（0 实机）：设备在 alt0
-  清 `burstPosted`、每次 alt1 一个 burst（`-DUAC_U2_BURSTS=1
-  -DUAC_U2_ALT_RETRIGGER`）；host `--alt-cycle --cycles 4 --transfers 8
-  --delay-ms 30 --timeout-ms 500` 每周期 alt0→alt1→SET_CUR→URB→收集。
-  **需新授权**；详见 [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
+- 最后实机：2026-11-01 14:4x **v22 alt-cycle**。host `cycle0` 3072B、
+  `cycle1..3` 全 0；设备有 4 次 post（alt0 清 `burstPosted` 生效），但只有
+  seq1 完成；每周期 precheck 的 install object/table 相同、installed=1。
+- 结论：**alt0→alt1 不重装端点**，v22 否掉“每个 burst 用新端点”。
+- 目前所有尝试都指向：安装后只有第一个 TD 集能被取指；剩下的杠杆是安装器
+  `0x295d0` 写入的控制器 ring/dequeue 编程。
+- 下一阶段：**v23 先离线读安装器**（寄存器写入、dequeue/cycle），再决定是否
+  在 cave 里重写 dequeue 或调用安装器的安全子集；**上机需新授权**；详见
+  [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
 
