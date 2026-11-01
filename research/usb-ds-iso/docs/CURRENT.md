@@ -1,17 +1,18 @@
-# 当前状态（2026-11-01 14:30，Asia/Shanghai）
+# 当前状态（2026-11-01 15:00，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 03:0x 的 **v20 per-ED**：seq1 的 per-ED 完成正常
-> （3072/3072 status=3），但 `done` 仍然 **prod=cons=ring**、seq2 仍 100 ms
-> 无 completion。**per-ED 完成不是差异点**。
-> 2026-11-01 14:30 离线完成 **v21 idle-cancel 候选**（`ed52a9d7…`，91954B，
-> payload 回到 v16 的单次完成 cave）：burst 2..N 之前、无在飞请求时调用一次
-> `usbDsEndpoint_Cancel`，记录返回值与 `after-cancel` 状态。**0 实机**，
-> 下一次上机需新授权；详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
-> 上一轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
+> 最后一次实机是 2026-11-01 14:3x 的 **v21 idle cancel**（VM 开机前 suspend，
+> attach 后立即 probe）：host 仍只有 3072B；设备 `idle cancel seq=2 rc=0x0`
+> 但 `after-cancel` 与 `pre` 完全相同（prod=cons=ring、copy=ring+0xff0），
+> seq2 仍 100 ms 无 completion。**空闲 cancel 是 no-op，不能复位端点。**
+> 共识：只有“刚安装的端点”能收到第一个 burst。下一步 **v22**：host 在 burst
+> 之间做 SET_INTERFACE(0)→SET_INTERFACE(1) 重新安装端点，设备每次 alt1 允许
+> 一次 burst（`-DUAC_U2_BURSTS=1`），4 个周期各收 3072B。**需新授权**；
+> 详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+> 本轮无新 crash/fatal/erpt；卡恢复 `52069a44…`、删日志、安全弹出。
 
-## 当前进度（2026-11-01 14:30）
+## 当前进度（2026-11-01 15:00）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -48,7 +49,7 @@
 | **v18 事件掩码仪器化** | **实机一次，掩码假设被否**：`mask=0/bit9=0/ep10=0` 始终成立；seq2 `td@cons` 有效仍无 completion；新焦点是 0xdb/0xde 的门铃 ack | `private/runs/UAC-u2-v18-event-mask-20261101` |
 | **v19 事件完成码** | **实机一次，完成码被驱动清掉**：post 时 box `ISO2`，`eventWait` 后全 0；成功 ED 的码是 1（cave 检查），driver 的 code-1 路径是 per-ED 完成 + cons 更新 | `private/runs/UAC-u2-v19-event-code-20261101` |
 | **v20 per-ED 完成** | **实机一次，per-ED 不是差异点**：seq1 正常 3072/3，但 `done` 仍 prod=cons=ring、seq2 仍不被取指 | `private/runs/UAC-u2-v20-per-ed-20261101` |
-| **v21 idle cancel** | **离线已构建，0 实机**：`ed52a9d7…`（91954B），payload 回到 v16；burst 2..N 前空闲 `usbDsEndpoint_Cancel` + after-cancel 状态 | `private/analysis/UAC-u2-v21-idle-cancel-20261101` |
+| **v21 idle cancel** | **实机一次，no-op**：`idle cancel rc=0x0` 但 `after-cancel` 与 pre 相同、seq2 仍失败 | `private/runs/UAC-u2-v21-idle-cancel-20261101` |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v14-trigger-repeat` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -85,13 +86,14 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v21 已离线构建，等待新授权）：(1) v19/v20 已否掉完成方式；v20 的
-  `done` 仍 prod=cons=ring、seq2 仍不被取指；(2) v21 `ed52a9d7…` 只改 app：
-  burst 2..N 之前、无在飞请求时调用一次 `usbDsEndpoint_Cancel`，记录 rc 与
-  `after-cancel` 状态，验证它是否复位端点/控制器 dequeue；(3) 一次 boot：
-  seq2 收到数据 → cancel 有效；仍无 completion → cancel 没重启控制器；
-  cancel 报错/干扰 → 停；(4) 任一 crash 立即停；(5) 8 个 descriptor-parser
-  NOP 的全局风险仍未隔离。详见 [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+- 下一步（v22，需新授权）：(1) 已知只有“刚安装的端点”能收到第一个 burst；
+  v21 的 idle cancel 是 no-op；(2) v22 让 host 在 burst 之间做
+  `SET_INTERFACE(0)` → `SET_INTERFACE(1)` 重新安装端点，设备在 alt0 时清
+  `burstPosted`、每次 alt1 允许一次 burst（`-DUAC_U2_BURSTS=1`）；(3) host 每个
+  周期：alt0 → alt1 → 提交 URB 窗口 → SET_CUR → 收数据，共 4 个周期；(4) 需改
+  host 工具（alt-cycle 模式）与 app 的 burstPosted 复位；(5) 一次 boot、
+  失败即停；(6) 8 个 descriptor-parser NOP 的全局风险仍未隔离。详见
+  [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
 
 ## 最近一次实机：v20 per-ED（2026-11-01 03:0x，per-ED 不是差异点）
 
@@ -683,9 +685,11 @@ dequeue 的下一槽，仍无 completion——**位置假设被否**。**v18 02:
 驱动清成全 0，但成功 ED 的码从 cave 检查可知是 **1**——driver 的 code-1 路径
 是 **per-ED 完成（w4=192, force=0）+ 逐事件更新 cons**。**v20 03:0x 实机**：
 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍 prod=cons=ring、seq2 仍不被
-取指——**per-ED 不是差异点**。下一步 v21：burst 之间空闲 `usbDsEndpoint_Cancel`
-复位端点（需新授权）。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全
-`52069a44…` 并安全弹出。
+取指——**per-ED 不是差异点**。**v21 14:3x 实机**：`idle cancel rc=0x0` 但
+`after-cancel` 与 pre 完全相同，seq2 仍失败——**空闲 cancel 是 no-op**。
+只有“刚安装的端点”能收到第一个 burst；下一步 v22 用 host 在 burst 之间
+alt0→alt1 重新安装端点（设备每次 alt1 一次 burst，需新授权）。UAC 默认仍
+禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 
