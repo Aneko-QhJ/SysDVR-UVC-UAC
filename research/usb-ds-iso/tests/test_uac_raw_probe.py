@@ -37,8 +37,20 @@ class UacRawProbeTests(unittest.TestCase):
         for token in ("--claim-only", "--no-detach", "--no-trigger",
                       "--interface", "--endpoint", "--packets",
                       "--trigger-first", "--delay-ms", "--transfers",
-                      "--timeout-ms"):
+                      "--timeout-ms", "--keep-alt"):
             self.assertIn(token, self.source)
+
+    def test_keep_alt_skips_the_alt0_transition(self):
+        # v25: the app's alt0 SET_INTERFACE teardown triggers the post-run
+        # usb svcBreak; --keep-alt removes the host side of that trigger and
+        # disables the kernel-driver re-attach on release.
+        self.assertIn("if (!keep_alt) {", self.source)
+        self.assertIn("keep-alt: skipping SET_INTERFACE(0)", self.source)
+        self.assertIn("libusb_set_auto_detach_kernel_driver(h, 0)", self.source)
+        restore = self.source.index("restore_alt:\n")
+        alt0 = self.source.index("libusb_set_interface_alt_setting(h, iface, 0)",
+                                 restore)
+        self.assertLess(restore, alt0)
 
     def test_binary_rejects_bad_packet_count(self):
         if not BINARY.is_file():

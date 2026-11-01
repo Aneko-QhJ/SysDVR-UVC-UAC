@@ -2,6 +2,9 @@
    audio driver, then submit concurrent 16 x 192 B isochronous IN transfers
    around the SET_CUR trigger.  This is a diagnostic host tool; it never
    changes the device firmware. */
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE           /* usleep()/useconds_t under -std=c11 */
+#endif
 #include <libusb.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -170,7 +173,7 @@ static void usage(const char *argv0)
         "[--claim-only] [--no-trigger] [--no-detach] "
         "[--trigger-first] [--delay-ms N] [--transfers N] "
         "[--timeout-ms N] [--rearm] [--max-urbs N] "
-        "[--alt-cycle] [--cycles N]\n", argv0);
+        "[--alt-cycle] [--cycles N] [--keep-alt]\n", argv0);
 }
 
 int main(int argc, char **argv)
@@ -179,7 +182,7 @@ int main(int argc, char **argv)
     int endpoint = AS_ENDPOINT;
     unsigned packets = PACKETS;
     unsigned transfers = 1;
-    int claim_only = 0, no_trigger = 0, no_detach = 0;
+    int claim_only = 0, no_trigger = 0, no_detach = 0, keep_alt = 0;
     int trigger_first = 0, delay_ms = 0, timeout_ms = 500;
     int rearm = 0;
     unsigned max_urbs = 64;
@@ -198,6 +201,8 @@ int main(int argc, char **argv)
             no_trigger = 1;
         } else if (!strcmp(argv[i], "--no-detach")) {
             no_detach = 1;
+        } else if (!strcmp(argv[i], "--keep-alt")) {
+            keep_alt = 1;
         } else if (!strcmp(argv[i], "--trigger-first")) {
             trigger_first = 1;
         } else if (!strcmp(argv[i], "--delay-ms") && i + 1 < argc) {
@@ -453,7 +458,18 @@ int main(int argc, char **argv)
     }
 
 restore_alt:
-    libusb_set_interface_alt_setting(h, iface, 0);
+    /* v25: --keep-alt skips the host-driven alt0 transition.  The app's
+       alt0 SET_INTERFACE teardown is the trigger of the post-run usb
+       svcBreak (same stack as the v16 r1 boot crash); libusb's auto-detach
+       is also disabled so the kernel driver does not re-bind and set alt0
+       after release.  The console stays in alt1 until it is powered off or
+       re-plugged. */
+    if (!keep_alt) {
+        libusb_set_interface_alt_setting(h, iface, 0);
+    } else {
+        printf("keep-alt: skipping SET_INTERFACE(0) and driver re-attach\n");
+        libusb_set_auto_detach_kernel_driver(h, 0);
+    }
     libusb_release_interface(h, iface);
     claimed = 0;
 

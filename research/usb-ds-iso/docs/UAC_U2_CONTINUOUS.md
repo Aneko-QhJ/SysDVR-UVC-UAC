@@ -336,9 +336,17 @@ v25 只把这一条改成 `+4`：
   **1 个字节 / 1 条指令**（`0x11008129 add #32` → `0x11001129 add #4`）；
 - app 与 v24 相同：`-DUAC_U2_BURSTS=4 -DUAC_U2_LIGHT_LOG`；
 - NSP `c27e9103…`（91996B）、NSO `994e7c05…`、cave 620/684B、29 条 edits；
-- 期望：`wait_ms 60→~32`、gap 96→~66 ms，4/4 burst 不变；
+- host 侧同时加 `--keep-alt`（`host/uac-raw-probe.c`，源 `8435e7ed…`）：
+  收尾不再发 `SET_INTERFACE(0)`，并在 release 前关掉 libusb 的
+  auto-detach，避免内核驱动重新绑定后再设 alt0——这正是 v24 收尾
+  `svcBreak` 的触发点。guest 已用 `-std=c11 -Wall -Wextra -Werror` 重建通过
+  （新增 `_DEFAULT_SOURCE` 修复 Linux 严格 c11 下的 `useconds_t`）；
+- 运行命令：`uac-raw-probe --trigger-first --delay-ms 30 --transfers 8
+  --rearm --max-urbs 64 --timeout-ms 1000 --keep-alt`；
+- 期望：`wait_ms 60→~32`、gap 96→~66 ms，4/4 burst 不变，收尾不再崩；
 - 判定：gap ~66 且 4/4 → lead 是有效杠杆，下一步压 report/loop 或流水线；
-  无数据/部分 → 4 ms lead 没落进 host 窗口，停，回退 32 再查 host 提交时序。
+  无数据/部分 → 4 ms lead 没落进 host 窗口，停，回退 32 再查 host 提交时序；
+  收尾仍崩 → `--keep-alt` 不足，alt0 触发点在别处（回到崩溃的静态定位）。
 
 一次 boot 仍按 v24 的纪律：VM 开机前 suspend、主界面后 attach、probe 一次；
 出现 v24 同款收尾崩溃时数据仍有效，但按规则停止并读卡。

@@ -97,16 +97,16 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v25 lead-4 已离线构建；收尾崩溃待选规避）：(1) v24 的 96 ms gap
-  里 ~32 ms 是 cave 的 TD 帧 lead；v25 `c27e9103…`（91996B，cave 只改
-  `add #32→#4`）把这一项压到 4 ms，期望 `wait_ms` 60→~32、gap→~66 ms；
-  (2) 收尾崩溃已静态定位为提交/DMA 映射路径的断言（`0x2c520→0x3c50→0x3d40
-  →0x40d0`，`svcBreak` 空消息），触发在 host 重枚举后的
-  `SET_INTERFACE(0) iface=3`，与 v16 r1 boot 崩溃同栈；下一轮三选一：
-  host 收尾不重枚举 / app 的 alt0 先 cancel 再 ack / 接受已知风险；
-  (3) 之后才谈流水线/持续流、PCM/时钟、与视频共存；(4) `ISO_ENTRY=0x270`
-  与 8 个 descriptor-parser NOP 仍未隔离；(5) 任何跨进程写/重编程先离线
-  验证，上机一次、失败即停。详见
+- 下一步（v25 lead-4 + host `--keep-alt` 已就绪，等待插卡）：(1) v24 的
+  96 ms gap 里 ~32 ms 是 cave 的 TD 帧 lead；v25 `c27e9103…`（91996B，cave
+  只改 `add #32→#4`）把这一项压到 4 ms，期望 `wait_ms` 60→~32、
+  gap→~66 ms；(2) 收尾崩溃已静态定位为提交/DMA 映射路径的断言
+  （`0x2c520→0x3c50→0x3d40→0x40d0`，`svcBreak` 空消息），触发在 host 收尾/
+  重枚举后的 `SET_INTERFACE(0) iface=3`；host 侧已加 `--keep-alt`
+  （源 `8435e7ed…`，guest 已重建）跳过该 alt0 并关掉驱动重绑，运行命令带
+  `--keep-alt`；(3) 之后才谈流水线/持续流、PCM/时钟、与视频共存；
+  (4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离；
+  (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
   [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
 
 ## 最近一次实机：v24 light-log（2026-11-01 16:2x，数据成功、收尾崩溃）
