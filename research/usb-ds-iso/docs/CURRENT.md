@@ -55,6 +55,7 @@
 | **v22 alt-cycle** | **实机一次，否掉**：4 次 post 但只有 seq1 完成；alt 重装不改变 install object/table（installed=1），`cycle1..3` 全 0 | `private/runs/UAC-u2-v22-alt-cycle-20261101` |
 | **v23 安装器/上下文（离线）** | 安装器只遍历描述符；`0x2feb0` 才写上下文 + commit（`regs+0x58`）+ 清 halt；错误路径 `0x30ff4` 不 commit | `private/analysis/UAC-u2-v23-rearm-20261101`、[UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) |
 | **v23 re-arm（实机一次，成功）** | **4/4 burst**：host **12288B**（4×3072，t=34/194/356/498 ms）；设备 seq1..4 都 `complete 3072/3`、`train end posted=4 completed=4`；无新 crash/erpt；重放 `0x2feb0` 的 commit+unhalt 就是缺失步骤 | `private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm` |
+| **v24 gap probe（离线）** | **0 实机**：`-DUAC_U2_LIGHT_LOG` 跳过每 burst 的 dmnt dump、加入相位 timing（loop/post/wait/report ms）；NSP `2b7680ef…`（91996B，payload 与 v23 相同）；目标是把 160 ms gap 缩到 ~16 ms | `private/analysis/UAC-u2-v24-light-20261101`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -91,14 +92,17 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v23 成功后重新设计）：(1) 现在每个 burst 前都重放一次 `0x2feb0`
-  （4KB memset + 上下文重装 + commit + 清 halt）；下一轮把重放收敛为“首 burst
-  后只做 commit（`regs+0x58` + 清 halt）”，或让 ring 跨 burst 连续（不 memset、
-  不重置 base），验证 8/16 个 burst、更短间隔；(2) 之后做持续流、PCM/时钟、
-  与视频共存；(3) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 的风险仍未
-  隔离，需单独一轮；(4) 任何跨进程写/重编程先离线验证，上机一次、失败即停。
-  详见 [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) 与
-  [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md)。
+- 下一步（v23 成功；v24 gap probe 已离线构建，等待新授权）：(1) v23 的 wire
+  gap 是 160/162/142 ms（burst 只有 16 ms），每 burst 约 5 次 dmnt attach 是
+  首要嫌疑；v24 `2b7680ef…`（91996B，payload 与 v23 相同）加
+  `-DUAC_U2_LIGHT_LOG` 跳过每 burst 的 state/ring/install dump，并记录
+  `loop_ms/post_ms/wait_ms/report_ms` 相位耗时；一次 boot 判定 gap 是否缩到
+  ~16 ms；(2) 若 `post_ms` 大 → 下一轮改 commit-only cave（`regs+0x58` +
+  清 halt，不 memset）；(3) 之后做 8/16 burst、持续流、PCM/时钟、与视频共存；
+  (4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 的风险仍未隔离；
+  (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
+  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
+  [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)。
 
 ## 最近一次实机：v23 re-arm（2026-11-01 16:0x，4/4 burst 成功）
 

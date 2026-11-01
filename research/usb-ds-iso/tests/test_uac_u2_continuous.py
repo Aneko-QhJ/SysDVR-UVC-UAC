@@ -157,11 +157,14 @@ class UacU2RingAdvanceTests(unittest.TestCase):
             self.assertIn(token, self.source)
 
     def test_advance_only_runs_for_later_bursts_before_the_pre_log(self):
-        anchor = ('#ifdef UAC_U2_RING_ADVANCE\n'
-                  '        if (seq > 1) _uacAdvanceRing(seq, seq - 1);\n'
-                  '#endif\n'
-                  '        _uacLogSubmitState("pre", seq);')
-        self.assertIn(anchor, self.body)
+        advance = ('#ifdef UAC_U2_RING_ADVANCE\n'
+                   '        if (seq > 1) _uacAdvanceRing(seq, seq - 1);\n'
+                   '#endif')
+        self.assertIn(advance, self.body)
+        # v24: the pre dump sits behind UAC_U2_LIGHT_LOG; the advance still
+        # has to run before it in both build flavours.
+        self.assertLess(self.body.index(advance),
+                        self.body.index('_uacLogSubmitState("pre", seq);'))
 
 
 class UacU2EventMaskTests(unittest.TestCase):

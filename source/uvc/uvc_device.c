@@ -2495,6 +2495,7 @@ static void _postUacBurst(void)
        v11 crash).  The 1 kHz phase continues across buffers, which lets the
        host check continuity instead of four separate 16 ms bursts. */
     u32 posted = 0, completed = 0;
+    u64 tPrev = svcGetSystemTick();
     for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n) {
         u8 *buf = g_u2BurstBuffers[n];
         s16 *samples = (s16 *)buf;
@@ -2510,7 +2511,9 @@ static void _postUacBurst(void)
 #ifdef UAC_U2_RING_ADVANCE
         if (seq > 1) _uacAdvanceRing(seq, seq - 1);
 #endif
+#ifndef UAC_U2_LIGHT_LOG
         _uacLogSubmitState("pre", seq);
+#endif
 #ifdef UAC_U2_IDLE_CANCEL
         if (seq > 1) {
             /* v21: the timeout cancel already resets the ring to base; test
@@ -2527,17 +2530,23 @@ static void _postUacBurst(void)
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
 
         u32 urbId = 0;
+        const u64 tPre = svcGetSystemTick();
         Result rc = usbDsEndpoint_PostBufferAsync(g_uacCtx.audioEndpointIn,
             buf, UAC_U2_BURST_BYTES, &urbId);
+        const u64 tPost = svcGetSystemTick();
         LOG("UAC U2 post rc=0x%x urb=%u size=%u seq=%u\n",
             rc, urbId, UAC_U2_BURST_BYTES, seq);
         if (R_FAILED(rc)) break;
         ++posted;
+#ifndef UAC_U2_LIGHT_LOG
         /* v16: log the accept state and the cave ring after every post, not
-           just the first one; a rejected second submit leaves the box empty. */
+           just the first one; a rejected second submit leaves the box empty.
+           UAC_U2_LIGHT_LOG keeps only the cheap lines: each dump is a dmnt
+           attach, and six of them per burst dominate the inter-burst gap. */
         _uacLogSubmitState("post", seq);
         _uacLogRingState();
         _uacLogInstallState();
+#endif
 
         if (R_FAILED(eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent, 100E+6))) {
             /* Do not leave the request pending across alt0 teardown: the usb
@@ -2550,11 +2559,14 @@ static void _postUacBurst(void)
             _uacLogRingState();
             break;
         }
+        const u64 tDone = svcGetSystemTick();
         ++completed;
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
         /* v19: read the mailbox right after the completion event, before the
            report path can clean it, so seq1's last event code is visible. */
+#ifndef UAC_U2_LIGHT_LOG
         _uacLogRingState();
+#endif
         UsbDsReportData report;
         rc = usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
         if (R_FAILED(rc)) {
@@ -2577,7 +2589,19 @@ static void _postUacBurst(void)
                                           &transferred);
         LOG("UAC U2 complete rc=0x%x requested=%u transferred=%u seq=%u\n",
             prc, requested, transferred, seq);
+        /* v24: cheap phase timing.  loop_ms is the previous completion to
+           this post, post_ms is the IPC (including the cave re-arm),
+           wait_ms is post to completion, report_ms is the report path.
+           The wire gap is report_ms + loop_ms + post_ms of the next burst. */
+        const u64 tReport = svcGetSystemTick();
+        LOG("UAC U2 timing seq=%u loop_ms=%u post_ms=%u wait_ms=%u report_ms=%u online_ms=%u\n",
+            seq, (u32)((tPre - tPrev) / 19200), (u32)((tPost - tPre) / 19200),
+            (u32)((tDone - tPost) / 19200), (u32)((tReport - tDone) / 19200),
+            (u32)((tReport - tPrev) / 19200));
+        tPrev = tReport;
+#ifndef UAC_U2_LIGHT_LOG
         _uacLogSubmitState("done", seq);
+#endif
         if (R_FAILED(prc)) break;
         if (transferred != UAC_U2_BURST_BYTES) {
             LOG("UAC U2 short seq=%u requested=%u transferred=%u\n",

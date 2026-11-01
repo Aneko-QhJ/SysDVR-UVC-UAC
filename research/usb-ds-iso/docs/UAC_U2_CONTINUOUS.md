@@ -6,6 +6,11 @@
 > v16 r2（01:49，VM 开机前 suspend）：host 仍只有 3072B，但设备 `pre/post`
 > 日志证明**两次 post 都进了 cave、都写了完整 TD 集**，只有第 1 套被服务——
 > **`prod == cons` 门被排除**，问题在 ring 复位/控制器 dequeue。
+> 2026-11-01 16:0x **v23** 用“每 burst 重放驱动 setup `0x2feb0`”拿到 4/4
+> burst（12288B），“只有第一个 TD 集”的墙已打破；但 host 的 wire gap 是
+> 160/162/142 ms，而每个 burst 只有 16 ms。2026-11-01 16:2x 离线准备 **v24
+> gap probe**（`-DUAC_U2_LIGHT_LOG` + 相位 timing），下一轮一次 boot 判定
+> gap 来自每 burst 的 dmnt dump 还是 cave 的 `0x2feb0`。
 > 硬件授权已用尽（`remaining=0`），下一次上机需要新的明确授权
 > （见 [RESEARCH_RULES.md](RESEARCH_RULES.md)）。当前事实以
 > [CURRENT.md](CURRENT.md) 为准。
@@ -229,3 +234,39 @@ host：`urb[2] 768B` + `urb[3] 2304B` = 3072B，之后全 bad；
 - 相位连续只保证 buffer 内容连续，不证明 host 侧无丢包、无时钟漂移。
 - 4 个 burst 只有 64 ms；不是持续音频，也不是产品验收。
 - 未跑 PCM/WAV 检测，未评估与 UVC 视频共存。
+
+## 2026-11-01 16:2x v24 gap probe（离线，0 实机）
+
+v23 的 4 个 burst 都成功，但 wire gap 是 160/162/142 ms（burst 本身 16 ms）：
+音频是“16 ms 有数据、~145 ms 空白”，还不是连续流。首要嫌疑是 app 的每-burst
+诊断：`_uacLogSubmitState`/`_uacLogRingState`/`_uacLogInstallState` 每次都是
+一次 `svcDebugActiveProcess` + 多次读，一个 burst 约 5 次 attach。
+
+v24 只改 app，payload 与 v23 逐字节相同（29 条 / cave 620B：
+
+- `-DUAC_U2_LIGHT_LOG`：跳过成功的 `pre/post/done` state dump、ring dump 和
+  install dump；失败/超时路径的 dump 保留；train 结束后的两次 dump 保留。
+- 每个 burst 记录相位（`svcGetSystemTick`，19.2 MHz）：
+  `loop_ms`（上次 report → 本次 post）、`post_ms`（`PostBufferAsync`，含 cave
+  的重放 setup）、`wait_ms`（post → completion）、`report_ms`（completion →
+  report 解析）、`online_ms`（两次 report 之间）。
+  下一 burst 的 wire gap ≈ `report_ms + loop_ms + post_ms`。
+
+| 项 | 值 |
+| --- | --- |
+| 构建 | `2b7680ef…`（91996B），NSO `33f2efe9…` |
+| defines | `-DUAC_HOST_PROBE -DUAC_U2_PATCH -DFILE_LOGGING -DUAC_U2_BURSTS=4 -DUAC_U2_LIGHT_LOG` |
+| payload | 与 v23 相同：29 条 edits / cave `00f38aa9…` 620/684B / header `f4749804…` |
+| 工作目录 | `private/analysis/UAC-u2-v24-light-20261101` |
+| 测试 | `tests/test_uac_u2_light_log.py`（5 项）+ 既有 continuous 测试更新 |
+
+一次 boot 的判定：
+
+| 观察 | 结论 | 下一步 |
+| --- | --- | --- |
+| `wait_ms≈16`，`loop_ms`/`post_ms` 小（gap ≈16–25 ms） | dmnt dump 就是 gap | 流水线/连续 post，再验证 8/16 burst 与时钟 |
+| `post_ms` 大（>50 ms） | `0x2feb0` 的 memset/清 halt 轮询占主导 | 下一轮 commit-only cave（`regs+0x58` + 清 halt，不 memset） |
+| gap 仍 ≈150 ms | 驱动/宿主调度占主导 | cave 侧 tick 探针或改 host 窗口 |
+| 任一 crash/fatal | 停 | 读卡取报告，不重试 |
+
+停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
