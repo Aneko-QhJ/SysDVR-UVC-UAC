@@ -6,7 +6,7 @@
 2. 读 [WORKFLOW.md](WORKFLOW.md)（一轮怎么走）。
 3. 从 CURRENT 的“开放问题”里选一个，写 5 行问题卡。
 4. 离线准备，跑 `make -C research/usb-ds-iso check`。
-5. 需要实机时，先取得明确授权；用户说“继续”不等于授权开机或部署。
+5. 实机按“当前边界”里的授权执行；插卡/开机前通知用户，失败即停。
 
 ## 不要做
 
@@ -14,8 +14,8 @@
   里的旧“下一项仅……”当成当前指令。
 - 不要覆盖、移动或清理 `private/` 里的原始证据。
 - 不要用模型通过、保存成功、超时或安静采样推断 I/O 已交还。
-- 不要在未授权时部署、写卡、启动接收器或开机测试。
-- 用户说“部署”只等于把文件拷贝到卡上；开机/运行仍需单独的明确信号。
+- 不要越过“当前边界”的授权范围部署、写卡、启动接收器或开机测试。
+- 用户说“部署”只等于把文件拷贝到卡上；插卡与开机由用户执行，代理只提前通知，不自行开机。
 - 不要把“主机 raw 正确”单独当成严格传输通过，也不要把它改判成失败。
 
 ## 存储与继续研究
@@ -25,24 +25,25 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 16:10）
+## 当前边界（2026-11-02 01:27）
 
-- 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`
-  （v23 的单次授权已用完；下一次需新的明确授权）。
-- 最后实机：2026-11-01 16:0x **v23 re-arm，成功**。host `bytes=12288`
-  （4 个 3072B burst，t=34/194/356/498 ms）；设备 `posted=4 completed=4`，
-  seq1..4 每个 `complete 3072/3`，无 crash；卡 erpt 27 / crash 21 与部署前
-  相同。
-- 结论：**缺失步骤是端点上下文 commit（`regs+0x58`）+ 清 halt
-  （`regs+0x54/0x50`）**。每 burst 重放驱动端点 setup `0x2feb0` 后，v22 之前
-  “只有第一个 TD 集被取指”的墙被打破（第一次 >1 burst，12288B）。
-- 附带发现：DCI-9 cave 的 `ISO_ENTRY=0x270` 仍指向 DCI 7 对象，cave 事件
-  路径自 v14 起未执行；本轮未修，需单独一轮。
-- 下一阶段：把“每 burst 重放 `0x2feb0`”收敛为“首 burst 后只做 commit/清
-  halt”或让 ring 跨 burst 连续，验证 8/16 burst 与更短间隔，再做持续流/
-  时钟；**上机需新授权**；详见
-  [docs/UAC_U2_ENDPOINT_CONTEXT.md](docs/UAC_U2_ENDPOINT_CONTEXT.md)。
-- 8 个 descriptor-parser NOP 的全局风险仍未隔离。
+- 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
+  开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
+  `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
+  UAC 回合的授权状态。
+- 最后实机：2026-11-02 01:1x **v27 游标诊断，判读完成**。host `bytes=12288`
+  （4×3072B，t=34/130/242/338 ms）；设备 8 post/8 report，偶数 post 写
+  `prod=+0x200`、`cur=906→1006→1105→1205`，奇数 post `prod/cons/cur` 不变、
+  cave 未被调用、随后 `xfer=0 status=5`；每完成一次 ring 复位；无新
+  crash/erpt（27/21）。
+- 结论：**usb:ds 端点是单 transfer**，两 buffer 流水线走不通，v26A/v26B 路线
+  终止；可用基线是 v24 单 burst `2b7680ef…`（4/4、gap ~96 ms）。
+- 下一阶段：回到 v24 基线；v28 二选一——**加大单次 transfer**（2–4 段
+  3072B，占空比 ~45%）或**研究驱动单 transfer 的条件**（`0x2c520` 何时跳过
+  cave、UVC ISO 端点为何能持续排队）。详见
+  [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
+- 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
+  DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
 
 ## 文件角色

@@ -1,20 +1,20 @@
-# 当前状态（2026-11-02 00:40，Asia/Shanghai）
+# 当前状态（2026-11-02 01:27，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-02 00:3x 的 **v26A pipeline**：设备把 8 个 buffer
-> 全部 post、全部 report 回来，但**只有偶数 buffer 上了线（4×3072B，
-> 12288B）**，奇数 buffer `xfer=0 status=5`——buf0/buf1 背靠背 post，cave
-> 对每次 post 都用 `MFI/8 + 32`，两套 TD 落在同一个帧窗口，一套被漏服务。
-> host gap 79/64/80 ms（v24 96/96/96）。**收尾 usb `svcBreak` 再次出现**
-> （`01793550735`，同栈 `0x2c584/0x2a3f4/0x2a464`）：`--keep-alt` 跳过了
-> probe 自己的 `SET_INTERFACE(0)`，但 host 断开重连后内核/枚举又发了 alt0，
-> 规避未成立。v26B 方向：cave 维护**帧游标**（每套 TD 接在上一套最后一帧
-> 之后）+ app 改 16 ms 定时投递（不再 completion 驱动 top-up）。
-> UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。详见
+> 最后一次实机是 2026-11-02 01:1x 的 **v27 游标诊断**：host 收到
+> 4×3072B（12288B）；设备 8 post/8 report，但 **cave 只被偶数 post 调用**
+> ——偶数 post 写 `prod=ring+0x200`、`cur=frame+16`（906→1006→1105→1205），
+> 奇数 post 后 `prod/cons/cur` 完全不变，随后 `xfer=0 status=5`；每次完成
+> ring 复位。即 **usb:ds 端点是单 transfer**，两 buffer 流水线在驱动层
+> 走不通，v26A/v26B 路线终止。可用基线是 v24 单 burst（`2b7680ef…`，4/4、
+> gap ~96 ms）。v28 二选一：加大单次 transfer（2–4 段 3072B，占空比
+> ~45%）或研究驱动单 transfer 的条件。本轮无新 crash/erpt（27/21）；
+> 收尾 usb `svcBreak` 仍未规避。详见
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+> UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 00:40）
+## 当前进度（2026-11-02 01:27）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -99,33 +99,27 @@
   一次完成（100ms 上限；超时先 cancel，不重试）。
 - 下一步（v27 定性：驱动单 transfer，流水线路线终止）：(0) 回到 v24
   单 burst 基线（`2b7680ef…` / lead 32，已证明 4/4、gap ~96 ms）作为可用
-  配置；(0b) v28 二选一：**加大单次 transfer**（一次提交 2–4 段 3072B，
+  配置；(1) v28 二选一：**加大单次 transfer**（一次提交 2–4 段 3072B，
   cave TD 数按请求长度，摊薄固定开销，占空比 ~45%）或**研究驱动单
-  transfer 的原因**（0x2c520 在什么条件下跳过 cave；UVC ISO 端点为何能
-  持续排队）；(0c) 读-only 诊断确认：游标机制本身正确，问题在驱动；(0d)(0) v27
-  `bdb80208…`（92862B，v26B cave + `UAC_U2_CURSOR_DIAG`）在每次 post 前后
-  读 `ring+0xFB8` 游标与 ring `prod/cons/cycle`，一次 boot 判读：
-  `cur` 前进且奇数 buffer 时在前 → 驱动/控制器复位；`cur` 恒 0 → scratch
-  被覆盖或 cave 未读写；随后再决定门铃路径或修 scratch；(0b) 二选一：(0') 先做**读-only 诊断**：
-  app 在每次 post 前后读 `ring+0xfb8` 游标与 ring `prod/cons/cycle`，确认
-  游标是否写入/读到、ring 是否中途被复位；或做**门铃假设**实验：非空路径
-  不再敲门铃，看控制器能否连续取指（若停止，则“两套排队”不成立）；(0) v26B `116a1204…`
-  （92342B，cave 672/684B，app 同 v26A）修 v26A 的同帧窗口问题：cave 用
-  `frame = max(MFI/8+32, cursor)`、写完 `cursor = frame+16`，scratch 在
-  `ring+0xf80+0x38`；一次 boot 期望 8×3072B 连续上线、`pipe end posted=8
-  completed=8`；(1) v26A 证明
-  流水线管道（post/report/cancel）可用，但同帧窗口导致奇数 buffer 漏服务；
-  v26B cave 在 mailbox 空闲区（`ring+0xf80+0x38`）维护 11-bit 帧游标：
-  `frame = max(MFI/8 + 32, cursor)`，写完一套后 `cursor = frame + 16`；
-  空 ring 重放 `0x2feb0` 时 ring memset 会把游标清零，自动回到 MFI 基准；
-  (2) app 侧把 top-up 从 completion 驱动改成 16 ms 网格（槽位满则等一个
-  完成），保持 2–4 个在飞；(3) 收尾崩溃仍未规避：`--keep-alt` 不够，下一轮
-  需要在 app 的 alt0 处理里先 cancel，或研究内核重绑/重枚举路径；(4) 之后
-  才谈 16/32 buffer、PCM/时钟、与视频共存；(5) `ISO_ENTRY=0x270` 与 8 个
-  descriptor-parser NOP 仍未隔离。详见
-  [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+  transfer 的原因**（`0x2c520` 在什么条件下跳过 cave；UVC ISO 端点为何能
+  持续排队）；(2) 收尾崩溃仍未规避：`--keep-alt` 不够，下一轮需要在 app 的
+  alt0 处理里先 cancel，或研究内核重绑/重枚举路径；(3) 之后才谈 16/32 段、
+  PCM/时钟、与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser
+  NOP 仍未隔离。详见 [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 最近一次实机：v26A pipeline（2026-11-02 00:3x，部分）
+## 最近一次实机：v27 游标诊断（2026-11-02 01:1x，判读完成）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 部署读回一致；VM 开机前 suspend；主界面后 resume + `prlsrvctl usb set`，两次 suspend/resume 后 guest 枚举（第一次 `Connected-To-Vm: NO`）；probe 一次（`--keep-alt`）；无重试 |
+| host | `claim/alt1/SET_CUR` ok；`done transfers=62 packets=16 valid=201 bad=791 bytes=12288`；四个 3072B burst（t=34/130/242/338 ms，切分 1536+1536 / 768+2304 / 3072 / 2496+576） |
+| 设备 | 8 个 post 全部 `rc=0`；偶数 post 后 `prod=ring+0x200`、`cur=frame+16`（906→1006→1105→1205）；**奇数 post 后 `prod/cons/cur` 不变**，cave 未被调用，随后 `xfer=0 status=5`；每次完成后 `prod=cons=ring`、`cur=0`；`pipe end posted=8 completed=8 bytes=12288` |
+| 判定 | **游标机制正确，驱动是单 transfer**：一个 transfer 在飞时再 post 只会被记成 error 完成；两 buffer 流水线在驱动 API 下走不通，v26A/v26B 路线终止 |
+| crash | 无；无新 crash/erpt（27/21 不变） |
+| 证据 | `private/runs/UAC-u2-v27-cursor-diag-20261102`（`host-raw.txt` `4720a022…`、`device-log-v27.txt` `99791fcf…`）、`private/card-cycles/20261102-u2-v27-cursor-diag` |
+| 收尾 | 恢复 `52069a44…`、删日志、安全弹出；无重试 |
+
+## 上一次实机：v26A pipeline（2026-11-02 00:3x，部分）
 
 | 项 | 结果 |
 | --- | --- |
@@ -863,8 +857,12 @@ TD 同窗口；gap 79/64/80 ms。收尾 usb `svcBreak` 再次出现，
 
 ## 授权与边界
 
-- `remaining=0`、`acquisition_enabled=false`、`device_log_pending=false`、
-  `next_hardware_authorized=false`。
+- 实机授权：2026-11-01 16:19 起用户常设授权——部署/测试不再逐轮申请，
+  插卡与开机前通知用户即可（v24–v27 均按此执行：一次 boot、失败即停、
+  不重试）。用户撤销时以当次指示为准。
+- 旧 A23 采集票据字段 `remaining=0`、`acquisition_enabled=false`、
+  `next_hardware_authorized=false` 指 eMMC 采集额度，与 UAC ISO 回合无关；
+  `device_log_pending=false`。
 - SD 最后已安全弹出；当前设备现场状态不推定仍就绪。
 - 旧票据、actual465、消费 namespace 保持；不恢复旧次数。
 - UAC 四轮实机（2026-10-29 18:13–18:40）只留下部署/恢复记录，没有书面 authorization
