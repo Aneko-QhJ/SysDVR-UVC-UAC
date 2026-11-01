@@ -1,20 +1,24 @@
-# 当前状态（2026-11-01 16:10，Asia/Shanghai）
+# 当前状态（2026-11-01 16:40，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 16:0x 的 **v23 re-arm**：host `bytes=12288`
-> （4 个 3072B burst，t=34/194/356/498 ms），设备 `posted=4 completed=4`，
-> seq1..4 每个 `complete 3072/3`，无 crash；卡 erpt 27 / crash 21 与部署前
-> 相同。**重放驱动端点 setup `0x2feb0`（上下文 commit `regs+0x58` + 清 halt）
-> 后，4 个顺序 burst 全部被控制器取指**——v22 之前“只有第一个 TD 集”的墙被
-> 打破。15:0x 的离线结论（安装器只遍历描述符；完成错误路径 `0x30ff4` 不
-> commit）由本轮实机确认。附带发现 DCI-9 cave 的 `ISO_ENTRY=0x270` 仍指向
-> DCI 7 对象（cave 事件路径自 v14 起未执行），本轮未修。
-> 下一步：把“每 burst 重放 setup”收敛为“首 burst 后只 commit / 流水线”，
-> 再做持续流与时钟；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。详见
+> 最后一次实机是 2026-11-01 16:2x 的 **v24 light-log**：host 仍是
+> `bytes=12288`（4×3072，t=33/129/225/321 ms），但 burst 间隔从 v23 的
+> 160/162/142 ms 降到 **96/96/96 ms**——去掉每 burst 的 dmnt dump 省了
+> ~64 ms。设备 `train end posted=4 completed=4`；`UAC U2 timing`：
+> `post_ms=0`、`wait_ms=59..61`、`report_ms=19..20`、`loop_ms=3..14`。
+> 剩下 96 ms ≈ cave 的 **+32 帧 lead**（`MFI/8 + 32`）16 ms + ~12 ms 事件/
+> 驱动 + 20 ms report + 12–14 ms loop。**数据路径成功，但 host 收尾重枚举
+> 后在 `SET_INTERFACE(0) iface=3` 触发 usb sysmodule `svcBreak`（+0x1927c，
+> 栈 `0x2c584/0x2a3f4/0x2a464`，与 v16 r1 boot 崩溃同签名）**，发生在
+> `train end` 之后；已复制 1 份新 crash 报告、erpt 仍 27、恢复
+> `52069a44…`。
+> 下一步：把 cave 帧 lead 32→4（一次一个变量），并先离线评估收尾崩溃的
+> 规避；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。详见
+> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
 > [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)。
 
-## 当前进度（2026-11-01 16:10）
+## 当前进度（2026-11-01 16:40）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -55,7 +59,7 @@
 | **v22 alt-cycle** | **实机一次，否掉**：4 次 post 但只有 seq1 完成；alt 重装不改变 install object/table（installed=1），`cycle1..3` 全 0 | `private/runs/UAC-u2-v22-alt-cycle-20261101` |
 | **v23 安装器/上下文（离线）** | 安装器只遍历描述符；`0x2feb0` 才写上下文 + commit（`regs+0x58`）+ 清 halt；错误路径 `0x30ff4` 不 commit | `private/analysis/UAC-u2-v23-rearm-20261101`、[UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) |
 | **v23 re-arm（实机一次，成功）** | **4/4 burst**：host **12288B**（4×3072，t=34/194/356/498 ms）；设备 seq1..4 都 `complete 3072/3`、`train end posted=4 completed=4`；无新 crash/erpt；重放 `0x2feb0` 的 commit+unhalt 就是缺失步骤 | `private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm` |
-| **v24 gap probe（离线）** | **0 实机**：`-DUAC_U2_LIGHT_LOG` 跳过每 burst 的 dmnt dump、加入相位 timing（loop/post/wait/report ms）；NSP `2b7680ef…`（91996B，payload 与 v23 相同）；目标是把 160 ms gap 缩到 ~16 ms | `private/analysis/UAC-u2-v24-light-20261101`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
+| **v24 light-log（实机一次：数据成功，收尾崩溃）** | **12288B（4×3072）**；gap **96/96/96 ms**（v23 160/162/142）；timing `post=0 wait=59–61 report=19–20 loop=3–14`；96 ms ≈ 32 ms cave 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop；`train end posted=4 completed=4` 后在 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c，与 v16 r1 同栈） | `private/runs/UAC-u2-v24-light-20261101`、`private/card-cycles/20261101-u2-v24-light`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -92,17 +96,28 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v23 成功；v24 gap probe 已离线构建，等待新授权）：(1) v23 的 wire
-  gap 是 160/162/142 ms（burst 只有 16 ms），每 burst 约 5 次 dmnt attach 是
-  首要嫌疑；v24 `2b7680ef…`（91996B，payload 与 v23 相同）加
-  `-DUAC_U2_LIGHT_LOG` 跳过每 burst 的 state/ring/install dump，并记录
-  `loop_ms/post_ms/wait_ms/report_ms` 相位耗时；一次 boot 判定 gap 是否缩到
-  ~16 ms；(2) 若 `post_ms` 大 → 下一轮改 commit-only cave（`regs+0x58` +
-  清 halt，不 memset）；(3) 之后做 8/16 burst、持续流、PCM/时钟、与视频共存；
-  (4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 的风险仍未隔离；
+- 下一步（v24 数据成功、收尾崩溃；先离线评估）：(1) v24 证明 dmnt dump 占
+  v23 gap 的 ~64 ms；剩下 96 ms 的主项是 cave 的 `MFI/8 + 32` 帧 lead。
+  下一候选把 32 改成 4（`patches/iso_burst_uac84_dci9_rearm.S` 一行），期望
+  `wait_ms` 60→~32、gap→~66 ms；(2) 收尾崩溃发生在 host 重枚举后的
+  `SET_INTERFACE(0) iface=3`，栈与 v16 r1 boot 崩溃相同（`0x2c584/0x2a3f4/
+  0x2a464`），与 cave 改动无直接关系；下一轮要决定“先只改 lead、接受收尾
+  崩溃”还是“先规避 host 重枚举”；(3) 之后才谈流水线/持续流、PCM/时钟、
+  与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离；
   (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
-  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
-  [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md)。
+  [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+
+## 最近一次实机：v24 light-log（2026-11-01 16:2x，数据成功、收尾崩溃）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 部署后卡已弹出；VM 开机时 suspend；主界面后 resume + `prlsrvctl usb set`，一次 VM suspend/resume 后 guest 枚举；probe 一次、无重试 |
+| host | `claim/alt1/SET_CUR` ok；`done transfers=62 packets=16 valid=193 bad=799 bytes=12288`；四个 3072B burst（t=33/129/225/321 ms），gap **96/96/96 ms** |
+| 设备 | `train end posted=4 completed=4`；timing：`post_ms=0`、`wait_ms=59/59/60/61`、`report_ms=20/20/20/19`、`loop_ms=3/13/14/12`、`online_ms=84/93/95/94` |
+| 判定 | dmnt dump 占 v23 gap 的 ~64 ms；剩余 96 ms ≈ cave 32 ms 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop |
+| crash | host 收尾（`USB host disconnected` → `connected`）后 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c），栈 `0x2c584/0x2a3f4/0x2a464`，与 v16 r1 boot 崩溃同签名；发生在数据完成之后；erpt 仍 27、新 crash 1 份 |
+| 证据 | `private/runs/UAC-u2-v24-light-20261101`（`host-raw.txt` `c8e16440…`、`device-log-v24.txt` `0ac1fc06…`、`crash/0179…log` `20d493b5…`）、`private/card-cycles/20261101-u2-v24-light` |
+| 收尾 | 恢复 `52069a44…`、删日志与新 crash 报告、安全弹出；无重试 |
 
 ## 最近一次实机：v23 re-arm（2026-11-01 16:0x，4/4 burst 成功）
 
@@ -714,9 +729,13 @@ seq1 完成；alt0→alt1 不重装端点（install object/table 不变、instal
 只遍历描述符，装点的是 `0x2fd30 → 0x2feb0`（64B 上下文 + `regs+0x58`
 commit + 清 halt）；完成错误路径 `0x30ff4` 重写 ring/上下文却不 commit。
 每 burst 重放 `0x2feb0` 后，host 收到 **12288B（4×3072）**，设备
-`posted=4 completed=4`、seq1..4 都 `complete 3072/3`，无 crash——“只有第一个
-TD 集”的墙被打破。下一步收敛为只 commit/流水线并做持续流。UAC 默认仍禁用
-（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
+`posted=4 completed=4`、seq1..4 都 `complete 3072/3`——“只有第一个 TD 集”
+的墙被打破。**v24 16:2x 实机**：去掉每 burst 的 dmnt dump 后 gap 从
+160/162/142 降到 **96/96/96 ms**；timing 显示 `post_ms=0`、
+`wait_ms≈60`、`report_ms≈20`、`loop_ms≈12`，剩下主项是 cave 的 32 ms 帧
+lead。收尾时 host 重枚举后的 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`
+（与 v16 r1 boot 崩溃同栈），发生在数据完成之后。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

@@ -270,3 +270,29 @@ v24 只改 app，payload 与 v23 逐字节相同（29 条 / cave 620B：
 | 任一 crash/fatal | 停 | 读卡取报告，不重试 |
 
 停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+### 2026-11-01 16:2x 实机结果：gap 96 ms，主项是 cave 的 32 ms 帧 lead
+
+一次部署、一次 boot、一次 probe；4/4 burst 再次成功：
+
+| 项 | v23（重 dump） | v24（light） |
+| --- | --- | --- |
+| host | 12288B，gap 160/162/142 ms | 12288B，gap **96/96/96 ms** |
+| wait_ms | — | 59/59/60/61 |
+| post_ms | — | 0/0/0/0 |
+| report_ms | — | 20/20/20/19 |
+| loop_ms | — | 3/13/14/12 |
+| online_ms | — | 84/93/95/94 |
+
+`post_ms=0` 说明重放 `0x2feb0` 在本次状态下几乎不花时间（halt 已清、无
+sleep 轮询）。`wait_ms≈60` 的最大项是 cave 的 `frame = MFI/8 + 32`：
+TD 的帧号比当前 MFI 晚 32 ms，加 16 ms burst 和 ~12 ms 事件/驱动，正好
+≈60 ms。`report_ms≈20` 是 `GetReportData` + `ParseReportData` 的固定开销，
+`loop_ms≈12` 是 pattern 填充/日志/flush。下一候选把 cave 的 `+32` 改成
+`+4`（一行），期望 `wait_ms→~32`、gap→~66 ms。
+
+**收尾崩溃**：host 收尾（`USB host disconnected` → `USB host connected`）后
+`SET_INTERFACE(0) iface=3` 触发 usb sysmodule `svcBreak`（PC +0x1927c，栈
+`0x2c584/0x2a3f4/0x2a464`），与 2026-11-01 01:41 v16 r1 boot 崩溃同签名；
+发生在 `train end` 之后，数据路径不受影响。已复制 1 份新 crash 报告
+（`20d493b5…`），erpt 27 不变。
