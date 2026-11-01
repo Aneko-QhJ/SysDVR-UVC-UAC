@@ -11,7 +11,8 @@
 3. **检查**：`make -C research/usb-ds-iso check`（快速，必须绿）；需要时跑 `check-all`。
    测试分层与当前全量基线见 [tests/README.md](tests/README.md)。失败先修，不申请实机。
 4. **实机**：需要新的明确授权；一次只改一个变量；实际打印 `WAITING` 后再提示开机；
-   失败不重试、不补轮。
+   失败不重试、不补轮。用户说“部署”只表示把已构建的 NSP 拷到卡上
+   （拷贝、回读校验、弹出），**不构成开机或运行授权**。
 5. **收尾**：更新 [docs/CURRENT.md](docs/CURRENT.md)（事实、证据路径、未证明项），
    专题细节写 `docs/<topic>.md`；不把整段状态复制到多个文档。
 
