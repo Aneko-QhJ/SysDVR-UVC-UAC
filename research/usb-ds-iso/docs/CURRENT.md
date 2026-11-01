@@ -1,19 +1,20 @@
-# 当前状态（2026-11-01 23:00，Asia/Shanghai）
+# 当前状态（2026-11-02 00:40，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
-> 最后一次实机是 2026-11-01 22:5x 的 **v25 lead-4**：`claim/alt1/SET_CUR`
-> ok、`--keep-alt` 生效（收尾跳过 `SET_INTERFACE(0)`），但 **4 ms 帧 lead
-> 太小**——只送出 **1536B（10/16 ED）**，report `req=3072 xfer=0 status=5`、
-> `complete rc=0x748c`，train 在 seq1 后停止；timing `wait_ms=16`、ring
-> `prod=+0x200 cons=+0x140`。**v25 否掉，回退 32 ms（v24 cave）**。本轮无新
-> crash/erpt（27/21），收尾崩溃规避被执行但未在完整数据下验证。
-> 下一步：用 v24 cave（`2b7680ef…`，lead 32）+ `--keep-alt` 复验 4/4 与收尾
-> 无崩溃；同时离线设计“ring 连续 / 双 buffer 在飞”的流水线——当前每 burst
-> 重放 setup 无法连续。UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。详见
-> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md)。
+> 最后一次实机是 2026-11-02 00:3x 的 **v26A pipeline**：设备把 8 个 buffer
+> 全部 post、全部 report 回来，但**只有偶数 buffer 上了线（4×3072B，
+> 12288B）**，奇数 buffer `xfer=0 status=5`——buf0/buf1 背靠背 post，cave
+> 对每次 post 都用 `MFI/8 + 32`，两套 TD 落在同一个帧窗口，一套被漏服务。
+> host gap 79/64/80 ms（v24 96/96/96）。**收尾 usb `svcBreak` 再次出现**
+> （`01793550735`，同栈 `0x2c584/0x2a3f4/0x2a464`）：`--keep-alt` 跳过了
+> probe 自己的 `SET_INTERFACE(0)`，但 host 断开重连后内核/枚举又发了 alt0，
+> 规避未成立。v26B 方向：cave 维护**帧游标**（每套 TD 接在上一套最后一帧
+> 之后）+ app 改 16 ms 定时投递（不再 completion 驱动 top-up）。
+> UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。详见
+> [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 当前进度（2026-11-01 23:00）
+## 当前进度（2026-11-02 00:40）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -56,7 +57,7 @@
 | **v23 re-arm（实机一次，成功）** | **4/4 burst**：host **12288B**（4×3072，t=34/194/356/498 ms）；设备 seq1..4 都 `complete 3072/3`、`train end posted=4 completed=4`；无新 crash/erpt；重放 `0x2feb0` 的 commit+unhalt 就是缺失步骤 | `private/runs/UAC-u2-v23-rearm-20261101`、`private/card-cycles/20261101-u2-v23-rearm` |
 | **v24 light-log（实机一次：数据成功，收尾崩溃）** | **12288B（4×3072）**；gap **96/96/96 ms**（v23 160/162/142）；timing `post=0 wait=59–61 report=19–20 loop=3–14`；96 ms ≈ 32 ms cave 帧 lead + 16 ms burst + ~12 ms 事件 + 20 ms report + 12–14 ms loop；`train end posted=4 completed=4` 后在 `SET_INTERFACE(0) iface=3` 触发 usb `svcBreak`（+0x1927c，与 v16 r1 同栈） | `private/runs/UAC-u2-v24-light-20261101`、`private/card-cycles/20261101-u2-v24-light`、[UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) |
 | **v25 lead-4（实机一次，否掉）** | **1536B（10/16 ED）**，report `xfer=0 status=5`、`complete rc=0x748c`；`wait_ms=16`、ring `cons=+0x140`；train 在 seq1 后停止。4 ms lead 太小，回退 32 ms；无新 crash/erpt，`--keep-alt` 跳过了 `SET_INTERFACE(0)` | `private/runs/UAC-u2-v25-lead4-20261101`、`private/card-cycles/20261101-u2-v25-lead4` |
-| **v26A 流水线（离线实现）** | **0 实机**：cave `df43d0a8…`（636/684B，`prod==cons` 重放/非空直接写）；app `BURSTS=8 + LIGHT_LOG + PIPELINE`（16 ms tick、2 在飞、失败先 cancel）；NSP `5e6c29af…`（92322B）；8 buffer 一次 boot 判定 | `private/analysis/UAC-u2-v26a-pipe-20261101`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v26A 流水线（实机一次，部分）** | 8 post / 8 completion，但**只有偶数 buffer 上线**（4×3072B，12288B；gap 79/64/80 ms）；奇数 `xfer=0 status=5`——两套 TD 共用 `MFI/8+32` 窗口。收尾 usb `svcBreak` 再次出现（`--keep-alt` 没能阻止内核/枚举的 alt0） | `private/runs/UAC-u2-v26a-pipe-20261101`、`private/card-cycles/20261101-u2-v26a-pipe`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -93,16 +94,29 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v26A 已离线实现、构建完成，等待插卡）：(1) 部署 v26A
-  `5e6c29af…`（92322B，cave 636/684B，`BURSTS=8 + LIGHT_LOG + PIPELINE`），
-  一次 boot，host 仍用 `--trigger-first --delay-ms 30 --transfers 8 --rearm
-  --max-urbs 64 --timeout-ms 1000 --keep-alt`；期望 8×3072B 连续、
-  `pipe end posted=8 completed=8`、ring `prod/cons` 前进不回 base、无 crash；
-  (2) 失败分支：gap 不变 → 驱动仍复位（查 `0x30ff4`/ring）；1536B/`0x748c`
-  → 节拍/帧对齐；crash → 停读卡；(3) 成功后做 16/32 buffer、PCM/时钟、
-  与视频共存；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离；
-  (5) 任何跨进程写/重编程先离线验证，上机一次、失败即停。详见
+- 下一步（v26A 部分成功；v26B = 帧游标 + 16 ms 定时投递）：(1) v26A 证明
+  流水线管道（post/report/cancel）可用，但同帧窗口导致奇数 buffer 漏服务；
+  v26B cave 在 mailbox 空闲区（`ring+0xf80+0x38`）维护 11-bit 帧游标：
+  `frame = max(MFI/8 + 32, cursor)`，写完一套后 `cursor = frame + 16`；
+  空 ring 重放 `0x2feb0` 时 ring memset 会把游标清零，自动回到 MFI 基准；
+  (2) app 侧把 top-up 从 completion 驱动改成 16 ms 网格（槽位满则等一个
+  完成），保持 2–4 个在飞；(3) 收尾崩溃仍未规避：`--keep-alt` 不够，下一轮
+  需要在 app 的 alt0 处理里先 cancel，或研究内核重绑/重枚举路径；(4) 之后
+  才谈 16/32 buffer、PCM/时钟、与视频共存；(5) `ISO_ENTRY=0x270` 与 8 个
+  descriptor-parser NOP 仍未隔离。详见
   [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+
+## 最近一次实机：v26A pipeline（2026-11-02 00:3x，部分）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 部署后卡已弹出；VM 开机时 suspend；主界面后 resume + `prlsrvctl usb set`，一次 VM suspend/resume 后 guest 枚举；probe 一次（`--keep-alt`） |
+| host | `claim/alt1/SET_CUR` ok；`done transfers=62 packets=16 valid=185 bad=807 bytes=12288`；四个 3072B burst（t=34/113/177/257 ms），gap 79/64/80 ms |
+| 设备 | `train begin count=8`；buf0..7 全部 `pipe post rc=0`、全部 report 回来；**偶数 buf 0/2/4/6 `xfer=3072 status=3`，奇数 buf 1/3/5/7 `xfer=0 status=5`**；`pipe end posted=8 completed=8 bytes=12288`；最终 ring 回 base |
+| 判定 | 流水线管道可用，但**两套 TD 共用同一个 `MFI/8+32` 帧窗口**，一套被漏服务；v26B 需要 cave 帧游标 + 16 ms 定时投递 |
+| crash | usb `svcBreak`（`01793550735`，同栈）在 host 断开重连、再次 `SET_INTERFACE(0)` 后发生；`--keep-alt` 只去掉了 probe 的 restore |
+| 证据 | `private/runs/UAC-u2-v26a-pipe-20261101`（`host-raw.txt` `49c61228…`、`device-log-v26a.txt` `b2bfcba2…`、`crash/0179…log` `05104245…`）、`private/card-cycles/20261101-u2-v26a-pipe` |
+| 收尾 | 恢复 `52069a44…`、删日志与新 crash 报告、安全弹出；无重试 |
 
 ## 最近一次实机：v25 lead-4（2026-11-01 22:5x，否掉）
 
@@ -746,8 +760,11 @@ lead。收尾时 host 重枚举后的 `SET_INTERFACE(0) iface=3` 触发 usb `svc
 （与 v16 r1 boot 崩溃同栈），发生在数据完成之后。**v25 22:5x 实机**：把
 lead 压到 4 ms 后只送出 1536B（10/16 ED）、report `0x748c`——lead 太小，
 回退 32 ms；本轮无新 crash，`--keep-alt` 跳过了 `SET_INTERFACE(0)`。
-UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全
-弹出。
+**v26A 00:3x 实机**：8 个 buffer 全 post、全 report，但只有偶数 buffer
+上线（4×3072B），奇数 `status=5`——cave 对每次 post 都用 `MFI/8+32`，两套
+TD 同窗口；gap 79/64/80 ms。收尾 usb `svcBreak` 再次出现，
+`--keep-alt` 未能阻止内核/枚举的 alt0。UAC 默认仍禁用（仅
+`UAC_HOST_PROBE`）。卡已恢复安全 `52069a44…` 并安全弹出。
 最近一次短包实机（2026-10-27）主机侧通过、设备侧保存失败；路径修正版已存在，
 未打包/未部署。
 

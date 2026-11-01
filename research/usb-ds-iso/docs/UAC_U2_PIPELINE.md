@@ -116,6 +116,27 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
 | 1536B/`0x748c` 或漏服务 | 16 ms 节拍/帧对齐不对；回退单 burst 时序 |
 | 任一 crash/fatal | 停，读卡；重点看 v11 pending-request 崩溃 |
 
+### 2026-11-02 00:3x 实机：管道可用，但同帧窗口漏服务
+
+- 设备 `train begin count=8`，buf0..7 全部 `pipe post rc=0`、全部 report；
+- **偶数 buf 0/2/4/6 `xfer=3072 status=3`，奇数 buf 1/3/5/7 `xfer=0 status=5`**；
+  `pipe end posted=8 completed=8 bytes=12288`；
+- host 只收到 4×3072B（gap 79/64/80 ms）；
+- 结论：cave 对每次 post 都算 `MFI/8 + 32`，背靠背的两套 TD 落在同一帧窗口，
+  一套被漏服务。管道（post/report/cancel）本身是通的。
+- 收尾：usb `svcBreak`（同栈）在 host 重连后再次 `SET_INTERFACE(0)` 时出现；
+  `--keep-alt` 只去掉了 probe 自己的 restore，内核重绑/枚举仍会发 alt0。
+
+### v26B：cave 帧游标 + 16 ms 定时投递
+
+1. cave 在 mailbox 空闲区（`ring+0xf80+0x38`，16-bit）存“下一可用帧”：
+   `frame = max(MFI/8 + 32, cursor)`，写完 16 帧后 `cursor = frame + 16`；
+   空 ring 的重放 `0x2feb0` memset 会把游标清零，自动回 MFI 基准；
+2. app 的 top-up 改为 16 ms 网格（槽位满则等一个完成），保持 2–4 个在飞；
+3. 预期：buf0/buf1 的帧窗口相邻，8 个 buffer 全部上线，gap 接近 0；
+4. 收尾崩溃仍未解决，需在 app 的 alt0 处理里先 cancel，或单独研究内核
+   重绑/重枚举路径。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
