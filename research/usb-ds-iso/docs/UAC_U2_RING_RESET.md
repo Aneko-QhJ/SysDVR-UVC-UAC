@@ -1,9 +1,9 @@
 # UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19）
 
 > 状态：**v17 否掉 ring 位置，v18 否掉事件掩码，v19/v20 否掉 per-ED 完成，
-> v21 否掉 idle cancel**。共识：只有“新安装的端点”能收第一次 burst；后续
-> TD 集不被取指。下一步 v22：host 在 burst 之间 alt0→alt1 重新安装端点，
-> 设备每次 alt1 允许一次 burst。
+> v21 否掉 idle cancel；v22 alt-cycle 候选已离线构建（`8335b6f1…`，0 实机）**。
+> 共识：只有“新安装的端点”能收第一次 burst；v22 让每个 burst 都重新走一次
+> alt0→alt1 安装。
 > v20 的 per-ED 完成对 seq1 正常（3072/3），但 `done` 仍然 prod=cons=ring、
 > seq2 仍不被取指——per-ED 不是差异点。下一步 v21：在 burst 之间用
 > `usbDsEndpoint_Cancel`（空闲时）复位端点，验证控制器 dequeue 是否随之
@@ -341,24 +341,36 @@ seq2 post         prod=ring+0x200, box ISO2
 结论：**空闲 `usbDsEndpoint_Cancel` 返回成功但完全不改变端点状态**，也不重启
 控制器 dequeue；seq2 仍然失败。cancel 不是复位手段。
 
-## v22 方向：每个 burst 重新安装端点（需新授权）
+## v22 alt-cycle（已离线构建，0 实机，需新授权）
 
-已知事实：**只有端点刚安装后的第一个 burst 能被控制器取指**。那么最直接的
-办法是让每个 burst 都遇到“刚安装”的端点：
+思路：不依赖跨请求的 ring 复用，让每个 burst 都遇到“刚安装”的端点。
 
-1. host 在每个 burst 之间做 `SET_INTERFACE(0)` → `SET_INTERFACE(1)`，
-   驱动会重新跑端点安装路径（cave 的 alt1 NOP + 安装器）；
-2. 设备侧允许“每次 alt1 选择一次 burst”：在 SET_INTERFACE(0) 时清
-   `burstPosted`，于是每次 0→1→SET_CUR 都能 post 一个新 burst；构建用
-   `-DUAC_U2_BURSTS=1`（单次 burst/周期）；
-3. host 每个周期：alt0 → alt1 → 提交 URB 窗口 → SET_CUR → 收数据 → 下一周期；
-   共 4 个周期，每个周期预期 3072B；
-4. 该方案不依赖 cave 的跨请求 ring 复用，绕开 dequeue 复位问题。
+- 设备：`-DUAC_U2_ALT_RETRIGGER` 让 `SET_INTERFACE(0)`（`UAC_ACT_STOP`）清
+  `burstPosted`；`-DUAC_U2_BURSTS=1` 使每次 alt1 只 post 一个 3072B burst。
+- host：`uac-raw-probe --alt-cycle --cycles 4 --transfers 8 --delay-ms 30
+  --timeout-ms 500`；每个周期 alt0 → alt1 → SET_CUR → 30 ms → 提交 8 个 URB
+  → 收集，打印 `cycle[i] alt0/alt1/set_cur/valid/bad/bytes`。
+- payload 仍是 v16 单次完成 cave（`806f54cb…` / 592B）。
 
-风险：每次 SET_INTERFACE 都会重跑安装器；若安装器在运行中重复执行不安全，
-可能 crash。一次 boot、失败即停、读卡恢复。
+| 项 | 值 |
+| --- | --- |
+| 构建 | `8335b6f1…`（91936B），cave 592B，`g_u2BurstBuffers` 0x1000（1 个） |
+| defines | `-DUAC_U2_BURSTS=1 -DUAC_U2_ALT_RETRIGGER` |
+| 工作目录 | `private/analysis/UAC-u2-v22-alt-cycle-20261101` |
+| host 二进制 | `host/uac-raw-probe`（本机编译通过；guest 需重新编译） |
 
-## 风险## 风险## 风险
+一次 boot 的判定：
+
+| 观察 | 结论 |
+| --- | --- |
+| 每个 `cycle[i]` 都有 ~3072B，设备每个周期 `complete 3072/3` | **每个 burst 用新端点**可行，连续 4 burst 拿到 12288B |
+| 只有第 1 个周期有数据 | 重新安装也没有重启控制器；需要换思路（驱动内部端点状态） |
+| 某些周期 `alt1` 失败 | SET_INTERFACE 在运行中不安全；停，不重试 |
+| 任一 crash/fatal | 立即停，读卡取报告 |
+
+停止条件与以往相同：一次 boot、失败即停、读卡恢复 `52069a44…`。
+
+## 风险## 风险## 风险## 风险
 
 - 这是**跨进程写**（app 通过 dmnt 写 usb 模块的 ring 字段），写点与 cave
   提交时的写点相同，但发生在驱动空闲期；若假设错误，可能让后续请求状态

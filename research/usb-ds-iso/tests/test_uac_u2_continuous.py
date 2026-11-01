@@ -27,6 +27,7 @@ ASM19 = ROOT / "patches/iso_burst_uac84_dci9_eventcode.S"
 ASM20 = ROOT / "patches/iso_burst_uac84_dci9_pered.S"
 WORK20 = ROOT / "private/analysis/UAC-u2-v20-per-ed-20261101"
 WORK21 = ROOT / "private/analysis/UAC-u2-v21-idle-cancel-20261101"
+WORK22 = ROOT / "private/analysis/UAC-u2-v22-alt-cycle-20261101"
 WORK14 = ROOT / "private/analysis/UAC-u2-v14-dci9-20261031"
 NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
@@ -384,6 +385,73 @@ class UacU2IdleCancelBuildTests(unittest.TestCase):
             if elf.is_file():
                 self.assertIn(b"UAC U2 idle cancel seq=%u rc=0x%x",
                               elf.read_bytes())
+
+
+class UacU2AltRetriggerTests(unittest.TestCase):
+    """v22: alt0 clears the one-train gate so each alt1 posts one burst."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+
+    def test_alt_stop_clears_the_burst_gate(self):
+        self.assertIn("#ifdef UAC_U2_ALT_RETRIGGER", self.source)
+        self.assertIn("g_uacCtx.burstPosted = false;", self.source)
+        self.assertIn("case UAC_ACT_STOP:", self.source)
+
+
+class UacRawProbeAltCycleTests(unittest.TestCase):
+    """v22: host alt0 -> alt1 -> SET_CUR cycles."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not HOST.is_file():
+            raise unittest.SkipTest(f"missing {HOST}")
+        cls.text = HOST.read_text()
+
+    def test_options_and_cycle_log(self):
+        for token in ("--alt-cycle", "--cycles", "#define MAX_CYCLES 16",
+                      "cycles must be 1..%d",
+                      "static int alt_cycle_run(",
+                      "alt-cycle cycles=%u window=%u",
+                      "cycle[%u] alt0=%d", "cycle[%u] alt1=%d",
+                      "cycle[%u] set_cur=%d", "cycle[%u] valid=%u bad=%u bytes=%u"):
+            self.assertIn(token, self.text)
+
+    def test_binary_rejects_bad_cycles(self):
+        if not BINARY.is_file():
+            self.skipTest(f"missing {BINARY}")
+        for value in ("0", "17"):
+            result = subprocess.run([str(BINARY), "--alt-cycle", "--cycles", value],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cycles must be 1..16", result.stderr)
+
+
+class UacU2AltCycleBuildTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not (WORK22 / "manifest.json").is_file():
+            raise unittest.SkipTest(f"missing {WORK22}; run the offline build")
+        cls.doc = json.loads((WORK22 / "manifest.json").read_text())
+
+    def test_payload_is_the_v16_cave(self):
+        if not (WORK14 / "manifest.json").is_file():
+            self.skipTest(f"missing {WORK14}")
+        old = json.loads((WORK14 / "manifest.json").read_text())
+        self.assertEqual(self.doc["cave_sha256"], old["cave_sha256"])
+
+    def test_build_is_one_burst_per_alt_cycle(self):
+        build = json.loads((WORK22 / "build-result.json").read_text())
+        self.assertIn("-DUAC_U2_BURSTS=1", build["defines"])
+        self.assertIn("-DUAC_U2_ALT_RETRIGGER", build["defines"])
+        nsp = Path(build["output"]["nsp"])
+        if nsp.is_file():
+            import hashlib
+            self.assertEqual(hashlib.sha256(nsp.read_bytes()).hexdigest(),
+                             build["output"]["sha256"])
 
 
 class UacU2RingAdvanceBuildTests(unittest.TestCase):

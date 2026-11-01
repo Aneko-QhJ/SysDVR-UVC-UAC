@@ -25,19 +25,17 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-01 15:00）
+## 当前边界（2026-11-01 15:10）
 
 - 硬件授权：`remaining=0`、`acquisition_enabled=false`、`next_hardware_authorized=false`。
-- 最后实机：2026-11-01 14:3x **v21 idle cancel**（VM 开机前 suspend，attach
-  后立即 probe）。host 仍只有 3072B；设备 `idle cancel seq=2 rc=0x0`，但
-  `after-cancel` 与 `pre` 完全相同（prod=cons=ring、copy=ring+0xff0），seq2
-  仍 100 ms 无 completion。
-- 结论：**空闲 cancel 是 no-op**；只有“刚安装的端点”能收到第一个 burst。
-- 下一阶段：**v22**（需新授权）：host 在 burst 之间做
-  `SET_INTERFACE(0)→SET_INTERFACE(1)` 重新安装端点；设备在 alt0 时清
-  `burstPosted`，每次 alt1 允许一次 burst（`-DUAC_U2_BURSTS=1`）；4 个周期
-  各收 3072B。需先改 host 工具（alt-cycle）与 app；详见
-  [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
+- 最后实机：2026-11-01 14:3x **v21 idle cancel**。`idle cancel rc=0` 但
+  `after-cancel` 与 `pre` 相同、seq2 仍失败——**空闲 cancel 是 no-op**。
+- 共识：只有“刚安装的端点”能收到第一个 burst。
+- 下一阶段：**v22 `8335b6f1…`（91936B）已离线构建**（0 实机）：设备在 alt0
+  清 `burstPosted`、每次 alt1 一个 burst（`-DUAC_U2_BURSTS=1
+  -DUAC_U2_ALT_RETRIGGER`）；host `--alt-cycle --cycles 4 --transfers 8
+  --delay-ms 30 --timeout-ms 500` 每周期 alt0→alt1→SET_CUR→URB→收集。
+  **需新授权**；详见 [docs/UAC_U2_RING_RESET.md](docs/UAC_U2_RING_RESET.md)。
 - 8 个 descriptor-parser NOP 的全局风险仍未隔离。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
 

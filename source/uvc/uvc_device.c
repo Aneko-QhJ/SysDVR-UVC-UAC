@@ -2689,6 +2689,11 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         break;
     case UAC_ACT_STOP:
         g_uacCtx.streaming = false;
+#ifdef UAC_U2_ALT_RETRIGGER
+        /* v22: a host alt0 -> alt1 cycle re-installs the endpoint; let the
+           next alt1 SET_CUR post a fresh burst again. */
+        g_uacCtx.burstPosted = false;
+#endif
         _ctrlAck(iface);
         break;
     case UAC_ACT_ACK:

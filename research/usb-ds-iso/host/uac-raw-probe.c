@@ -68,13 +68,109 @@ static unsigned long long now_ms(void)
            (unsigned long long)ts.tv_nsec / 1000000ULL;
 }
 
+#define MAX_CYCLES 16
+
+/* v22: re-install the endpoint between bursts with alt0 -> alt1, then trigger
+   one 3072-byte burst per cycle.  The device resets its one-train gate on
+   alt0, so every cycle gets a fresh cave post. */
+static int alt_cycle_run(libusb_context *ctx, libusb_device_handle *h,
+                         int iface, int endpoint, unsigned packets,
+                         unsigned window, int delay_ms, int timeout_ms,
+                         unsigned cycles)
+{
+    struct libusb_transfer *xfers[MAX_XFERS] = {0};
+    unsigned char *bufs[MAX_XFERS] = {0};
+    struct xfer_state states[MAX_XFERS] = {{0}};
+    unsigned total_bytes = 0;
+
+    if (window < 1 || window > MAX_XFERS) return 0;
+    for (unsigned i = 0; i < window; ++i) {
+        xfers[i] = libusb_alloc_transfer((int)packets);
+        bufs[i] = calloc(packets, PACKET);
+        if (!xfers[i] || !bufs[i]) goto cleanup;
+    }
+
+    unsigned char rate[3] = {0x80, 0xBB, 0x00};
+    for (unsigned c = 0; c < cycles; ++c) {
+        int rc = libusb_set_interface_alt_setting(h, iface, 0);
+        printf("cycle[%u] alt0=%d (%s)\n", c, rc,
+               rc ? libusb_error_name(rc) : "ok");
+        usleep(5000);
+        rc = libusb_set_interface_alt_setting(h, iface, 1);
+        printf("cycle[%u] alt1=%d (%s)\n", c, rc,
+               rc ? libusb_error_name(rc) : "ok");
+        if (rc) break;
+        usleep(20000);
+        rc = libusb_control_transfer(h, 0x22, 0x01, 0x0100,
+            (uint16_t)endpoint, rate, sizeof(rate), 1000);
+        printf("cycle[%u] set_cur=%d (%s)\n", c, rc,
+               rc < 0 ? libusb_error_name(rc) : "ok");
+        if (rc < 0) break;
+        if (delay_ms > 0) usleep((useconds_t)delay_ms * 1000);
+
+        unsigned submitted = 0;
+        for (unsigned i = 0; i < window; ++i) {
+            rc = submit_iso(xfers[i], h, endpoint, bufs[i], packets,
+                            timeout_ms, &states[i]);
+            if (rc) {
+                printf("cycle[%u] submit[%u]=%d (%s)\n", c, i, rc,
+                       libusb_error_name(rc));
+                break;
+            }
+            ++submitted;
+        }
+        if (submitted == 0) break;
+
+        unsigned long long deadline = now_ms() + (unsigned long long)timeout_ms;
+        unsigned done = 0;
+        while (done < submitted && now_ms() < deadline) {
+            struct timeval tv = {0, 5000};
+            rc = libusb_handle_events_timeout(ctx, &tv);
+            if (rc < 0) break;
+            done = 0;
+            for (unsigned i = 0; i < submitted; ++i)
+                if (states[i].done) ++done;
+        }
+        if (done < submitted) {
+            printf("cycle[%u] cancel remaining=%u/%u\n", c,
+                   submitted - done, submitted);
+            for (unsigned i = 0; i < submitted; ++i)
+                if (!states[i].done) libusb_cancel_transfer(xfers[i]);
+            for (unsigned n = 0; n < 20; ++n) {
+                struct timeval tv = {0, 5000};
+                libusb_handle_events_timeout(ctx, &tv);
+            }
+        }
+
+        unsigned valid = 0, bad = 0, bytes = 0;
+        for (unsigned i = 0; i < submitted; ++i) {
+            unsigned v = 0, b = 0, n = 0;
+            packet_stats(xfers[i], packets, &v, &b, &n);
+            valid += v;
+            bad += b;
+            bytes += n;
+        }
+        printf("cycle[%u] valid=%u bad=%u bytes=%u\n", c, valid, bad, bytes);
+        total_bytes += bytes;
+        for (unsigned i = 0; i < window; ++i) states[i].done = 0;
+    }
+
+cleanup:
+    for (unsigned i = 0; i < MAX_XFERS; ++i) {
+        if (xfers[i]) libusb_free_transfer(xfers[i]);
+        free(bufs[i]);
+    }
+    return total_bytes > 0;
+}
+
 static void usage(const char *argv0)
 {
     fprintf(stderr,
         "usage: %s [--interface N] [--endpoint 0xNN] [--packets N] "
         "[--claim-only] [--no-trigger] [--no-detach] "
         "[--trigger-first] [--delay-ms N] [--transfers N] "
-        "[--timeout-ms N] [--rearm] [--max-urbs N]\n", argv0);
+        "[--timeout-ms N] [--rearm] [--max-urbs N] "
+        "[--alt-cycle] [--cycles N]\n", argv0);
 }
 
 int main(int argc, char **argv)
@@ -87,6 +183,8 @@ int main(int argc, char **argv)
     int trigger_first = 0, delay_ms = 0, timeout_ms = 500;
     int rearm = 0;
     unsigned max_urbs = 64;
+    int alt_cycle = 0;
+    unsigned cycles = 4;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--interface") && i + 1 < argc) {
             iface = atoi(argv[++i]);
@@ -112,6 +210,10 @@ int main(int argc, char **argv)
             rearm = 1;
         } else if (!strcmp(argv[i], "--max-urbs") && i + 1 < argc) {
             max_urbs = (unsigned)strtoul(argv[++i], NULL, 0);
+        } else if (!strcmp(argv[i], "--alt-cycle")) {
+            alt_cycle = 1;
+        } else if (!strcmp(argv[i], "--cycles") && i + 1 < argc) {
+            cycles = (unsigned)strtoul(argv[++i], NULL, 0);
         } else {
             usage(argv[0]);
             return 2;
@@ -135,6 +237,10 @@ int main(int argc, char **argv)
     }
     if (rearm && max_urbs < transfers) {
         fprintf(stderr, "max-urbs must be >= transfers (window)\n");
+        return 2;
+    }
+    if (cycles < 1 || cycles > MAX_CYCLES) {
+        fprintf(stderr, "cycles must be 1..%d\n", MAX_CYCLES);
         return 2;
     }
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -178,6 +284,14 @@ int main(int argc, char **argv)
     if (claim_only) {
         result = 0;
         goto cleanup;
+    }
+
+    if (alt_cycle) {
+        printf("alt-cycle cycles=%u window=%u packets=%u delay_ms=%d timeout_ms=%d\n",
+               cycles, transfers, packets, delay_ms, timeout_ms);
+        result = alt_cycle_run(ctx, h, iface, endpoint, packets, transfers,
+                               delay_ms, timeout_ms, cycles) ? 0 : 1;
+        goto restore_alt;
     }
 
     rc = libusb_set_interface_alt_setting(h, iface, 1);
