@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from build_uac_u2_producer import assemble  # noqa: E402
 
 PIPE = ROOT / "patches/iso_burst_uac84_dci9_pipe.S"
+CURSOR = ROOT / "patches/iso_burst_uac84_dci9_pipe_cursor.S"
 REARM = ROOT / "patches/iso_burst_uac84_dci9_rearm.S"
 SOURCE = REPO / "source/uvc/uvc_device.c"
 BUILDER = ROOT / "tools/build_uac_u2_probe.py"
@@ -108,6 +109,59 @@ class UacU2PipeAppTests(unittest.TestCase):
         builder = BUILDER.read_text()
         self.assertIn('if "UAC_U2_PIPELINE" in args.define:', builder)
         self.assertIn('markers.append(b"UAC U2 pipe end")', builder)
+
+
+class UacU2CursorCaveTests(unittest.TestCase):
+    """v26B: consecutive TD sets get consecutive frame windows."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = CURSOR.read_text()
+
+    def test_cursor_is_read_before_the_frame_and_written_after(self):
+        read = self.text.index("ldrh w10, [x5, #0x38]")
+        lsl = self.text.index("lsl w11, w9, #20", read)
+        self.assertLess(read, lsl)
+        store = self.text.index("strh w10, [x5, #0x38]")
+        self.assertGreater(store, lsl)
+        self.assertIn("cmp w12, #0x400", self.text)
+        self.assertIn("mov w9, w10", self.text)
+
+    def test_cursor_scratch_is_the_mailbox_free_area(self):
+        # +0x38 avoids magic/event/done/completed/actual/first (+0..+0x1f)
+        # and the error slot at +0x40.
+        self.assertIn("[x5, #0x38]", self.text)
+        self.assertNotIn("[x5, #0x40]", self.text)
+
+    def test_frame_model_prefers_the_cursor_when_ahead(self):
+        def pick(mfi, cursor):
+            if cursor == 0:
+                return mfi
+            diff = (cursor - mfi) & 0x7FF
+            return cursor if diff < 0x400 else mfi
+
+        self.assertEqual(pick(100, 132), 132)   # cursor ahead
+        self.assertEqual(pick(100, 0), 100)     # no cursor
+        self.assertEqual(pick(100, 100), 100)   # equal
+        self.assertEqual(pick(100, 90), 100)    # cursor behind
+        self.assertEqual(pick(2040, 8), 8)      # wrap: ahead by 16
+
+    def test_cursor_cave_is_36_bytes_over_the_pipeline(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            cursor, _ = assemble(TOOLCHAIN, tmp / "c", CURSOR,
+                                 require_report=False)
+            pipe, _ = assemble(TOOLCHAIN, tmp / "p", PIPE,
+                               require_report=False)
+        self.assertEqual(len(cursor), len(pipe) + 36)
+        self.assertLessEqual(len(cursor), 0x69000 - 0x68D54)
+        words = [int.from_bytes(cursor[i:i + 4], "little")
+                 for i in range(0, len(cursor) - 3, 4)]
+        self.assertIn(0x794070AA, words)  # ldrh w10, [x5, #56]
+        self.assertIn(0x790070AA, words)  # strh w10, [x5, #56]
+        self.assertIn(0x7110019F, words)  # cmp w12, #0x400
 
 
 if __name__ == "__main__":

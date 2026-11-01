@@ -1,6 +1,7 @@
 # UAC U2：连续 ring / 双 buffer 流水线（v26 设计，离线）
 
-> 状态：**v26A 已离线实现并构建（`5e6c29af…`，92322B），0 实机**。v23 证明
+> 状态：**v26A 实机部分成功（8 post/8 report，只有偶数 buffer 上线）；v26B
+> 帧游标已离线实现并构建（`116a1204…`，92342B），0 实机**。v23 证明
 > “每 burst 重放 `0x2feb0`”能让 4 个顺序 burst 全部完成；v24 把 dmnt dump
 > 去掉后 gap 96 ms；v25 把 TD 帧 lead 压到 4 ms 失败（1536B、`0x748c`），
 > 回退 32 ms。本文件先设计、后实现连续 ring，不重复
@@ -127,14 +128,20 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
 - 收尾：usb `svcBreak`（同栈）在 host 重连后再次 `SET_INTERFACE(0)` 时出现；
   `--keep-alt` 只去掉了 probe 自己的 restore，内核重绑/枚举仍会发 alt0。
 
-### v26B：cave 帧游标 + 16 ms 定时投递
+### v26B：cave 帧游标（已实现，app 不变）
 
-1. cave 在 mailbox 空闲区（`ring+0xf80+0x38`，16-bit）存“下一可用帧”：
-   `frame = max(MFI/8 + 32, cursor)`，写完 16 帧后 `cursor = frame + 16`；
-   空 ring 的重放 `0x2feb0` memset 会把游标清零，自动回 MFI 基准；
-2. app 的 top-up 改为 16 ms 网格（槽位满则等一个完成），保持 2–4 个在飞；
-3. 预期：buf0/buf1 的帧窗口相邻，8 个 buffer 全部上线，gap 接近 0；
-4. 收尾崩溃仍未解决，需在 app 的 alt0 处理里先 cancel，或单独研究内核
+1. cave（`patches/iso_burst_uac84_dci9_pipe_cursor.S`，**672/684 B**）在
+   mailbox 空闲区 `ring+0xf80+0x38` 存 16-bit“下一可用帧”：
+   `frame = max(MFI/8 + 32, cursor)`（游标在前才用），写完 16 帧后
+   `cursor = frame + 16`；空 ring 的 memset 会把游标清零，自动回 MFI 基准；
+2. app 与 v26A 相同（`BURSTS=8 + LIGHT_LOG + PIPELINE`，2 在飞、
+   completion 驱动 top-up）——游标保证相邻 TD 集的帧窗口连续，不再同日而语；
+3. NSP `116a1204…`（92342B），NSO `7551a37a…`，cave 比 v26A 多 36 B；
+   工作目录 `private/analysis/UAC-u2-v26b-cursor-20261101`；
+4. 预期：buf0/buf1 的帧窗口相邻，8 个 buffer 全部上线，gap 接近 0；
+   `tests/test_uac_u2_pipeline.py` 新增 4 项（读/写顺序、scratch 偏移、
+   帧选择模型、cave +36B 与指令）。
+5. 收尾崩溃仍未解决，需在 app 的 alt0 处理里先 cancel，或单独研究内核
    重绑/重枚举路径。
 
 ## 里程碑
