@@ -158,6 +158,23 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
      若停止，则每个 TD 集都需要自己的门铃，“两套排队”不成立。
 - 收尾：本轮无新 crash 报告（crash 21），新增 1 份 erpt `760e51fa`。
 
+### v27 读-only 游标诊断（已离线构建）
+
+- 构建：v26B cursor cave（672/684 B）+ app
+  `-DUAC_U2_CURSOR_DIAG`；NSP `bdb80208…`（92862B），NSO `2b88e833…`；
+  工作目录 `private/analysis/UAC-u2-v27-cursor-diag-20261102`；
+- app 的 `_uacLogCursor(tag, seq)` 读端点对象（`base+0xFC300`：
+  ring/prod/cons/cycle）与 cave 游标 scratch（`ring+0xFB8`），每个 post
+  前后、每次 reap、train 结束各打一行：
+  `UAC U2 cursor <tag> seq=N ring=… prod=… cons=… cycle=… cur=… rc=…`；
+- 纯读：不 flush、不写；诊断会拉长 train 时间，本轮不看 gap；
+- 判读：
+  - `cur` 每次 +16、奇数 buffer 的 `done` 时 `cur` 在前 → cave 侧正确，
+    是驱动/控制器把排队的奇数 set 清掉 → 下一步做门铃路径实验；
+  - `cur` 恒 0 或不前进 → scratch 被覆盖或 cave 没读/写 → 改偏移或换
+    scratch；
+- 本轮只验证读数，不改数据面行为；crash 仍按老规矩停、读卡。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

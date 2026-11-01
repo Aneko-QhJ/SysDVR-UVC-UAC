@@ -164,5 +164,37 @@ class UacU2CursorCaveTests(unittest.TestCase):
         self.assertIn(0x7110019F, words)  # cmp w12, #0x400
 
 
+class UacU2CursorDiagTests(unittest.TestCase):
+    """v27: the read-only cursor diagnostic in the pipeline loop."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.text = SOURCE.read_text()
+
+    def test_helper_reads_the_cursor_scratch(self):
+        self.assertIn("_uacLogCursor(const char *tag, u32 seq)", self.text)
+        self.assertIn("ring + 0xFB8", self.text)
+        self.assertIn("UAC U2 cursor %s seq=%u", self.text)
+        self.assertIn('crc = svcReadDebugProcessMemory(&cursor, h, ring + 0xFB8',
+                      self.text)
+
+    def test_helper_is_outside_the_pipeline_guard(self):
+        diag = self.text.index("_uacLogCursor(const char *tag, u32 seq)")
+        guard = self.text.index("#if !defined(UAC_U2_PIPELINE)")
+        self.assertLess(diag, guard)
+
+    def test_calls_cover_pre_post_done_end(self):
+        for tag in ('"pre"', '"post"', '"done"', '"end"'):
+            self.assertIn(f"_uacLogCursor({tag}", self.text)
+        # every call is compiled only in the diagnostic build
+        for marker in ("#if defined(UAC_U2_CURSOR_DIAG)\n            _uacLogCursor(\"pre\"",
+                       "#if defined(UAC_U2_CURSOR_DIAG)\n            _uacLogCursor(\"post\"",
+                       "#if defined(UAC_U2_CURSOR_DIAG)\n                _uacLogCursor(\"done\"",
+                       "#if defined(UAC_U2_CURSOR_DIAG)\n    _uacLogCursor(\"end\""):
+            self.assertIn(marker, self.text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2298,6 +2298,38 @@ static void _uacLogInstallState(void)
    Log the full accept state before/after every post: word/interval/speed/dci
    must stay at their burst-1 values, and prod/cons/copy show whether the gate
    would accept.  No behaviour change. */
+#if defined(UAC_U2_CURSOR_DIAG)
+/* v27 read-only diagnostic: the cave keeps its next free frame in the
+   mailbox scratch (ring+0xFB8).  Log the cursor and the ring pointers around
+   every pipeline post to tell "cursor not written/read" from "ring reset
+   between posts".  Reads only. */
+static void _uacLogCursor(const char *tag, u32 seq)
+{
+    if (!g_uacUsbPid) return;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
+    u8 st[0x48];
+    Result rc = svcReadDebugProcessMemory(st, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ, sizeof(st));
+    if (R_SUCCEEDED(rc)) {
+        u64 ring = 0, prod = 0, cons = 0;
+        memcpy(&ring, st + 0x10, sizeof(ring));
+        memcpy(&prod, st + 0x18, sizeof(prod));
+        memcpy(&cons, st + 0x20, sizeof(cons));
+        u16 cursor = 0;
+        Result crc = 0xdead;
+        if (ring) {
+            crc = svcReadDebugProcessMemory(&cursor, h, ring + 0xFB8,
+                                            sizeof(cursor));
+        }
+        LOG("UAC U2 cursor %s seq=%u ring=0x%llx prod=0x%llx cons=0x%llx cycle=%u cur=%u rc=0x%x\n",
+            tag, seq, (unsigned long long)ring, (unsigned long long)prod,
+            (unsigned long long)cons, st[0x40], cursor, crc);
+    }
+    svcCloseHandle(h);
+}
+#endif
+
 #if !defined(UAC_U2_PIPELINE)
 /* v26A pipeline builds do not use the per-burst submit-state dump; the ring
    and install dumps after the train still serve as evidence. */
@@ -2528,11 +2560,17 @@ static void _postUacBurst(void)
             }
             g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
             armDCacheFlush(buf, UAC_U2_BURST_BYTES);
+#if defined(UAC_U2_CURSOR_DIAG)
+            _uacLogCursor("pre", next + 1);
+#endif
             u32 urb = 0;
             Result rc = usbDsEndpoint_PostBufferAsync(
                 g_uacCtx.audioEndpointIn, buf, UAC_U2_BURST_BYTES, &urb);
             LOG("UAC U2 pipe post buf=%u urb=%u rc=0x%x seq=%u\n",
                 next, urb, rc, next + 1);
+#if defined(UAC_U2_CURSOR_DIAG)
+            _uacLogCursor("post", next + 1);
+#endif
             if (R_FAILED(rc)) {
                 pipe_failed = true;
                 break;
@@ -2574,6 +2612,9 @@ static void _postUacBurst(void)
                 LOG("UAC U2 pipe done buf=%u urb=%u xfer=%u status=%u\n",
                     b, id, report.report[i].transferredSize,
                     report.report[i].urb_status);
+#if defined(UAC_U2_CURSOR_DIAG)
+                _uacLogCursor("done", b + 1);
+#endif
                 break;
             }
         }
@@ -2585,6 +2626,9 @@ static void _postUacBurst(void)
         LOG("UAC U2 pipe cancel pending=%u rc=0x%x\n", posted - completed,
             cancel);
     }
+#if defined(UAC_U2_CURSOR_DIAG)
+    _uacLogCursor("end", 0);
+#endif
     LOG("UAC U2 pipe end posted=%u completed=%u bytes=%u\n",
         posted, completed, xfer_total);
     _uacLogInstallState();
