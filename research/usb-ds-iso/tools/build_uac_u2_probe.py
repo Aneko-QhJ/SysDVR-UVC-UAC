@@ -58,7 +58,12 @@ def main():
 
     nsp = outputs / "exefs.nsp"
     elf = outputs / "exefs.elf"
-    for marker in (b"UAC U2 post", b"UAC U2 complete", b"UAC U2 install"):
+    markers = [b"UAC U2 post", b"UAC U2 install"]
+    if "UAC_U2_PIPELINE" in args.define:
+        markers.append(b"UAC U2 pipe end")
+    else:
+        markers.append(b"UAC U2 complete")
+    for marker in markers:
         if marker not in elf.read_bytes():
             raise SystemExit(f"missing compile-time marker {marker!r}")
 

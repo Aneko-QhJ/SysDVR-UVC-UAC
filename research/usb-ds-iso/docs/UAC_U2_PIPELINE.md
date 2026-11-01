@@ -1,9 +1,10 @@
 # UAC U2：连续 ring / 双 buffer 流水线（v26 设计，离线）
 
-> 状态：**设计稿，0 实机**。v23 证明“每 burst 重放 `0x2feb0`”能让 4 个顺序
-> burst 全部完成；v24 把 dmnt dump 去掉后 gap 96 ms；v25 把 TD 帧 lead
-> 压到 4 ms 失败（1536B、`0x748c`），回退 32 ms。本文件设计下一步的连续
-> ring，不重复 [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
+> 状态：**v26A 已离线实现并构建（`5e6c29af…`，92322B），0 实机**。v23 证明
+> “每 burst 重放 `0x2feb0`”能让 4 个顺序 burst 全部完成；v24 把 dmnt dump
+> 去掉后 gap 96 ms；v25 把 TD 帧 lead 压到 4 ms 失败（1536B、`0x748c`），
+> 回退 32 ms。本文件先设计、后实现连续 ring，不重复
+> [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
 > [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) 的事实。
 
 ## 现状
@@ -93,6 +94,27 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
   的映射需要按 id 查找，不能假设按顺序。
 - **帧 lead 32 ms** 仍是空档的一部分；A 成立后再考虑把 lead 降到 16
   （v25 的 4 ms 已证明太低）。
+
+## v26A 候选（已离线实现）
+
+| 项 | 值 |
+| --- | --- |
+| cave | `patches/iso_burst_uac84_dci9_pipe.S`，636/684 B（v23 rearm cave +16 B） |
+| cave 行为 | `prod==cons` → 重放 `0x2feb0`、修 link、写 base；`prod!=cons` → 直接在 `prod` 写、不 memset、不重写 link；两条路径都进同一个 mailbox/TD 写入段 |
+| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE`；16 ms tick、2 个 buffer 在飞、report entry 按 urb id 匹配、失败/停滞先 cancel 在飞请求；`_uacLogSubmitState` 在 pipeline 构建里不编译 |
+| NSP | `5e6c29af…`（92322B），NSO `d6480771…`，29 条 edits / cave `df43d0a8…` |
+| 工作目录 | `private/analysis/UAC-u2-v26a-pipe-20261101` |
+| 测试 | `tests/test_uac_u2_pipeline.py`（7 项：cave 分支/尺寸/唯一 rearm 调用 + app 结构与 cancel） |
+| 预期 | 8×3072B 连续、`pipe end posted=8 completed=8`、ring `prod/cons` 前进不回 base、无 crash |
+
+一次 boot 的判定：
+
+| 观察 | 结论 |
+| --- | --- |
+| host 连续 ≥ 8×3072B、burst 之间无 ~80 ms 空档；设备 `posted=completed=8` | ring 连续成立，进入 16/32 buffer 与 PCM/时钟 |
+| gap 仍 ~80–96 ms，`done` 仍回 base | 驱动仍在每次完成时复位；查 `0x30ff4` 触发码与 ring 状态 |
+| 1536B/`0x748c` 或漏服务 | 16 ms 节拍/帧对齐不对；回退单 burst 时序 |
+| 任一 crash/fatal | 停，读卡；重点看 v11 pending-request 崩溃 |
 
 ## 里程碑
 

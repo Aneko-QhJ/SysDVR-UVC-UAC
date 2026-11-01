@@ -34,7 +34,15 @@ NM = Path("/opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm")
 
 def post_body(source):
     start = source.index("static void _postUacBurst(void)")
-    return source[start:source.index("\n}\n", start)]
+    body = source[start:source.index("\n}\n", start)]
+    # v26A adds the pipeline variant before #else; these tests describe the
+    # sequential branch, so drop the pipeline block and keep the prologue.
+    marker = "#if defined(UAC_U2_PIPELINE)\n"
+    if marker in body:
+        p = body.index(marker)
+        q = body.index("#else\n", p)
+        body = body[:p] + body[q + len("#else\n"):]
+    return body
 
 
 def buffer_symbol_size(elf):

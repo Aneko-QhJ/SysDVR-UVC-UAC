@@ -68,8 +68,16 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #else
 #define UAC_U2_TRAIN_POSTS 1
 #endif
+#if defined(UAC_U2_PIPELINE)
+/* v26A keeps two requests in flight so the ring never runs dry; the cave
+   writes the next TD set at prod without replaying the endpoint setup. */
+#if UAC_U2_TRAIN_POSTS < 2 || UAC_U2_TRAIN_POSTS > 8
+#error "UAC_U2_PIPELINE needs UAC_U2_BURSTS 2..8"
+#endif
+#else
 #if UAC_U2_TRAIN_POSTS < 1 || UAC_U2_TRAIN_POSTS > 4
 #error "UAC_U2_BURSTS must be 1..4: only one request may be pending at a time"
+#endif
 #endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][0x1000];
 #endif
@@ -2290,6 +2298,9 @@ static void _uacLogInstallState(void)
    Log the full accept state before/after every post: word/interval/speed/dci
    must stay at their burst-1 values, and prod/cons/copy show whether the gate
    would accept.  No behaviour change. */
+#if !defined(UAC_U2_PIPELINE)
+/* v26A pipeline builds do not use the per-burst submit-state dump; the ring
+   and install dumps after the train still serve as evidence. */
 static void _uacLogSubmitState(const char *tag, u32 seq)
 {
     UacUsbEpState ep = {0};
@@ -2312,6 +2323,7 @@ static void _uacLogSubmitState(const char *tag, u32 seq)
         ep.mask_ok ? ep.pending_mask : 0u,
         (ep.mask_ok ? (ep.pending_mask >> 9) & 1u : 0u), ep.state[0x0A]);
 }
+#endif /* !UAC_U2_PIPELINE */
 
 #ifdef UAC_U2_RING_ADVANCE
 /* v17 diagnostic: the driver resets prod/cons to the ring base when a request
@@ -2494,6 +2506,90 @@ static void _postUacBurst(void)
        completion, so the driver never holds two ISO requests at once (the
        v11 crash).  The 1 kHz phase continues across buffers, which lets the
        host check continuity instead of four separate 16 ms bursts. */
+#if defined(UAC_U2_PIPELINE)
+    /* v26A: 16 ms timer double buffering.  Two buffers stay in flight so the
+       cave always has a TD set queued; the driver's error reset then does not
+       fire and the cave writes the next set at prod without replaying
+       0x2feb0.  The 1 kHz pattern phase continues across buffers. */
+    u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
+    bool pipe_failed = false;
+    u8 done_flag[8] = {0};
+    u32 urb_ids[8] = {0};
+    u64 last_progress = svcGetSystemTick();
+
+    for (;;) {
+        while (next < UAC_U2_TRAIN_POSTS && posted - completed < 2) {
+            u8 *buf = g_u2BurstBuffers[next];
+            s16 *samples = (s16 *)buf;
+            const u32 base = g_uacCtx.patternFrame;
+            for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
+                const u32 frame = base + (i / 2);
+                samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
+            }
+            g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
+            armDCacheFlush(buf, UAC_U2_BURST_BYTES);
+            u32 urb = 0;
+            Result rc = usbDsEndpoint_PostBufferAsync(
+                g_uacCtx.audioEndpointIn, buf, UAC_U2_BURST_BYTES, &urb);
+            LOG("UAC U2 pipe post buf=%u urb=%u rc=0x%x seq=%u\n",
+                next, urb, rc, next + 1);
+            if (R_FAILED(rc)) {
+                pipe_failed = true;
+                break;
+            }
+            urb_ids[next] = urb;
+            ++next;
+            ++posted;
+            last_progress = svcGetSystemTick();
+        }
+        if (pipe_failed) break;
+        if (posted == UAC_U2_TRAIN_POSTS && completed == posted) break;
+        if (posted == completed) break; /* nothing in flight and nothing left */
+
+        Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
+                                16E+6);
+        if (R_FAILED(wait)) {
+            if ((svcGetSystemTick() - last_progress) > 100ULL * 19200) {
+                LOG("UAC U2 pipe stall posted=%u completed=%u\n",
+                    posted, completed);
+                break;
+            }
+            continue;
+        }
+        eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+        UsbDsReportData report;
+        if (R_FAILED(usbDsEndpoint_GetReportData(
+                g_uacCtx.audioEndpointIn, &report))) {
+            LOG("UAC U2 pipe report failed\n");
+            pipe_failed = true;
+            break;
+        }
+        for (u32 i = 0; i < report.report_count && i < 8; ++i) {
+            const u32 id = report.report[i].id;
+            for (u32 b = 0; b < next; ++b) {
+                if (done_flag[b] || urb_ids[b] != id) continue;
+                done_flag[b] = 1;
+                ++completed;
+                xfer_total += report.report[i].transferredSize;
+                LOG("UAC U2 pipe done buf=%u urb=%u xfer=%u status=%u\n",
+                    b, id, report.report[i].transferredSize,
+                    report.report[i].urb_status);
+                break;
+            }
+        }
+        last_progress = svcGetSystemTick();
+    }
+    if (completed < posted) {
+        /* Do not leave ISO requests pending across the alt0 teardown. */
+        Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+        LOG("UAC U2 pipe cancel pending=%u rc=0x%x\n", posted - completed,
+            cancel);
+    }
+    LOG("UAC U2 pipe end posted=%u completed=%u bytes=%u\n",
+        posted, completed, xfer_total);
+    _uacLogInstallState();
+    _uacLogRingState();
+#else
     u32 posted = 0, completed = 0;
     u64 tPrev = svcGetSystemTick();
     for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n) {
@@ -2612,6 +2708,7 @@ static void _postUacBurst(void)
         completed, g_uacCtx.patternFrame);
     _uacLogInstallState();
     _uacLogRingState();
+#endif
 }
 #endif
 
