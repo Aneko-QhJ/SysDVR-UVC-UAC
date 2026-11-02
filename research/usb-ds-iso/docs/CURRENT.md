@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 16:4x，Asia/Shanghai）
+# 当前状态（2026-11-02 16:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -19,7 +19,7 @@
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 16:4x）
+## 当前进度（2026-11-02 16:5x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -71,7 +71,7 @@
 | **PCM/时钟 gap 模型（离线）** | 96ms 周期只承载 16ms 数据 → 占空比 **16.6%**；10s 模型：线上 319488B、丢弃 1.54MB、host 空闲 8336ms、ring 顶满；60ms 周期也只有 ~27% → **标准 UAC 48kHz 不可连续**，UAC 保持禁用 | `tools/model_uac_pcm_ring.py`（`simulate_gap`）、[UAC_PCM_GAP.md](UAC_PCM_GAP.md) |
 | **v29a 队列补丁（实机一次，诊断通过）** | host **bytes=21504**（7×3072B，t=34–306ms；v24 为 12288B），**不挂死**；设备 cursor：post0 `prod=+0x200 cur=476`、post1 `prod=+0x400 cur=494` → 第二个请求确实进 cave，控制器接受 2×16 TD；但共享 mailbox 使完成返回 status=2/5、ring 在另一套 TD 排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`（16:20） | `private/runs/UAC-u2-v29a-queue-20261102`、`private/card-cycles/20261102-u2-v29a-queue`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v29b per-set mailbox（实机一次，通过）** | host **bytes=24576**（8×3072B，t=33–305ms）；设备 **8/8 全部 `3072/3`**、`pipe end posted=8 completed=8 bytes=24576`；A/B mailbox 交替干净，两套之间无 `prod=cons=ring` 复位（只有最后一次完成后的收尾复位）；无新 crash/erpt/fatal；占空比 ~47%（v24 16.7%），但 train 仍被 `BURSTS=8` 限长 | `private/runs/UAC-u2-v29b-sets-20261102`、`private/card-cycles/20261102-u2-v29b-sets`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
-| **v29c 滚动流（离线）** | pipeline 不再受 `BURSTS=8` 限长：新增 `UAC_U2_STREAM_POSTS`（默认 = TRAIN_POSTS，本次 64），8 槽缓冲池只在上一请求完成后复用，仍在飞 ≤2；cave/驱动补丁同 v29b；NSP `b1f812e4…`（92483B）；目标：64 post / 64 完成、设备与 host 字节相等、无复位/停滞，测稳态占空比 | `private/analysis/UAC-u2-v29c-stream-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v29c 滚动流（实机一次，稳态成立/收尾 wrap 失败）** | host **bytes=187968**（t=33–2097ms，持续 ~2.1s）；设备 `posted=64 completed=63 bytes=187392`，61 个 `3072/3` 后出现 2 个 `status=5`、1 个被 cancel；**故障点是 cave 的 TD 环 wrap**（post 63 `prod=+0xddf0` → post 64 `prod=+0x080`、cycle 翻转），与驱动的 link 槽 `+0xff0` 不一致且把一套 TD 拆到环首；无缓冲复用崩溃 | `private/runs/UAC-u2-v29c-stream-20261102`、`private/card-cycles/20261102-u2-v29c-stream`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -108,14 +108,28 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v29b 定性：per-set mailbox 成立；v29c 已离线构建）：(0) v29c
-  `b1f812e4…` 一次 boot：期望 64 post / 64 完成、设备 bytes = host bytes
-  （~196608）、无复位/停滞；若缓冲复用触发崩溃，日志会在前 1s 内暴露；
-  (1) 稳态数据到手后再试 lead 32→16，并评估把在飞加到 3（需再腾 mailbox
-  空间）；(2) 收尾崩溃仍未规避；(3) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未
-  隔离。详见 [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+- 下一步（v29c 定性：稳态成立，wrap 是下一个墙）：(0) v29d 对齐 link 槽：
+  驱动在 `+0xff0` 写 link、cave 在 `+0xf70` 写自己的 link，且 mailbox A/B
+  占住 `0xf80..0xfdf`；要么 patch 驱动的 link 常量 `0xff0→0xf70`（让 controller
+  在 cave 的 link 处回卷），要么在接近 `+0xf70` 时先 rearm/复位，保证一套 TD
+  不跨 wrap；(1) wrap 修好后重跑 64/128 post 看 100% 与稳态占空比；
+  (2) 之后再试 lead 32→16 与 3 在飞；(3) 收尾崩溃仍未规避；
+  (4) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未隔离。详见
+  [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 最近一次实机：v29b per-set mailbox（2026-11-02 16:31，通过）
+## 最近一次实机：v29c 滚动流（2026-11-02 16:54，稳态成立、收尾 wrap 失败）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 部署读回一致；**第一次开机时 VM 未 suspend，控制台崩溃**（16:52 的 crash/fatal/erpt 属这一次，已归档）；随后按纪律关机重开、VM suspend、主界面后 resume+attach、一次 suspend/resume 枚举，probe 一次（`--packets 16 --max-urbs 256 --timeout-ms 3000 --keep-alt`）；无重试 |
+| host | `claim/alt1/SET_CUR` ok；exit=0；187 transfers、`valid=2073 bad=919 bytes=187968`；数据 t=33–2097ms，之后空 |
+| 设备 | `posted=64 completed=63 bytes=187392`；61 个 `3072/3`；post 63 `prod=+0xddf0`、post 64 `prod=+0x080` 且 cycle 翻转（cave 在 `+0xf70` 回卷）；随后 2 个 `status=5`、1 个 stall→cancel |
+| 判定 | **稳态成立**：2 在飞 + 8 槽复用持续 ~2.1s、61 个完整片段、无复用崩溃；**收尾失败在 TD 环 wrap**：cave 的 link 槽 `+0xf70` 与驱动的 `+0xff0` 不一致，且一套 16-TD 被拆到环首 |
+| crash | 本次运行无崩溃；16:52 的 crash/fatal/erpt 是“VM 未 suspend 开机”那次 |
+| 证据 | `private/runs/UAC-u2-v29c-stream-20261102`（`host-raw.txt` `d639d11c…`、`device-log-v29c.txt` `af16c11e…`、`crash/fatal/erpt` `785a6e75…/c7396803…/438a9136…`）、`private/card-cycles/20261102-u2-v29c-stream` |
+| 收尾 | 恢复 `52069a44…`、删日志与新报告、安全弹出；无重试 |
+
+## 上一次实机：v29b per-set mailbox## 最近一次实机：v29b per-set mailbox（2026-11-02 16:31，通过）
 
 | 项 | 结果 |
 | --- | --- |

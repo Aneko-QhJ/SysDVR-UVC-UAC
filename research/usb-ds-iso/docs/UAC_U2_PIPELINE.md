@@ -372,6 +372,25 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
 - 判定：64/64 完成、设备 bytes = host bytes（~196608）、无复位/停滞，
   测稳态占空比；之后再试 lead 32→16 与 3 在飞。
 
+### 2026-11-02 16:54 v29c 实机：稳态成立，TD 环 wrap 是下一个墙
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；187 transfers、`valid=2073
+  bad=919 **bytes=187968**`，数据 t=33–2097 ms（持续 ~2.1s）；
+- 设备：`pipe end posted=64 completed=63 bytes=187392`；61 个
+  `xfer=3072 status=3`，随后 2 个 `status=5`、1 个 stall→cancel；
+- wrap：post 63 `prod=ring+0xddf0` → post 64 `prod=ring+0x080` 且
+  `cycle` 翻转——cave 在 `+0xf70`（自己的 link 槽）回卷，而驱动在
+  `+0xff0` 写 link，且一套 16-TD 被拆到环首；两次 status=5 正好落在 wrap；
+- 缓冲复用没有崩（8 槽、2 在飞、复用间隔 ~4 post）；
+- 首次开机时 VM 未 suspend，控制台崩溃（16:52 的 crash/fatal/erpt，
+  已归档）；按纪律重开后本次运行本身无崩溃；
+- 下一步 v29d：对齐 link 槽。两个选项——
+  1. patch 驱动 `0x2feb0`/`0x30ff4` 里的 link 常量 `0xff0 → 0xf70`，让
+     controller 在 cave 的 link 处回卷（mailbox 在 `0xf80..0xfdf`，位于
+     link 之后，不再被取指）；
+  2. 在 prod 接近 `+0xf70` 时先 rearm/复位，保证一套 TD 不跨 wrap。
+  修好后重跑 64/128 post 看是否 100%，再谈 lead 32→16 与 3 在飞。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
