@@ -439,7 +439,7 @@ status=5，说明它不接受提前的 link；下一步把 mailbox 移出 ring�
 - 无 crash/fatal，USB 链路未掉；新增 erpt `8bb5ccee…` 已归档并删除；卡恢复
   `52069a44…`、删日志、安全弹出。
 
-### 2026-11-02 20:0x v29e 四 mailbox / 三在飞（离线）
+### 2026-11-02 19:4x v29e 四 mailbox / 三在飞（离线）
 
 v29d 的失败点不在 wrap：一次空 ring re-arm 后（seq 3），一次在 sets
 `+0x600/+0x800` 已排队时（seq 21），两次都让端点停止完成。2 个在飞 +
@@ -458,6 +458,21 @@ v29d 的失败点不在 wrap：一次空 ring re-arm 后（seq 3），一次在 
   done 门顺序、组装尺寸、三在飞、恢复分支）。
 - 判定：≥64 posts、0 `status=5`，或 recover 行后继续；若仍提前停，记录
   `posted/completed`、wrap 位置与 recover 行，再决定 4 在飞或 frame 调度。
+
+### 2026-11-02 19:45 v29e 实机：三在飞 + 恢复，跑满 64 posts
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；187 transfers、`valid=2265 bad=727
+  **bytes=180672**`，数据 t=33–2673 ms（110 个有数据的 URB），之后空。
+- 设备：**posted=64 completed=64 bytes=172032**——56 个 `3072/3`、4 个
+  `xfer=0 status=5`，每个 `status=5` 后都有 `UAC U2 pipe recover cancelled=1`
+  并继续到 64 posts。无 crash/fatal/erpt，USB 链路未掉。
+- rearm：seq 37/44/54 的 post 把 `prod/cons/cur` 复位到 base（`cur=0`），
+  紧随其后的那套以 `status=5` 结束；4 次 miss 都落在这种 rearm 之后。
+- 判定：**3 在飞 + 4 mailbox 成立，恢复路径成立**（56/64 = 87.5% 数据）。
+  剩余 miss 不是 wrap，而是 cave 在空 ring 上 re-arm 时仍有完成 pending：
+  `prod==cons` 只表示没有 TD，不表示没有完成。
+- 下一步 v29f：普通空 ring 直接写 base（只在驱动复位后 re-arm），或加到
+  4 在飞；之后再 lead 32→16。判定 0 `status=5`、bytes=196608。
 
 ## 里程碑
 

@@ -161,12 +161,13 @@ See [the research notes](docs/RESEARCH.md) for the full investigation.
 
 > **Current status (2026-11-02):** audio is still disabled. UAC enumeration and
 > the control plane pass (257 B / 4 interfaces; 13/13 requests; alt 0→1→0).
-> The device-side ISO producer keeps two requests in flight with an 8-slot
-> buffer pool. v29c streamed for ~2.1 s (host 187,968 B; 61 full 3072 B
-> segments); v29d moved the ring link to `+0xc00` and the wrap is now clean
-> (two wraps, no split set), but the stream still stops early on an empty-ring
-> completion (host 57,024 B). The next step is the delivery cadence and error
-> recovery. Duty cycle is ~47 %, so continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
+> The device-side ISO producer keeps three requests in flight with four
+> per-set mailboxes. v29d moved the ring link to `+0xc00` and made the wrap
+> clean (two wraps, no split set); v29e then ran all 64 posts and recovered
+> from four underrun completions (56 full 3072 B sets, device 172,032 B, host
+> 180,672 B, ~2.6 s). The remaining misses follow the cave's re-arm on an
+> empty ring while completions are still pending. Duty cycle is ~47 %, so
+> continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
 > `0xD401`) and the A23 vendor-audio work are history. See
 > [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md),
 > [UAC_U2_PIPELINE.md](research/usb-ds-iso/docs/UAC_U2_PIPELINE.md) and
