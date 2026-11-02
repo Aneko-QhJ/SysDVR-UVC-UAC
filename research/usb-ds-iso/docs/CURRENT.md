@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 19:4x，Asia/Shanghai）
+# 当前状态（2026-11-02 20:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -15,6 +15,9 @@
 - 最后实机 v29d（19:28）：host 57024 B、18 个完整 3072 B 片段，0.8 s 时一次
   `status=5` 后端点不再完成，app 取消 2 个在飞请求。**wrap 已修好，下一个墙是
   cadence/frame gap 与 status=5 后的恢复**。
+- 下一步 **v29e 已离线构建**（NSP `0607f72b…`，92906 B）：四个 per-set
+  mailbox + 3 个请求在飞；`status=5` 后 app cancel 剩余请求并重投，走空 ring
+  re-arm。待一次 boot 看 ≥64 posts、0 status=5。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -41,6 +44,7 @@
 | v29b | per-set mailbox（A/B）+ 只认 status=3 | 24576 B | 8/8 全 `3072/3`，两套之间无复位 | 账本修好，2 在飞稳定 |
 | v29c | 64 post 滚动 + 8 槽复用（在飞 ≤2） | 187968 B，t=33–2097 ms | posted=64、61×`3072/3`、2×status=5、1×cancel | 稳态成立；收尾在 TD 环 wrap |
 | v29d | link 槽 `+0xf70`→`+0xc00`：六套对齐 TD，驱动 4 处 link 常量 | 57024 B，t=33–801 ms | posted=22、18×`3072/3`、2×status=5；两次 wrap 干净 | wrap 修好；ring 跑空/underrun 提前停 |
+| v29e | 4 mailbox（`+0xf00` 起，`&3`）+ 3 在飞 + status=5 恢复 | —（0 实机） | —（0 实机） | 离线构建 `0607f72b…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
 游标漂移 0x90；到 post 63 时 `prod=+0xddf0`，一套跨过 0x200 边界，ED 分属
@@ -82,27 +86,25 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：cadence 与 status=5 恢复（v29e）
+## 下一步：v29e（已离线构建，待一次实机）
 
-v29d 证明 link 对齐生效：两次 wrap 都是 `+0xa00 → +0x000`、cycle 翻转，之后
-3 套照常完成（共 18 段）。剩下的失败不是 wrap：
+v29d 的两次 `status=5` 都不在 wrap 上：一次在空 ring re-arm 后（seq 3），一次
+在 sets `+0x600/+0x800` 已排队时（seq 21），之后 100 ms 无完成。2 个在飞 +
+约 30 ms/post 的节奏留不住 TD，且一次错误后 app 只等完成、不再投递。
 
-1. 第一次 `status=5` 在 seq 3（第 3 个 post），驱动把 ring 复位到 base；
-2. 第二次在 seq 21，sets `+0x600/+0x800` 已排队仍报 `status=5`，随后 100 ms
-   无完成，app 取消 2 个在飞请求。
+v29e 的改动：
 
-共同点是 ring 在“2 在飞 + 约 34–40 ms/post”的节奏下会被控制器跑空；一次
-`status=5` 后没有恢复路径（app 等完成，空 ring 不再 re-arm）。
+1. **四个 per-set mailbox**（`+0xf00`/`+0xf40`/`+0xf80`/`+0xfc0`），
+   `set = (offset >> 9) & 3`；三套连续 set 必得三个不同 mailbox，wrap 后
+   仍成立；done 门改为在选中的 mailbox 上检查；
+2. **app 保持 3 个请求在飞**（8 槽池，仍在完成后才释放槽）；
+3. **`status=5` 恢复**：cancel 剩余在飞请求、释放槽，下一次 post 走空 ring
+   的 re-arm 路径，并打印 `pipe recover cancelled=N`。
 
-候选，按顺序：
-
-1. app 改成 16 ms tick 投递（不等完成），保持 2 在飞，让 ring 始终有下一套；
-2. `status=5` 时把在飞请求 cancel 后重新 post（空 ring 的 re-arm 路径），恢复流；
-3. lead 32→16（v25 的 4 ms 已证明太低）；
-4. 3 在飞需要第三个 mailbox。
-
-判定：≥64 posts、0 `status=5`。若仍有，记录它相对 wrap 的位置、`cur` 间隔和
-当时的 `prod/cons`。之后再谈 48 kHz 的 16 ms/段与占空比。
+候选 NSP `0607f72b…`（92906 B，44 条 edits，cave 680/684 B），host 命令同
+v29d。判定：**≥64 posts、0 `status=5`**（或出现 recover 行后继续）。
+若仍提前停，下一步记录 `posted/completed`、wrap 位置与 `recover` 行，再决定
+是加大到 4 在飞还是改 frame 调度。
 
 ## 仍未隔离
 

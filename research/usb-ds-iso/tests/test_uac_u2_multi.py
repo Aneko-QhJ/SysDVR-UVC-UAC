@@ -278,7 +278,7 @@ class StreamPipelineTests(unittest.TestCase):
         self.assertIn("u8 free_slot[8]", self.text)
         self.assertIn("free_slot[next] = 0;", self.text)
         self.assertIn("free_slot[b] = 1;", self.text)
-        self.assertIn("posted < stream_posts && posted - completed < 2 &&",
+        self.assertIn("posted < stream_posts && posted - completed < 3 &&",
                       self.text)
 
     def test_train_breaks_only_after_stream_posts(self):

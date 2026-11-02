@@ -31,6 +31,7 @@ QUICK = [
     "test_uac_u2_continuous.py",
     "test_uac_u2_multi.py",
     "test_uac_u2_wrap.py",
+    "test_uac_u2_quad.py",
     "test_a23_alt1_nop_coverage.py",
     "test_a23_short24_path_span_package.py",
     "test_uac_pcm_ring.py",

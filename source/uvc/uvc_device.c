@@ -2579,10 +2579,11 @@ static void _postUacBurst(void)
        v11 crash).  The 1 kHz phase continues across buffers, which lets the
        host check continuity instead of four separate 16 ms bursts. */
 #if defined(UAC_U2_PIPELINE)
-    /* v26A: 16 ms timer double buffering.  Two buffers stay in flight so the
-       cave always has a TD set queued; the driver's error reset then does not
-       fire and the cave writes the next set at prod without replaying
-       0x2feb0.  The 1 kHz pattern phase continues across buffers. */
+    /* v26A: 16 ms timer pipeline.  v29e keeps three requests in flight so
+       the cave always has TD sets queued while the app posts about every
+       30 ms; a status=5 cancels the remaining requests so the next post takes
+       the empty re-arm path.  The 1 kHz pattern phase continues across
+       buffers. */
     u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
     bool pipe_failed = false;
     u8 free_slot[8];
@@ -2593,9 +2594,9 @@ static void _postUacBurst(void)
 
     for (;;) {
         /* v29c: rolling train.  A slot is posted again only after the
-           previous request that used it completed (free_slot), at most two
+           previous request that used it completed (free_slot), at most three
            requests in flight, and never more than STREAM_POSTS total. */
-        while (posted < stream_posts && posted - completed < 2 &&
+        while (posted < stream_posts && posted - completed < 3 &&
                free_slot[next]) {
             u8 *buf = g_u2BurstBuffers[next];
             s16 *samples = (s16 *)buf;
@@ -2667,6 +2668,23 @@ static void _postUacBurst(void)
 #if defined(UAC_U2_CURSOR_DIAG)
                 _uacLogCursor("done", b + 1);
 #endif
+                if (report.report[i].urb_status != 3) {
+                    /* v29e: an empty-ring/underrun completion halts the
+                       endpoint.  Cancel the remaining in-flight requests so
+                       the next post takes the cave's empty re-arm path
+                       instead of waiting for completions that never come. */
+                    u32 cancelled = 0;
+                    if (posted > completed) {
+                        usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+                        for (u32 c = 0; c < UAC_U2_TRAIN_POSTS; ++c) {
+                            if (free_slot[c]) continue;
+                            free_slot[c] = 1;
+                            ++completed;
+                            ++cancelled;
+                        }
+                    }
+                    LOG("UAC U2 pipe recover cancelled=%u\n", cancelled);
+                }
                 break;
             }
         }

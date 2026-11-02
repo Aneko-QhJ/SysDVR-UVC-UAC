@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 19:4x）
+## 当前边界（2026-11-02 20:0x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -37,9 +37,10 @@
 - 失败点：不是 wrap。`status=5`（空 ring/underrun 类）分别在 seq 3 与 seq 21
   出现；第二次后 100ms 无完成，app 取消 2 个在飞请求。ring 在“2 在飞 +
   约 34–40ms/post”的节奏下会被跑空，且一次 status=5 后没有恢复路径。
-- 下一步 **v29e**：app 16ms tick 投递、status=5 后 cancel+重投、lead 32→16
-  三选一先做；判定 ≥64 posts、0 status=5。详见
-  [docs/CURRENT.md](docs/CURRENT.md)、
+- 下一步 **v29e 已离线构建**（NSP `0607f72b…`，92906 B）：四个 per-set
+  mailbox（`+0xf00` 起，`&3`）+ **3 个请求在飞**；`status=5` 后 app cancel
+  剩余请求并重投，走空 ring 的 re-arm。待一次 boot 看 ≥64 posts、0 status=5。
+  详见 [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

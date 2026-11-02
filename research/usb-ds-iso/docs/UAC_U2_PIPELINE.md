@@ -439,6 +439,26 @@ status=5，说明它不接受提前的 link；下一步把 mailbox 移出 ring�
 - 无 crash/fatal，USB 链路未掉；新增 erpt `8bb5ccee…` 已归档并删除；卡恢复
   `52069a44…`、删日志、安全弹出。
 
+### 2026-11-02 20:0x v29e 四 mailbox / 三在飞（离线）
+
+v29d 的失败点不在 wrap：一次空 ring re-arm 后（seq 3），一次在 sets
+`+0x600/+0x800` 已排队时（seq 21），两次都让端点停止完成。2 个在飞 +
+约 30 ms/post 留不住 TD；一次 `status=5` 后 app 只等完成，不再投递。
+
+- cave `patches/iso_burst_uac84_dci9_pipe_quad.S`（**680/684 B**）：
+  四个 mailbox 在 `+0xf00/+0xf40/+0xf80/+0xfc0`，`set = (offset >> 9) & 3`；
+  三套连续 set 必得三个不同 mailbox，wrap（block 5 → block 0）后仍成立；
+  done 门改为在选中的 mailbox 上检查（v29d 的 cave 检查固定的 mailbox 0）。
+- app：`posted - completed < 3`；非 3 完成时 `usbDsEndpoint_Cancel` 剩余在飞
+  请求、释放槽并 `++completed`，下一次 post 走空 ring 的 re-arm；日志
+  `UAC U2 pipe recover cancelled=%u`。
+- 构建：NSP `0607f72b…`（92906 B）、NSO `283668f3…`，44 条 edits；工作目录
+  `private/analysis/UAC-u2-v29e-quad-20261102`；新增
+  `tests/test_uac_u2_quad.py`（7 项：四 mailbox、三连续 set 不同 mailbox、
+  done 门顺序、组装尺寸、三在飞、恢复分支）。
+- 判定：≥64 posts、0 `status=5`，或 recover 行后继续；若仍提前停，记录
+  `posted/completed`、wrap 位置与 recover 行，再决定 4 在飞或 frame 调度。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
