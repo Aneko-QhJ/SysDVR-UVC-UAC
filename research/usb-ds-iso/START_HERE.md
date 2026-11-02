@@ -39,9 +39,10 @@
 - 结论：**16 帧（3072B）可用、20 帧卡死 → 单次上限在 17–19 帧**；
   “加大单次 transfer”路线关闭。唯一可用配置 = v24 单 burst `2b7680ef…`
   （4/4、gap ~96 ms）。
-- 下一阶段：回到 v24 基线，做 PCM/时钟/与视频共存；连续流挂账（只剩
-  “另找驱动提交入口/UVC 式队列”或“改驱动”两条路）。不要重试 >16 帧的
-  单次请求。详见 [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
+- 下一阶段：PCM gap 模型已给出结论——96ms 周期只能承载 16.6% 的 48kHz
+  音频，**标准 UAC 不可连续、保持禁用**（[docs/UAC_PCM_GAP.md](docs/UAC_PCM_GAP.md)）；
+  当前只做视频共存与收尾崩溃规避，连续流/音频挂账。不要重试 >16 帧的
+  单次请求。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。

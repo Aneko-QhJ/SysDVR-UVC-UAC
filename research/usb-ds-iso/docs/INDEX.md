@@ -18,6 +18,7 @@
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
 | [CURRENT.md](CURRENT.md) | 2026-11-02 | 110K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [UAC_PCM_GAP.md](UAC_PCM_GAP.md) | 2026-11-02 | 2K | 一次 burst = 16 帧 × 192 B = **3072 B = 16 ms** PCM 数据（48kHz/2ch/16bit）； |
 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) | 2026-11-02 | 17K | v24（lead 32、light log）一次 burst 的时间线： |
 | [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 42K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
 | [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 21K | **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
@@ -31,9 +32,8 @@
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |
-| [A23_ALT1_PROBE.md](A23_ALT1_PROBE.md) | 2026-10-29 | 7K | 目标：在**不引入 UAC / ISO / IPS**的情况下，回答一个最小问题—— |
 
-## 全部文档（275）
+## 全部文档（276）
 
 | 文件 | 日期 | 大小 | 标题 / 摘要 |
 | --- | --- | --- | --- |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-11-02 | 110K | 当前状态（2026-11-02 15:5x，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-11-02 | 110K | 当前状态（2026-11-02 16:0x，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-29 | 3K | 实验分支目录与本地产物 — 当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |
@@ -301,6 +301,7 @@
 | [TEST_PLAN.md](TEST_PLAN.md) | 2026-10-27 | 212K | 后续测试条件（2026-10-22） — 当前计划约束已于 2026-10-27 更新，见 [研究规则](RESEARCH_RULES.md)。先不用虚拟机， |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | UAC 配置描述符路径审计（2026-10-29/30，离线） — 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
 | [UAC_HOST_10S.md](UAC_HOST_10S.md) | 2026-10-30 | 13K | UAC 标准宿主 10s PCM 验证入口（2026-10-29） — 目标：在 Linux 标准 `snd-usb-audio` 宿主上，用 48 kHz / 2ch / S16_LE |
+| [UAC_PCM_GAP.md](UAC_PCM_GAP.md) | 2026-11-02 | 2K | UAC PCM 的 v24 gap 上限（2026-11-02） — 一次 burst = 16 帧 × 192 B = **3072 B = 16 ms** PCM 数据（48kHz/2ch/16bit）； |
 | [UAC_PCM_PRODUCER.md](UAC_PCM_PRODUCER.md) | 2026-10-28 | 6K | UAC PCM producer 设计（2026-10-27） — `usb:ds` 的 alt0-only endpoint filter 已用 runtime NOP patch 去掉；alt1 端点可以安装。 |
 | [UAC_STANDARD_LAYER.md](UAC_STANDARD_LAYER.md) | 2026-10-30 | 5K | UAC1 标准层（离线 P0） — 日期：2026-10-27。范围：只做电脑上的离线实现与测试；**没有启用 UAC、没有调用 |
 | [UAC_U1_CONTROL.md](UAC_U1_CONTROL.md) | 2026-10-30 | 7K | U1 控制请求验证准备（2026-10-30，离线） — U0 已通过（257B/4 接口，macOS `AppleUSBAudio` 绑定，见 |

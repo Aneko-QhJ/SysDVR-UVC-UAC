@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 15:5x，Asia/Shanghai）
+# 当前状态（2026-11-02 16:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -17,7 +17,7 @@
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 15:5x）
+## 当前进度（2026-11-02 16:0x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -66,6 +66,7 @@
 | **v27 游标诊断（实机一次，已判读）** | **驱动是单 transfer**：偶数 post 写入 `prod=+0x200`、`cur=frame+16`（906→1006→1105→1205），奇数 post 后 `prod/cons/cur` 全不变、cave 未被调用，随后 `xfer=0 status=5`；每次完成 ring 复位。两 buffer 流水线走不通；本轮无新 crash/erpt | `private/runs/UAC-u2-v27-cursor-diag-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v28 多段单 transfer（实机一次，挂死）** | 一次 6144B（2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全部 `valid=32 bad=0`）；设备 **停在 `UAC U2 post begin`**、`PostBufferAsync` 未返回，控制台死机需硬关机；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）；单次上限仍是 3072B | `private/runs/UAC-u2-v28-multi-20261102`、`private/card-cycles/20261102-u2-v28-multi`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v28b 20 帧单 transfer（实机一次，挂死）** | 一次 3840B（20×192B、20 对 TD）请求：host `bytes=0`（50×20 包全部 `valid=20 bad=0`）；设备停在 `UAC U2 multi frames=20 size=3840` → `post begin`，`PostBufferAsync` 未返回，控制台死机（USB 链路未掉）；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）→ **单次上限在 17–19 帧**，加大单次 transfer 路线关闭 | `private/runs/UAC-u2-v28b-20frame-20261102`、`private/card-cycles/20261102-u2-v28b-20frame`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **PCM/时钟 gap 模型（离线）** | 96ms 周期只承载 16ms 数据 → 占空比 **16.6%**；10s 模型：线上 319488B、丢弃 1.54MB、host 空闲 8336ms、ring 顶满；60ms 周期也只有 ~27% → **标准 UAC 48kHz 不可连续**，UAC 保持禁用 | `tools/model_uac_pcm_ring.py`（`simulate_gap`）、[UAC_PCM_GAP.md](UAC_PCM_GAP.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -108,11 +109,13 @@
   同时只允许一个在飞请求，且控制器对单请求 TD 数有硬上限，暂无可绕路径；
   除非另找驱动侧入口（UVC 式队列）或改驱动；(2) 收尾崩溃仍未规避：
   `--keep-alt` 不够，需要在 app 的 alt0 处理里先 cancel，或研究内核重绑/
-  重枚举路径；(3) 主线转向 PCM/时钟/与视频共存（`ISO_ENTRY=0x270` 与 8 个
-  descriptor-parser NOP 仍未隔离）。详见
+  重枚举路径；(3) PCM/时钟 gap 模型已完成：96ms 周期只能承载 16.6% 的
+  48kHz 音频，标准 UAC 不可用、保持禁用，详见
+  [UAC_PCM_GAP.md](UAC_PCM_GAP.md)；(4) 下一步做视频共存与收尾崩溃规避；
+  `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离。详见
   [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 最近一次实机：v28b 20 帧（2026-11-02 15:5x，挂死）
+## 最近一次实机：v28b 20 帧（2026-11-02 16:0x，挂死）
 
 | 项 | 结果 |
 | --- | --- |

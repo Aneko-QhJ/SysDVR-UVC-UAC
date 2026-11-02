@@ -49,5 +49,43 @@ class UacPcmRingTests(unittest.TestCase):
             self.assertLessEqual(r["ring_max_bytes"], r["ring_bytes"])
 
 
+class UacPcmGapTests(unittest.TestCase):
+    """v24's measured schedule: one 16 ms burst per ~96 ms, structurally."""
+
+    def test_v24_gap_is_structural(self):
+        r = model.simulate_gap(seconds=10)
+        self.assertEqual(r["underrun_bytes"], 0)
+        self.assertGreater(r["dropped_bytes"], 1_000_000)
+        self.assertLessEqual(r["ring_max_bytes"], r["ring_bytes"])
+        self.assertAlmostEqual(r["duty"], 16 / 96, delta=0.01)
+
+    def test_wire_time_is_16ms_per_96ms(self):
+        r = model.simulate_gap(seconds=10)
+        self.assertEqual(r["posts"], 104)
+        self.assertEqual(r["sent_bytes"], r["posts"] * 3072)
+        self.assertGreater(r["host_idle_ms"], 8000)
+        self.assertLess(r["host_idle_ms"], 8500)
+
+    def test_bytes_are_accounted_for(self):
+        r = model.simulate_gap(seconds=10)
+        source = 10_000 * model.BYTES_PER_MS
+        self.assertEqual(
+            r["sent_bytes"] + r["dropped_bytes"] + r["ring_final_bytes"],
+            source,
+        )
+
+    def test_source_drift_changes_drops_but_not_the_duty(self):
+        base = model.simulate_gap(seconds=10)
+        drift = model.simulate_gap(seconds=10, source_ppm=100)
+        self.assertEqual(base["sent_bytes"], drift["sent_bytes"])
+        self.assertEqual(base["posts"], drift["posts"])
+        self.assertGreater(drift["dropped_bytes"], base["dropped_bytes"])
+
+    def test_even_a_60ms_cycle_cannot_carry_48khz(self):
+        r = model.simulate_gap(seconds=10, cycle_ms=60)
+        self.assertLess(r["duty"], 0.30)
+        self.assertGreater(r["dropped_bytes"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
