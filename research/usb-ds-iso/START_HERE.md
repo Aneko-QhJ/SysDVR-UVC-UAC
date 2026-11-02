@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 17:1x）
+## 当前边界（2026-11-02 18:3x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -36,9 +36,9 @@
   1×cancel**；2 在飞 + 8 槽复用持续 ~2.1 s，无复用崩溃。
 - 失败点：**TD 环 wrap**——post 63 `prod=+0xddf0`，下一套跨过 cave link
   `+0xf70`；随后 `prod` 复位到 `+0x080`、cycle 翻转，一套 TD 被拆到环首。
-- 下一步 **v29d**：patch 驱动 link 常量 `0xff0→0xf70`（首选），或在 wrap 前
-  rearm/复位；修好后重跑 64/128 post 看 100%，再谈 lead 32→16 与 3 在飞。
-  详见 [docs/CURRENT.md](docs/CURRENT.md)、
+- 下一步 **v29d 已离线构建**（NSP `287907b8…`，92628 B）：link 从 `+0xf70`
+  移到 `+0xc00`（六套对齐 TD；驱动 4 处 setup/error 共 12 条编辑），待一次
+  boot 验证 64/128 post 是否 100%。详见 [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

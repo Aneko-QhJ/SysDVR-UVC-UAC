@@ -4,7 +4,8 @@
 > 帧游标已离线实现并构建（`116a1204…`，92342B），0 实机**。v23 证明
 > “每 burst 重放 `0x2feb0`”能让 4 个顺序 burst 全部完成；v24 把 dmnt dump
 > 去掉后 gap 96 ms；v25 把 TD 帧 lead 压到 4 ms 失败（1536B、`0x748c`），
-> 回退 32 ms。本文件先设计、后实现连续 ring，不重复
+> 回退 32 ms。v29d（2026-11-02 18:3x）：link 移到 `+0xc00`（六套对齐），
+> 离线构建 NSP `287907b8…`，0 实机。本文件先设计、后实现连续 ring，不重复
 > [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) 与
 > [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) 的事实。
 
@@ -390,6 +391,35 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
      link 之后，不再被取指）；
   2. 在 prod 接近 `+0xf70` 时先 rearm/复位，保证一套 TD 不跨 wrap。
   修好后重跑 64/128 post 看是否 100%，再谈 lead 32→16 与 3 在飞。
+
+### 2026-11-02 18:3x v29d link 槽对齐（离线）
+
+v29c 的 wrap 失败不只是“驱动 link 在 `+0xff0`、cave link 在 `+0xf70`”的
+不一致：`+0xf70` 落在第 8 套 0x200 TD（0xe00..0xfff）内部，一套 TD 在 link
+处被拆开。`advance` 在 link 处额外写一个 16 B Link TRB，但不把它算进 32 个
+TRB，于是每次 wrap 把写游标推后 **0x90**（实测 0x90 → 0x120 → 0x1b0 …）。
+
+一旦某套的起点不再 0x200 对齐，它的 ED 偏移 `>>9 &1` 就跨两个 block，A/B
+mailbox 各记一部分，`sum == 3072` 永远不成立 → status=5（v29c 的 2 个）。
+
+修法：把 link 放到 `+0xc00`——六套 0x200 正好对齐；六是偶数，wrap 后 A/B
+仍交替（若用 8 套反而回到奇数相位）。`0xc00..0xfff` 不再被取指，mailbox
+`0xf80/0xfc0` 与 cursor `0xfb8` 留在外面。
+
+- cave：`patches/iso_burst_uac84_dci9_pipe_wrap.S`（**680/684 B**），三处
+  立即数（x13、ED 上界、unwrapped tag）；
+- 驱动：四处 setup/error（`0x2f530`、`0x2ff40`、`0x30578`、`0x310c8`）的
+  `add x9,x8,#0xff0` → `#0xc00` 与两个清零（`0xff0/0xff8` →
+  `0xc00/0xc08`），共 **12 条**；
+- app：`BURSTS=8 + STREAM_POSTS=64 + LIGHT_LOG + PIPELINE + CURSOR_DIAG`；
+- 构建：NSP `287907b8…`（92628 B）、NSO `36b801d7…`，44 条 edits；工作目录
+  `private/analysis/UAC-u2-v29d-wrap-20261102`；
+- 测试：`tests/test_uac_u2_wrap.py`（10 项：cave 立即数、组装尺寸、12 条编码、
+  64 post 对齐/双在飞 mailbox 模型）。
+
+判定：64/64 完成、wrap 后不再 status=5 → 100%。若控制器在六套之前就报
+status=5，说明它不接受提前的 link；下一步把 mailbox 移出 ring（或按 set 序号
+记账），不再继续挪 link。
 
 ## 里程碑
 

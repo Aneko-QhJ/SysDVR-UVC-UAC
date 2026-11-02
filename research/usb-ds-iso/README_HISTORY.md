@@ -1554,3 +1554,5 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 CURRENT 改为只写当前事实与下一步，逐轮记录留在本文件。上文 2026-10-27 的“文档导航 /
 STATUS.md / TEST_PLAN.md”指针已过时，保留为历史；当前文档索引见
 [docs/INDEX.md](docs/INDEX.md) 与 [docs/ARCHIVE_INDEX.md](docs/ARCHIVE_INDEX.md)。
+
+2026-11-02 18:3x v29d link 槽对齐（离线，0 实机）：v29c 的 wrap 在 `+0xf70`，落在第 8 套 0x200 TD（0xe00..0xfff）内部——一套 TD 在 link 处被拆开，`advance` 每次 wrap 多写一个 16 B Link TRB 却不计入 32 个 TRB，写游标因此漂移 0x90（实测 0x90→0x120→0x1b0…）；一旦某套跨过 0x200 边界，ED 偏移 `>>9 &1` 就分属两个 mailbox，两个都凑不满 3072 B → status=5。v29d 把 link 放到 `+0xc00`（六套 0x200 正好对齐；六是偶数，A/B 在 wrap 处仍交替；`0xc00..0xfff` 不取指，mailbox 0xf80/0xfc0 与 cursor 0xfb8 留在外面）。cave `patches/iso_burst_uac84_dci9_pipe_wrap.S`（680/684 B，三处立即数）；驱动四处 setup/error（`0x2f530`/`0x2ff40`/`0x30578`/`0x310c8`）的 `add #0xff0`→`#0xc00` 与清零 `0xff0/0xff8`→`0xc00/0xc08`，共 12 条；builder 新增 `--driver-link`。构建 NSP `287907b8…`（92628 B）、NSO `36b801d7…`，44 条 edits；工作目录 `private/analysis/UAC-u2-v29d-wrap-20261102`；新增 `tests/test_uac_u2_wrap.py`（10 项：cave 立即数、组装尺寸、12 条编码、64 post 对齐与双在飞 mailbox 模型）。**未部署、0 实机**；`make check`（31 个文件）、`make links` 通过。判定：64/64 完成、wrap 后不再 status=5 → 100%；若六套之前就 status=5，说明控制器不接受提前的 link，下一步把 mailbox 移出 ring。

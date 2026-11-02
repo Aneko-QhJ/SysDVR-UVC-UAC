@@ -63,6 +63,31 @@ QUEUE_GATE_AFTER = bytes.fromhex("a74eff17")
 QUEUE_SKIP_BEFORE = bytes.fromhex("08020034")
 QUEUE_SKIP_AFTER = bytes.fromhex("10000014")
 QUEUE_EDITS = 3 if QUEUE_STUB_ADDR else 0
+
+# v29d: the ring link must follow an even number of aligned 0x200 TD sets.
+# The driver writes its link at +0xff0, which sits inside the 8th set, so the
+# cave split a set at the link and the per-set mailbox drifted; both sides move
+# the link to +0xc00 (six aligned sets).  Four inline copies of the endpoint
+# setup (install, re-arm, alt set, completion error) each clear and fill the
+# 16-byte link TRB, so each copy needs the address and both slot clears.
+LINK_EDITS = tuple(
+    (address, bytes.fromhex(before), bytes.fromhex(after), reason)
+    for address, before, after, reason in (
+        (0x2F530, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
+        (0x2F538, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
+        (0x2F53C, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
+        (0x2FF40, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
+        (0x2FF48, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
+        (0x2FF4C, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
+        (0x30578, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
+        (0x30580, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
+        (0x30584, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
+        (0x310C8, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
+        (0x310D0, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
+        (0x310D4, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
+    )
+)
+LINK_EDIT_COUNT = len(LINK_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -93,6 +118,8 @@ def payload_ready(work):
                EDITS_COUNT_NO_REPORT, EDITS_COUNT_NO_REPORT_BREAKER)
     if doc.get("driver_queue"):
         allowed = tuple(value + QUEUE_EDITS for value in allowed)
+    if doc.get("driver_link"):
+        allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
@@ -136,7 +163,7 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 
 
 def build_edits(nso, code, symbols, breaker=False, report=True,
-                driver_queue=False):
+                driver_queue=False, driver_link=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -198,8 +225,12 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
              "always run the submit block instead of only when the queue is empty")
         edit(QUEUE_SKIP_ADDR, QUEUE_SKIP_BEFORE, QUEUE_SKIP_AFTER,
              "skip the completion-path auto-submit (post-time submit owns it)")
+    if driver_link:
+        for address, before, after, reason in LINK_EDITS:
+            edit(address, before, after, reason)
     expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
-                + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0))
+                + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0)
+                + (LINK_EDIT_COUNT if driver_link else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -233,7 +264,7 @@ def render(edits):
 
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
-             segments=1, frames=None, driver_queue=False):
+             segments=1, frames=None, driver_queue=False, driver_link=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -258,6 +289,8 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "breaker": bool(breaker),
         "report_hook": bool(report),
         "driver_queue": bool(driver_queue),
+        "driver_link": bool(driver_link),
+        "link_slot": "0xc00",
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
                                  if report else ("iso_enter", "iso_event"))},
@@ -290,6 +323,8 @@ def check(nso, work):
                EDITS_COUNT_BREAKER if report else EDITS_COUNT_NO_REPORT_BREAKER)
     if doc.get("driver_queue"):
         allowed = tuple(value + QUEUE_EDITS for value in allowed)
+    if doc.get("driver_link"):
+        allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -352,6 +387,9 @@ def main():
     parser.add_argument("--driver-queue", action="store_true",
                         help="v29: submit the appended request immediately and "
                              "skip the completion auto-submit")
+    parser.add_argument("--driver-link", action="store_true",
+                        help="v29d: move the driver ring link from +0xff0 to "
+                             "+0xc00 so six aligned TD sets fit")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -374,13 +412,13 @@ def main():
     code, symbols = assemble(args.toolchain, work / "asm", args.asm,
                              require_report=report)
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report,
-                        driver_queue=args.driver_queue)
+                        driver_queue=args.driver_queue, driver_link=args.driver_link)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
                    report=report, segments=args.segments, frames=args.frames,
-                   driver_queue=args.driver_queue)
+                   driver_queue=args.driver_queue, driver_link=args.driver_link)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -390,6 +428,7 @@ def main():
         f"cave {len(code)}/{CAVE_END - CAVE} B, "
         f"endpoint {ENDPOINT_WORD:#010x}, {doc['frames']} frame(s)"
         + (", driver-queue" if doc["driver_queue"] else "")
+        + (", driver-link" if doc["driver_link"] else "")
     )
 
 

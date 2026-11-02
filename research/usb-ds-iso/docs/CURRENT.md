@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 17:1x，Asia/Shanghai）
+# 当前状态（2026-11-02 18:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -12,8 +12,9 @@
 - 现状：U2 数据路径已从“单 burst”推进到 **2 个请求在飞 + 8 槽缓冲复用 + 2.1 s
   持续流**。最后一次实机 v29c：host 收到 **187968 B**，设备 **61 个完整
   3072 B 片段**（187392 B）。失败点是 **TD 环 wrap**，不是队列、控制器或账本。
-- 下一步：v29d 对齐 link 槽（cave `+0xf70` vs 驱动 `+0xff0`），再重跑
-  64/128 post 看是否 100%。
+- 下一步：**v29d 已离线构建**（NSP `287907b8…`，92628 B）：link 从 `+0xf70`
+  移到 `+0xc00`（六套对齐 TD + 驱动 4 处常量），待一次 boot 看 64/128 post
+  是否 100%。
 - 限制：当前占空比约 47%（每段 16 ms 音频 / ~34 ms 墙钟），48 kHz 连续仍不成立；
   UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
@@ -32,18 +33,19 @@
 单次请求上限仍是 **3072 B / 16 帧**：20 帧（3840 B）、32 帧（6144 B）都会挂死
 `usb:ds`，上限落在 17–19 帧，“加大单次 transfer”路线已关闭。
 
-## 最近三轮（数据路径主线）
+## 最近几轮（数据路径主线）
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
 | v29a | 驱动队列补丁：每个追加请求立即提交 | 21504 B（7×3072） | 2 个 post 进 cave，完成返回 status=2/5 | 队列补丁 + 2 在飞成立；共享 mailbox 账本错 |
 | v29b | per-set mailbox（A/B）+ 只认 status=3 | 24576 B | 8/8 全 `3072/3`，两套之间无复位 | 账本修好，2 在飞稳定 |
 | v29c | 64 post 滚动 + 8 槽复用（在飞 ≤2） | 187968 B，t=33–2097 ms | posted=64、61×`3072/3`、2×status=5、1×cancel | 稳态成立；收尾在 TD 环 wrap |
+| v29d | link 槽 `+0xf70`→`+0xc00`：六套对齐 TD，驱动 4 处 link 常量 | —（0 实机） | —（0 实机） | 离线构建 `287907b8…`，待一次 boot |
 
-v29c 的故障点：post 63 已写到 `prod=+0xddf0`，下一套 16-TD 会跨过 cave 的 link
-槽 `+0xf70`；随后完成回调把 `prod` 复位到 `+0x080` 并翻转 `cycle`（0→1），
-一套 TD 被拆到环首。两次 `status=5` 正好落在 wrap，随后的 post 被 cancel。
-缓冲复用没有崩（8 槽、复用间隔约 4 个 post）。本次运行本身无崩溃；16:52 的
+v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
+游标漂移 0x90；到 post 63 时 `prod=+0xddf0`，一套跨过 0x200 边界，ED 分属
+两个 mailbox，两个都凑不满 3072 B → status=5，随后 post 被 cancel。缓冲复用
+没有崩（8 槽、复用间隔约 4 个 post）。本次运行本身无崩溃；16:52 的
 crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 
 ## 构件与关键事实
@@ -52,9 +54,10 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
   MPS 192、interval 4。安装对象在 `base+0x17b038`，`installed` 在 `+0x1610`，
   表项指针在 `+0x1608`。
 - **Ring**：0x1000；一套 = 16 帧 × 192 B = 3072 B，16 对 Isoch + ED TRB，
-  `prod` 每次前进 `+0x200`。cave 的 link 槽在 `+0xf70`，驱动在 `+0xff0` 写
-  link；mailbox A `+0xf80`、B `+0xfc0`（B 的 `+0x3c` 字段已去掉，避免写进
-  `+0xff0`），全局帧游标在 `+0xfb8`。
+  `prod` 每次前进 `+0x200`。v29c 的 link 槽在 `+0xf70`（驱动在 `+0xff0`），
+  0xf70 落在第 8 套 TD 内、导致 split + 每次 wrap 漂移 0x90；v29d 把两边都
+  改到 `+0xc00`（六套对齐，偶数保 mailbox 交替）。mailbox A `+0xf80`、B
+  `+0xfc0`（B 的 `+0x3c` 字段已去掉），全局帧游标在 `+0xfb8`，都在 link 之后。
 - **驱动队列补丁**（usb.elf，3 处）：`0x0c4` 放提交 stub（`sub w9,w12,#1` /
   `and w9,w9,#7` / `b 0x2c62c`）、`0x2c628` 改为 `b 0x0c4`（总是提交刚追加的
   entry）、`0x2c80c` 改为 `b 0x2c84c`（跳过完成后的自动提交，由 app 保持
@@ -67,7 +70,8 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 - **Host**：`host/uac-raw-probe`（claim → alt1 → `SET_CUR`），v29c 用
   `--packets 16 --transfers 8 --rearm --max-urbs 256 --timeout-ms 3000
   --keep-alt`；另有 `uac-control`（`--set-rate`/`--alt-only`）与 `uac-burst`。
-- **payload**：32 条 = cave + 2 条分支 + 18 条描述符 + 8 条 NOP + 3 处驱动队列编辑。
+- **payload**：v29c 32 条 = cave + 2 分支 + 18 描述符 + 8 NOP + 3 驱动队列；
+  v29d 44 条 = 上述 32 条 + 12 条驱动 link 编辑（4 处 setup/error）。
 - **接口预算**：`usb:ds`/libnx 最多 4 个接口，UVC 2 + UAC 2 = 4，因此 UAC 不能与
   `ISO_PROBE` 的 vendor 接口同 build；`_setupAudioInterfaces5x` 已加拒绝。
 
@@ -76,18 +80,26 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29a | `feaa2d55…` | 92899 B | `2c74777a…` | v26B cursor 672/684 B；BURSTS=8 + PIPELINE + CURSOR_DIAG |
 | v29b | `203519a7…` | 92812 B | `8faede4c…` | per-set 680/684 B；同上 |
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
+| v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29d（对齐 link 槽，未开工）
+## 下一步：v29d（已离线构建，待一次实机）
 
-两个选项，先做 1：
+v29c 的 wrap 在 `+0xf70`，落在第 8 套 0x200 TD（0xe00..0xfff）内：一套 TD 被
+link 拆开，之后每次 wrap 让写游标漂移 0x90（0x90 → 0x120 → 0x1b0 …）；一旦
+一套跨过 0x200 边界，它的 ED 被分到两个 mailbox，谁都凑不满 3072 B → status=5。
 
-1. patch 驱动 `0x2feb0`/`0x30ff4` 里的 link 常量 `0xff0 → 0xf70`，让控制器在
-   cave 的 link 处回卷；mailbox 在 link 之后，不再被取指。
-2. 在 `prod` 接近 `+0xf70` 时先 rearm/复位，保证一套 TD 不跨 wrap。
+v29d 把 link 放到 `+0xc00`：
 
-修好后重跑 64/128 post，目标是 **posted == completed、device bytes == host bytes**；
-之后再试 lead 32→16 与 3 在飞（当前 mailbox 只有 A/B）。占空比是独立问题：
-48 kHz 需要 16 ms/段，现在约 34 ms/段；即使 wrap 修好，UAC 也不能直接连续。
+1. 0xc00 = 六套 0x200，正好对齐；六是偶数，mailbox A/B 在 wrap 处仍交替；
+2. cave 三处立即数（x13、ED 上界、unwrapped tag）+ 驱动四处 setup/error 的
+   `add/clear`（`0xff0→0xc00`、`0xff8→0xc08`）；
+3. `0xc00..0xfff` 不被取指，mailbox（0xf80/0xfc0）与 cursor（0xfb8）留在外面。
+
+候选 NSP `287907b8…`（92628 B，44 条 edits，cave 680/684 B），host 命令同 v29c。
+判定：**64/64 完成、status=3、设备 bytes = host bytes**，wrap 后不再出现
+status=5。若控制器在六套前就报 status=5，下一步把 mailbox 移出 ring（或按 set
+序号记账），不再继续挪 link。之后再谈 lead 32→16 与 3 在飞；48 kHz 需要
+16 ms/段，现在约 34 ms/段，占空比是独立问题。
 
 ## 仍未隔离
 
