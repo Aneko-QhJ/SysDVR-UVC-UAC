@@ -495,6 +495,24 @@ ring 被复位，下一套再走空 ring 的 re-arm，于是又 miss。v29f 不�
 - 判定：64/64、0 `status=5`、device bytes → 196608；若 stall recover 后继续
   也算恢复成立。仍 miss 时再加到 4 在飞或 lead 32→16。
 
+### 2026-11-02 21:00 v29f 实机：miss 容忍成立，收尾崩溃
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；312 transfers、`valid=2265 bad=2727
+  **bytes=187392**`，数据 t=34–2610 ms（111 个有数据的 URB），**host bytes 与
+  设备 bytes 完全相等**。
+- 设备：**posted=64 completed=64 bytes=187392 misses=3 recoveries=0**——
+  61 个 `3072/3`、3 个 `xfer=0 status=5`；每个 miss 后只有
+  `pipe miss buf=…`，没有 cancel、没有 stall 恢复，流继续到 64 posts。
+- 3 次 miss 仍跟在 cave 的空 ring re-arm 后（seq 35/53/57：`prod/cons/cur`
+  复位、`cur=0`），每次 wipe 一套在飞 set；但不再引发连锁。
+- **收尾崩溃**：`pipe end` 之后 `USB host disconnected` → `connected`，
+  重复 `SET_INTERFACE(0)`，usb sysmodule User Break（base+0x19280，fatal
+  PC +0x19254 / LR +0x177f4）；crash/fatal `01793624628` 已归档，无新 erpt。
+- 判定：**数据路径最好一轮**（61 段、host==device、3/64 miss）；miss 容忍
+  成立。剩余问题：收尾 `SET_INTERFACE(0)` 崩溃（第一优先）与 3 次 rearm 丢套。
+- 下一步 v29g：断开时先 cancel/清端点状态；必要时隔离 `SET_INTERFACE(0)`
+  路径；之后再 4 在飞或 lead 16。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

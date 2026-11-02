@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 20:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 21:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -12,12 +12,14 @@
 - 现状：2 个请求在飞 + 8 槽缓冲复用的滚动流成立（v29c：61 段 / 2.1 s）；
   **v29d 的 link 对齐也成立**——两次 wrap 都是 `+0xa00 → +0x000`、cycle 翻转，
   一套 TD 不再被拆开，A/B mailbox 相位保持。
-- 最后实机 v29e（19:45）：**posted=64 / completed=64 / 56×`3072/3`**，host
-  180672 B、数据 ~2.6 s；4 次 `status=5` 都被 `pipe recover cancelled=1` 接住
-  并继续到 64 posts。**3 在飞 + 4 mailbox 成立，恢复路径成立**。
-- 下一步 **v29f 已离线构建**（NSP `7b242bf8…`，92934 B）：`status=5` 只释放
-  失败槽并补投，不再 cancel 其余在飞请求；真停住时由 100 ms stall 路径
-  cancel+重投（最多 8 次）。待一次 boot 看 miss 是否降到 0。
+- 最后实机 v29f（21:00）：**posted=64 / completed=64 / bytes=187392
+  （61×3072）/ misses=3 / recoveries=0**；host bytes 与设备**完全相等**，
+  3 次 miss 都只丢一套、没有 cancel 连锁。**miss 容忍成立，数据路径最好一轮**。
+- **但收尾崩溃了**：`pipe end` 之后 host 断开/重连、重复 `SET_INTERFACE(0)`，
+  usb sysmodule User Break（base+0x19280，fatal PC +0x19254），与 v16/v24/v26A
+  同签名。这是当前**第一优先**要解决的问题。
+- 下一步：v29g 先处理收尾崩溃（app 侧断开时 cancel/清状态，或隔离
+  `SET_INTERFACE(0)` 路径）；之后再消除剩余 3 次 miss（4 在飞或 lead 16）。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -33,6 +35,7 @@
 | U2 滚动流 | 部分 | v29c：2.1 s、61 个完整段，收尾在 wrap 失败 | `UAC-u2-v29c-stream-20261102` |
 | U2 wrap 对齐 | 通过 | v29d：两次 `+0xa00→+0x000` wrap，cycle 翻转，set 不拆 | `UAC-u2-v29d-wrap-20261102` |
 | U2 3 在飞 + 恢复 | 通过 | v29e：64 posts、56×`3072/3`、4×status=5 均 recover | `UAC-u2-v29e-quad-20261102` |
+| U2 miss 容忍 | 通过 | v29f：64 posts、61×`3072/3`、host==device、3 miss 无连锁 | `UAC-u2-v29f-miss-20261102` |
 
 单次请求上限仍是 **3072 B / 16 帧**：20 帧（3840 B）、32 帧（6144 B）都会挂死
 `usb:ds`，上限落在 17–19 帧，“加大单次 transfer”路线已关闭。
@@ -46,7 +49,7 @@
 | v29c | 64 post 滚动 + 8 槽复用（在飞 ≤2） | 187968 B，t=33–2097 ms | posted=64、61×`3072/3`、2×status=5、1×cancel | 稳态成立；收尾在 TD 环 wrap |
 | v29d | link 槽 `+0xf70`→`+0xc00`：六套对齐 TD，驱动 4 处 link 常量 | 57024 B，t=33–801 ms | posted=22、18×`3072/3`、2×status=5；两次 wrap 干净 | wrap 修好；ring 跑空/underrun 提前停 |
 | v29e | 4 mailbox（`+0xf00` 起，`&3`）+ 3 在飞 + status=5 恢复 | 180672 B，t=33–2673 ms | posted=64、56×`3072/3`、4×status=5 + 4×recover | 3 在飞成立；miss 与空 ring rearm 对齐 |
-| v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | —（0 实机） | —（0 实机） | 离线构建 `7b242bf8…`，待一次 boot |
+| v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5、0 recover | 数据最好；收尾 `SET_INTERFACE(0)` 崩溃 |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
 游标漂移 0x90；到 post 63 时 `prod=+0xddf0`，一套跨过 0x200 边界，ED 分属
@@ -88,23 +91,23 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29f（已离线构建，待一次实机）
+## 下一步：v29g（收尾崩溃优先）
 
-v29e 的 4 次 miss 都在一套 `status=5` 后：app 立刻 cancel 其余在飞请求，ring
-被复位，下一套再走 cave 的空 ring re-arm，于是又 miss 一套。v29f 不再主动
-cancel：
+v29f 的数据路径是最好的一轮：64/64、61 个完整 3072 B（187392 B）、host 与
+设备字节完全相等；3 次 `status=5` 只丢一套，没有 cancel 连锁。但 `pipe end`
+之后，host 断开/重连触发重复 `SET_INTERFACE(0)`，usb sysmodule 以 User Break
+崩溃（base+0x19280，fatal PC +0x19254，LR +0x177f4），与 v16/v24/v26A 同签名。
 
-1. `status=5` 只释放失败槽、记 `UAC U2 pipe miss buf=%u status=%u`，循环立刻
-   补投一套，其余在飞请求保持；
-2. 真停住时（100 ms 无完成）才 cancel 剩余请求、释放槽、继续投递，日志
-   `UAC U2 pipe stall recover cancelled=%u`，最多 8 次；
-3. 在飞仍为 3，cave/mailbox 不变。
+v29g 先处理收尾崩溃，按顺序：
 
-候选 NSP `7b242bf8…`（92934 B，44 条 edits，cave 680/684 B）。host 延长到
-`--max-urbs 512 --timeout-ms 5000`，让 stall 恢复后仍能跑完 64 posts。
+1. app 在 `USB host disconnected` / 离开 Configured 时先 `usbDsEndpoint_Cancel`
+   再清端点状态，确保 alt0 到达前没有在飞 ISO 请求；
+2. 若仍崩，隔离 `SET_INTERFACE(0)` 路径（app 侧不响应、或只在无端点时处理），
+   记录崩溃是否消失；
+3. 之后再消除剩余 3 次 miss：4 在飞（4 mailbox 的 `&3` 已支持）或 lead 32→16。
 
-判定：**64/64、0 `status=5`、device bytes → 196608**；若出现 stall recover
-后继续，也算恢复成立。仍 miss 时再加到 4 在飞或 lead 32→16。
+判定：数据仍 64/64、host==device，且收尾无 crash/fatal；miss 降到 0 是第二个
+目标。
 
 ## 仍未隔离
 
