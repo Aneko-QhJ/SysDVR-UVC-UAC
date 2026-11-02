@@ -226,6 +226,22 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
   completion）→ 驱动/控制器对单次 transfer 长度有上限，记录 rc 后停；
   崩溃即停、读卡。**未部署、0 实机。**
 
+### 2026-11-02 13:1x v28 实机：6144B 单次 transfer **挂死**，上限仍是 3072B
+
+- host：`claim/alt1/SET_CUR` ok；`packets=32`、31 个 URB 全部
+  `valid=32 bad=0 bytes=0`，`done ... bytes=0`；
+- 设备：precheck 通过（`word=0x00c00584 dci=9 installed=1`）；
+  `train begin count=1`；`UAC U2 multi segments=2 size=6144`；
+  `post begin seq=1/1` 之后日志中断——**`PostBufferAsync` 没有返回**
+  （无 `post rc`），控制台死机，用户硬关机；
+- 无新 crash/erpt/fatal（27 / 20 文件+dumps / 14 与部署前相同）；
+- 判定：**6144B / 32 对 TD 的单次请求在 usb:ds 提交路径内挂死**。不是干净
+  拒绝（没有 rc），所以“加大单次 transfer”在当前驱动上走不通；单次请求
+  上限仍是 3072B（16 对 TD，v24 基线）。不要重试 6144。
+- 下一步（离线）：读 `0x30364` 之后的 ISO 提交/收尾路径，找 16-TD 或
+  `0x200` 的固定假设，解释挂死来源；在找到上限来源前不再试 6144。备选是
+  接受 ~96 ms gap，先做 PCM/时钟/与视频共存。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

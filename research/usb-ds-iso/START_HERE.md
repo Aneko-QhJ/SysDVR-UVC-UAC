@@ -25,25 +25,22 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 01:4x）
+## 当前边界（2026-11-02 13:3x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- 最后实机：2026-11-02 01:1x **v27 游标诊断，判读完成**。host `bytes=12288`
-  （4×3072B，t=34/130/242/338 ms）；设备 8 post/8 report，偶数 post 写
-  `prod=+0x200`、`cur=906→1006→1105→1205`，奇数 post `prod/cons/cur` 不变、
-  cave 未被调用、随后 `xfer=0 status=5`；每完成一次 ring 复位；无新
-  crash/erpt（27/21）。
-- 结论：**usb:ds 端点是单 transfer**，两 buffer 流水线走不通，v26A/v26B 路线
-  终止；可用基线是 v24 单 burst `2b7680ef…`（4/4、gap ~96 ms）。
-- 下一阶段：v28 `85861e90…` 已离线构建（一次 6144B = 2×3072B transfer，
-  cave 的 TD 数按请求长度推成 32 对，app `-DUAC_U2_SEGMENTS=2`），待一次
-  boot；判据：`post rc=0 size=6144`、`report req=6144 xfer=6144 status=3`、
-  host 6144B；若被驱动/控制器拒绝，记录 rc 后转「单 transfer 上限」研究或
-  4 段方案（64 位位图/分块完成）。详见
-  [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
+- 最后实机：2026-11-02 13:1x **v28 多段单 transfer，挂死**。一次 6144B
+  （2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全 `valid=32 bad=0`）；
+  设备停在 `UAC U2 post begin`，`PostBufferAsync` 未返回，控制台死机、硬关机；
+  无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）。
+- 结论：**单次请求上限仍是 3072B（16 对 TD）**；v28 的“加大单次 transfer”
+  在当前驱动上走不通，不能重试 6144。可用基线 = v24 单 burst `2b7680ef…`
+  （4/4、gap ~96 ms）。
+- 下一阶段：先离线读 `0x30364` 之后的 ISO 提交/收尾路径，找 16-TD 或 0x200
+  的固定假设，解释挂死来源；或接受 ~96 ms gap，先做 PCM/时钟/与视频共存。
+  详见 [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
