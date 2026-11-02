@@ -88,6 +88,17 @@ LINK_EDITS = tuple(
     )
 )
 LINK_EDIT_COUNT = len(LINK_EDITS)
+
+# v29h: the alt0 teardown makes usb:ds map one more request; when its IOVA
+# node allocator returns NULL (0x3140 -> 0xa410), the map error path branches
+# to the panic stub at 0x40d0.  Return the failure to the submit path instead
+# (0x409c accounts it and returns 0), so alt0 gets an error rather than a
+# User Break.
+MAP_SOFT_EDITS = (
+    (0x3FE0, bytes.fromhex("800700b4"), bytes.fromhex("e00500b4"),
+     "DMA-map node exhaustion returns an error instead of panicking"),
+)
+MAP_SOFT_EDIT_COUNT = len(MAP_SOFT_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -120,6 +131,8 @@ def payload_ready(work):
         allowed = tuple(value + QUEUE_EDITS for value in allowed)
     if doc.get("driver_link"):
         allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
+    if doc.get("driver_map_soft"):
+        allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
@@ -163,7 +176,7 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 
 
 def build_edits(nso, code, symbols, breaker=False, report=True,
-                driver_queue=False, driver_link=False):
+                driver_queue=False, driver_link=False, driver_map_soft=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -228,9 +241,13 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
     if driver_link:
         for address, before, after, reason in LINK_EDITS:
             edit(address, before, after, reason)
+    if driver_map_soft:
+        for address, before, after, reason in MAP_SOFT_EDITS:
+            edit(address, before, after, reason)
     expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
                 + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0)
-                + (LINK_EDIT_COUNT if driver_link else 0))
+                + (LINK_EDIT_COUNT if driver_link else 0)
+                + (MAP_SOFT_EDIT_COUNT if driver_map_soft else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -264,7 +281,8 @@ def render(edits):
 
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
-             segments=1, frames=None, driver_queue=False, driver_link=False):
+             segments=1, frames=None, driver_queue=False, driver_link=False,
+             driver_map_soft=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -290,6 +308,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "report_hook": bool(report),
         "driver_queue": bool(driver_queue),
         "driver_link": bool(driver_link),
+        "driver_map_soft": bool(driver_map_soft),
         "link_slot": "0xc00",
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
@@ -325,6 +344,8 @@ def check(nso, work):
         allowed = tuple(value + QUEUE_EDITS for value in allowed)
     if doc.get("driver_link"):
         allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
+    if doc.get("driver_map_soft"):
+        allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -390,6 +411,9 @@ def main():
     parser.add_argument("--driver-link", action="store_true",
                         help="v29d: move the driver ring link from +0xff0 to "
                              "+0xc00 so six aligned TD sets fit")
+    parser.add_argument("--driver-map-soft", action="store_true",
+                        help="v29h: return DMA-map node exhaustion as an error "
+                             "instead of the 0x40d0 panic")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -412,13 +436,15 @@ def main():
     code, symbols = assemble(args.toolchain, work / "asm", args.asm,
                              require_report=report)
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report,
-                        driver_queue=args.driver_queue, driver_link=args.driver_link)
+                        driver_queue=args.driver_queue, driver_link=args.driver_link,
+                        driver_map_soft=args.driver_map_soft)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
                    report=report, segments=args.segments, frames=args.frames,
-                   driver_queue=args.driver_queue, driver_link=args.driver_link)
+                   driver_queue=args.driver_queue, driver_link=args.driver_link,
+                   driver_map_soft=args.driver_map_soft)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -429,6 +455,7 @@ def main():
         f"endpoint {ENDPOINT_WORD:#010x}, {doc['frames']} frame(s)"
         + (", driver-queue" if doc["driver_queue"] else "")
         + (", driver-link" if doc["driver_link"] else "")
+        + (", driver-map-soft" if doc["driver_map_soft"] else "")
     )
 
 

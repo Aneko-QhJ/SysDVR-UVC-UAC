@@ -545,6 +545,34 @@ User Break 崩溃；栈是 DMA map/submit 路径（`0x2c584 → 0x2a3f4 → 0x2a
 - 下一步 v29h：隔离 AS 的 `SET_INTERFACE(0)`（stall 不 ACK）；或离线确认
   `0x9448 → 0x9650` 断言点的安全跳过；或先接受收尾崩溃、把 miss 降到 0。
 
+### 2026-11-02 21:3x 收尾崩溃分析 + v29h map-soft（离线）
+
+崩溃签名（v29f/v29g）：`PC +0x1927c`（`svc #0x26`）、`LR +0x9668`，栈
+`0x944c → 0x9514 → 0x9534 → 0x9560 → 0x40d0 → 0x3ce0 → 0x2c584 → 0x2a3f4
+→ 0x2a464`。
+
+- `0x9650` 是 abort helper：`bl 0x1927c`；`0x9370` 是 panic 报告/落盘函数，
+  `0x9448` 调用 `0x9650`；`0x9540`/`0x9520`/`0x94b0` 是 panic 入口链。
+- `0x40c8..0x40d8` 是 5 个 `bl 0x9540` 的 panic stub；本次命中的是 `0x40d0`。
+- 全文件里只有 `0x3fe0` 的 `cbz x0, 0x40d0` 跳到这个 stub：
+  `0x3fd0` 调 `0x3140`（全局分配器 `0x33f000 → 0xa410`）申请 **0x80 B** 的
+  IOVA 节点；返回 0 就 panic。
+- 因此崩溃不是“状态断言”，而是 **IOVA 节点分配失败**：alt0 重装端点需要
+  再 map 一次，节点池已被前面的请求/复位耗尽（与 A23 的 busy-map 泄漏同类），
+  usb:ds 直接 abort 整机。
+- app 侧 cancel 不能改变分配器状态，所以 v29g 的
+  `teardown cancel rc=0x0 wait=0xea01` 之后仍然崩。
+
+v29h 只改一处驱动：`0x3fe0` 的 `cbz x0, 0x40d0` → `cbz x0, 0x409c`。
+`0x409c` 是失败记账/返回路径（`[x24,#72]++` 后返回 0），map 失败变成
+`0x19a8c` 错误返回给 submit 路径，而不是 `svcBreak`。
+
+- 构建：`--driver-map-soft`，45 条 edits，NSP `9610b3a0…`（92589 B）、
+  NSO `b136b181…`；工作目录 `private/analysis/UAC-u2-v29h-map-soft-20261102`；
+  `tests/test_uac_u2_quad.py` 增加 map-soft 编码/目标测试。
+- 判定：数据仍 64/64、host==device；alt0 可以报错，但**不得**产生
+  crash/fatal；若仍崩，说明还有第二个 panic stub 被命中。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

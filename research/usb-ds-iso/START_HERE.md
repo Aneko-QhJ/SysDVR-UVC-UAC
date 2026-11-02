@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 21:1x）
+## 当前边界（2026-11-02 21:3x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -41,9 +41,12 @@
 - 最后实机 **v29g（21:10）**：数据 **193536 B（63×3072）、misses=1**，host 与
   设备相等；但 alt0 的 `teardown cancel rc=0x0 wait=0xea01` 执行后仍崩
   （+0x1927c）——**app 侧 cancel 不够**。
-- 下一步 **v29h**：隔离 AS 的 `SET_INTERFACE(0)`（先 stall 不 ACK）看崩溃是否
-  消失；或离线确认 `0x9448 → 0x9650` 断言点的安全跳过；或先接受收尾崩溃、
-  把 miss 降到 0。详见 [docs/CURRENT.md](docs/CURRENT.md)、
+- 离线分析定位：崩溃是 alt0 重装时的 **IOVA 节点分配失败**——`0x3fe0` 的
+  `cbz x0, 0x40d0` 在 `0x3140` 返回 0 时进 panic stub。
+- 下一步 **v29h 已离线构建**（NSP `9610b3a0…`，92589 B）：该分支改到
+  `0x409c` 失败返回路径，map 失败变成错误码而不是 `svcBreak`。待一次 boot
+  看收尾是否不再产生 crash/fatal。详见
+  [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

@@ -109,5 +109,27 @@ class TeardownTests(unittest.TestCase):
         self.assertIn("GetReportData", block)
 
 
+class MapSoftTests(unittest.TestCase):
+    """v29h: node exhaustion must return an error, not reach the 0x40d0 panic."""
+
+    def test_edit_retargets_the_panic_branch(self):
+        import build_uac_u2_producer as builder
+        address, before, after, reason = builder.MAP_SOFT_EDITS[0]
+        self.assertEqual(address, 0x3FE0)
+        self.assertEqual(before, bytes.fromhex("800700b4"))  # cbz x0, 0x40d0
+        self.assertEqual(after, bytes.fromhex("e00500b4"))   # cbz x0, 0x409c
+        self.assertEqual(builder.MAP_SOFT_EDIT_COUNT, 1)
+        self.assertIn("panic", reason)
+
+    def test_target_is_the_failure_epilogue(self):
+        before = int.from_bytes(bytes.fromhex("800700b4"), "little")
+        after = int.from_bytes(bytes.fromhex("e00500b4"), "little")
+        def target(word, pc):
+            imm = (word >> 5) & 0x7FFFF
+            return pc + (imm << 2)
+        self.assertEqual(target(before, 0x3FE0), 0x40D0)
+        self.assertEqual(target(after, 0x3FE0), 0x409C)
+
+
 if __name__ == "__main__":
     unittest.main()
