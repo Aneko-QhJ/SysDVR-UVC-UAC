@@ -319,6 +319,25 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
 - v29b：per-set mailbox（bitmap/sum/first TRB 各两套）、定位并阻止复位
   来源（`0x2c690` 清理 / `0x2a8b0` / 错误路径）、app 只把 status=3 当完成。
 
+### 2026-11-02 17:0x v29b per-set mailbox（离线）
+
+- v29a 证明控制器接受两个 16-TD 集（host 21504B），但单一 mailbox 把两套的
+  ED 混在一起：完成返回 status=2/5，驱动的错误路径把另一套排队 TD 的 ring
+  复位。
+- v29b cave `patches/iso_burst_uac84_dci9_pipe_sets.S`（**680/684B**）：
+  - 每套一个 mailbox：A 在 `ring+0xf80`、B 在 `ring+0xfc0`；
+  - enter 用 `(prod - ring) >> 9 & 1` 选套，event 用 ED 的 ring 偏移选套；
+  - 帧游标改为全局 `ring+0xfb8`（x17），不再放进 mailbox；
+  - 空间来源：去掉 interval 检查（描述符固定 4）与首控制镜像
+    `mailbox+0x3c`（B 套会写到 `ring+0xffc`，落在驱动 link TRB `0xff0`
+    内，必须去掉）。
+- app：pipeline 不再把 `urb_status == 2` 的 report 当完成，缓冲区留在飞
+  等 3 或错误码。
+- 构建：NSP `203519a7…`（92812B）、NSO `8faede4c…`；32 条 payload；
+  工作目录 `private/analysis/UAC-u2-v29b-sets-20261102`。
+- 判定：两套各自 `3072/3`、无复位、流超过 306ms、host >21504B → 继续
+  v29c（lead/节奏）；若复位仍在 → 下一个目标是驱动 report/complete 路径。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

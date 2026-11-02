@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 16:5x）
+## 当前边界（2026-11-02 17:0x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -38,7 +38,10 @@
   另一套排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`。
 - 结论：**驱动队列补丁 + 2 在飞成立**；v29b 做 per-set mailbox、阻止
   复位、app 只把 status=3 当完成。
-- 下一阶段：v29b（离线改 cave + 复位来源定位）。详见
+- 下一阶段：v29b `203519a7…` 已离线构建（per-set mailbox，680/684B；
+  app 忽略 status=2），待一次 boot：期望两套各自 `3072/3`、无 ring 复位、
+  流超过 306ms、host 明显高于 21504B。若复位仍在，下一步 patch 驱动的
+  report/complete 路径；若稳定，v29c 做 lead/节奏。详见
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

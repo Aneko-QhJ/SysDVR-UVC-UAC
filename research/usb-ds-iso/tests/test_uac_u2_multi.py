@@ -24,6 +24,7 @@ from build_uac_u2_producer import assemble  # noqa: E402
 
 MULTI = ROOT / "patches/iso_burst_uac84_dci9_pipe_multi.S"
 MULTI20 = ROOT / "patches/iso_burst_uac84_dci9_pipe_multi20.S"
+SETS = ROOT / "patches/iso_burst_uac84_dci9_pipe_sets.S"
 CURSOR = ROOT / "patches/iso_burst_uac84_dci9_pipe_cursor.S"
 SOURCE = REPO / "source/uvc/uvc_device.c"
 PRODUCER = ROOT / "tools/build_uac_u2_producer.py"
@@ -212,6 +213,52 @@ class QueuePatchTests(unittest.TestCase):
         self.assertEqual(doc["edit_count"], 32)
         addrs = {entry["address"] for entry in doc["edits"]}
         self.assertTrue({"0xc4", "0x2c628", "0x2c80c"} <= addrs)
+
+
+class SetMailboxCaveTests(unittest.TestCase):
+    """v29b: one mailbox per in-flight TD set (A at 0xf80, B at 0xfc0)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = SETS.read_text()
+
+    def test_enter_selects_the_mailbox_from_prod(self):
+        self.assertIn("sub x9, x8, x10", self.text)
+        self.assertIn("ubfx w9, w9, #9, #1", self.text)
+        self.assertIn("add x5, x5, x9, lsl #6", self.text)
+        self.assertIn("add x17, x10, #0xfb8", self.text)
+
+    def test_cursor_is_global_not_per_set(self):
+        self.assertIn("ldrh w10, [x17]", self.text)
+        self.assertIn("strh w10, [x17]", self.text)
+        self.assertNotIn("[x5, #0x38]", self.text)
+
+    def test_event_picks_the_set_from_the_ed_offset(self):
+        self.assertIn("ubfx w3, w7, #9, #1", self.text)
+        self.assertIn("add x5, x5, x3, lsl #6", self.text)
+
+    def test_no_write_into_the_driver_link_slot(self):
+        # set B occupies 0xfc0..0xfdf; ring+0xff0 is the driver's link TRB.
+        self.assertNotIn("[x5, #60]", self.text)
+
+    def test_mailbox_fields_end_before_the_link(self):
+        self.assertLess(0xFC0 + 0x20, 0xFF0)
+
+    def test_assembled_cave_fits_the_padding(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            code, symbols = assemble(TOOLCHAIN, Path(tmp) / "s", SETS,
+                                     require_report=False)
+        self.assertLessEqual(len(code), 0x69000 - 0x68D54)
+        self.assertGreater(len(code), 0x69000 - 0x68D54 - 8)  # tight budget
+        self.assertEqual(symbols["iso_enter"], 0x68D54)
+
+
+class AppStatusFilterTests(unittest.TestCase):
+    def test_status_2_is_not_a_completion(self):
+        text = SOURCE.read_text()
+        self.assertIn("if (report.report[i].urb_status == 2) continue;", text)
 
 
 if __name__ == "__main__":

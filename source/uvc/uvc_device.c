@@ -2636,6 +2636,11 @@ static void _postUacBurst(void)
         }
         for (u32 i = 0; i < report.report_count && i < 8; ++i) {
             const u32 id = report.report[i].id;
+            /* v29b: with two in-flight requests the driver can emit a
+               report entry for an entry that is still active (status 2).
+               That is not a completion; keep the buffer in flight and wait
+               for the real status (3) or an error status. */
+            if (report.report[i].urb_status == 2) continue;
             for (u32 b = 0; b < next; ++b) {
                 if (done_flag[b] || urb_ids[b] != id) continue;
                 done_flag[b] = 1;
