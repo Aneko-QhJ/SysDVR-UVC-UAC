@@ -175,3 +175,17 @@ Python 3.9.6 上通过测试。本轮未重新编译接收器或运行任何硬�
 [private/tmp-import-20261029/analysis-size-report.md](private/tmp-import-20261029/analysis-size-report.md)。
 嵌套 seal 是 negative/tamper fixture 的一部分，不应直接删除或改写；如需归档这 15 个
 目录，应先设计显式的“仅校验顶层 seal”模式，而不是绕过校验。
+
+## 2026-11-02 Finder 元数据事故（9 项）
+
+2026-11-02 17:13 的文档整理中，一条清理命令本意只删除工作区（`private/` 之外）的
+`.DS_Store`；但 `find -delete` 隐含 `-depth`，令 `private/` 的 `-prune` 失效，误删
+9 个被 `SHA256SUMS` 收录的 Finder 元数据——9 个 `private/analysis/*/source/.DS_Store`，
+内容只有两个哈希（`2c9ab602…` / `8cc23510…`）。已核查 `private/storage` 归档、
+Git 历史、`.git/experiment-artifacts`、APFS 快照与 Time Machine，均无副本，无法
+按原字节恢复。
+
+**没有改动任何 `SHA256SUMS`**。逐项清单、原因与处置记录在
+[private/storage/incident-20261102-finder-metadata.json](private/storage/incident-20261102-finder-metadata.json)。
+今后这 9 项应记为“元数据缺失”，不是内容漂移；源码、日志、运行记录、封存清单与
+结论未受影响。

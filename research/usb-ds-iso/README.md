@@ -9,92 +9,25 @@
 
 ## 现在做什么
 
-- U0d（2026-10-30 01:00）**通过**：257B/4 接口配置可读，macOS 绑定
-  `AppleUSBAudio`，出现 `SysDVR-UVC Capture` 2ch/48k 输入；未测 PCM。
-  卡已恢复 `52069a44…`。
-- UAC-only 隔离构建（`7ffdf733…`）仍标 dangerous，不再部署。
-- U1a **通过**（r7，13/13）：`GET_INTERFACE=0`，接口与 endpoint 的
-  CUR/MIN/MAX/RES=48000，LEN=3，`SET_CUR(48000)` ACK 并回读。
-  NSP `01c6ff26…`（87321B）已实机一次并恢复 `52069a44…`；见
-  [UAC_U1_CONTROL.md](docs/UAC_U1_CONTROL.md)。
-- U1b **通过**：`SET_INTERFACE(1)` → `GET_INTERFACE=1` → `SET_INTERFACE(0)`
-  均 ACK，设备日志 `action=3/4`；无 NOP、无数据 post。
-- U2 producer 实机六次均未通过：14:18 未触发（alt0）；14:39 retrigger
-  （`db97b6e7…`）被 cave 以 `0x1908c` 拒绝后错误完成递归、栈溢出（dangerous）；
-  15:08 precheck 因 manager 偏移 bug 安全跳过；15:19 precheck2 四项预检通过、
-  post 被接受，但完成/重提路径以 `0x1908c` 递归崩溃；15:27 breaker
-  （`0x302c0` nop）跳过 EP0 错误完成，未 post 即 `User Break`；15:36 安全接受
-  cave（`6a27d4c8…`，668B）首次收到 completion，但报告为空（`0x748c/0/0`），
-  触发风暴仍把 EP0 打崩并断言。离线已解码 fake-accept 的断言链（请求未真正
-  入队 → 区间映射重复插入 → `0x40cc`），**返回 0 的绕过不可行**；U2 实机线
-  暂停，待完成 report 覆盖与 unmap/一次性 post 的设计和离线验证。no-report
-  诊断 `4fc0247f…` 实机一次：`complete rc=0 requested=3072 transferred=3072`
-  （report 修复成立），但随后控制/alt 路径仍 usb 崩溃；已标 dangerous、不再部署。
-  queue-object 修正版 `56b7f8ee…` 实机一次：1 次 SET_CUR 未崩溃，但
-  `installed=0 table=0`、端点未安装、completion 为空。带 installed/table 门
-  的 v3 `c80fa717…` 实机一次：`--require-alt1` 先拦截 alt0，`--force-alt1`
-  后 `installed=240`、table 非零，门通过，completion `3072/3072`，无崩溃；
-  host 16/16 与 PCM 未测。v4 `c33d0d07…` 实机三次：alt1/installed=0 门跳过；
-  1→1 回读 alt0 未发 SET_CUR；0→1 后门通过但 `installed=1` 只是部分安装，
-  completion 为空、WAV 全零。需解码安装器字节收紧门；v5 `ddd44cd4…`
-  已构建（读 manager/device 候选，`installed<=1` skip），未部署。设计草案见
-  [UAC_U2_QUEUE_COMPAT_DESIGN.md](docs/UAC_U2_QUEUE_COMPAT_DESIGN.md)。
-- 最近一次短包实机（2026-10-27）：16×24B 主机观察通过；设备 `capture`/`EXE3`
-  保存失败 `0xD401`，未严格通过，本次范围已耗尽，不补试。
-- 路径修正版已打包（NSP `49ec1582…`/IPS `b2151be8…`）、绑定新 recipe 入口
-  并通过包/入口审计（7 原生运行场景 + 5 持久化检查，0 USB/SD）；
-  未部署、未实测，短包复测仍需新授权。
-- UAC1 标准层离线 P0 已完成：[UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)；
-  alt1 bulk/ISO 一次性 burst 已由 runtime NOP patch 打通（vendor `0x83`，不是
-  UAC `0x84`），UAC 仍禁用。
-- UAC 配置路径审计完成：[UAC_CONFIG_PATH_AUDIT.md](docs/UAC_CONFIG_PATH_AUDIT.md)：
-  复合 HS 257B/SS 269B 撞上 usb:ds 的 u8 长度截断；UAC-only 跳过了设备描述符
-  设置。payload、HS/SS 仿真与 `UAC_DESCRIPTOR_PATCH` build 接入已完成；
-  U0d 已实机一次通过（257B/4 接口/音频设备），卡已恢复 `52069a44…`。
-- ALT1 runtime NOP patch 成功：[A23_ALT1_ENDPOINT_PATCH.md](docs/A23_ALT1_ENDPOINT_PATCH.md)；
-  bulk alt1 收到 64B，ISO alt1 收到 16/16 包。**3 URB in flight 已验证**（START +
-  3 个各自 4K 对齐的不同缓冲；host 48/48 包）；但**完成缓冲复用会崩 usb**。
-  正常完成会 unmap，但 A23 选中的 URB 可能不对齐；640 个全新缓冲的池仍在约 5 个
-  URB 后崩，说明限制在 producer 的 URB/ring 再提交，不只是 buffer 复用：
-  [A23_BUFFER_RECYCLE.md](docs/A23_BUFFER_RECYCLE.md)、
-  [A23_SUSTAINED_STREAM_LIMIT.md](docs/A23_SUSTAINED_STREAM_LIMIT.md)、
-  [A23_BUSY_MAP_LEAK.md](docs/A23_BUSY_MAP_LEAK.md)、
-  [A23_SINGLE_MAILBOX_MULTI_URB.md](docs/A23_SINGLE_MAILBOX_MULTI_URB.md)、
-  [A23_MAILBOX_REPLAY.md](docs/A23_MAILBOX_REPLAY.md)、
-  [A23_PER_URB_MAILBOX_DESIGN.md](docs/A23_PER_URB_MAILBOX_DESIGN.md)、
-  [A23_SERIAL_BASELINE.md](docs/A23_SERIAL_BASELINE.md)、
-  [A23_PER_URB_IMPLEMENTATION.md](docs/A23_PER_URB_IMPLEMENTATION.md)、
-  [A23_PER_URB_ASSEMBLY.md](docs/A23_PER_URB_ASSEMBLY.md)（per-URB 仍在 UVC init
-  崩，不能作为 boot-time 全局 hook）；已设计两阶段 patch：
-  [A23_PER_URB_TWO_STAGE.md](docs/A23_PER_URB_TWO_STAGE.md)，boot 用 base A23，
-  START 时再换 per-URB；两阶段 NSP `e33b7237…` / `631dac7f…` 已构建。boot-only 通过；
-  boot-only 通过；START-before-submit 仍在 delta 后立即崩，per-URB 已停止部署。
-  serial640 也在 5 个 URB 后走同一 busy-map leak 崩溃；离线记账模型
-  [A23_URB_ACCOUNTING_MODEL.md](docs/A23_URB_ACCOUNTING_MODEL.md) 表明 5 是 IOVA
-  容量、不是 8 项表，完成被调用但 unmap 没释放；endpoint trace 已构建
-  （[A23_URB_TRACE.md](docs/A23_URB_TRACE.md)）；3 URB 读到 3/3/0，serial5 读到
-  5/5/0，URB 表干净。**`4c70` 静态审计**（[A23_URB_UNMAP_AUDIT.md](docs/A23_URB_UNMAP_AUDIT.md)）
-  发现 `2c690` 不检查 `4c70` 的 miss 返回值：`[URB+0x20]==0` 或
-  `[URB+0x10]` 不匹配都会静默泄漏，`+0/+4/+8` 仍归零。**v4 URB 字段 trace**
-  已实机一次（r5 `b0cbe1ed…`，30 edits）：consumer=5、最后 URB size=3072、
-  IOVA=0x80030000，最后一条没有走 size=0 跳过；只到 5 URB，未复现第 6 次 map。
-  **v5 全条目 trace 已实机两次**（`11d5e9eb…`）：160 包为 4 post；320 包 +
-  `caffeinate` 为 **8 post、7 complete、无 fatal**，8 个条目仍只在
-  `0x80030000`/`0x80040000` 两页间交替。one-in-flight 下第 6/7/8 次 map
-  成功，本 build 不存在固有 5 URB/5 页硬限制。**serial640 10s 复测已通过**：
-  host 3392 包、bad=0，设备 `posts=214 completes=213 errors=0`，无 usb fatal；
-  旧 5 URB 崩溃未复现。见
-  [A23_SERIAL640_RETEST.md](docs/A23_SERIAL640_RETEST.md) 与
-  [A23_URB_TRACE.md](docs/A23_URB_TRACE.md)。
-- 标准宿主 10s PCM 的 Linux 入口/检查器已准备（[UAC_HOST_10S.md](docs/UAC_HOST_10S.md)）。
-  **U0 最终通过（U0d，10-30 01:00）**：部署 `UAC_DESCRIPTOR_PATCH` 复合 NSP
-  （`48c872f1…`）后，配置读出 257B/4 接口，AC/AS 绑定 `AppleUSBAudio`，
-  音频设备 `SysDVR-UVC Capture` 2ch/48k/USB；设备日志
-  `UAC descriptor patch result=0 record=17`。此前 U0/U0b/U0c 失败于
-  `GET_DESCRIPTOR(config)` 0xE00002CD；UAC-only（`7ffdf733…`）因跳过设备
-  描述符而不可见，均已定位。UAC 默认仍禁用；未选 alt1、无 ISO producer，
-  10s PCM 未就绪。U1a/U1b 已通过。
-- 修正版配套包/入口、alt1 安装探针仍待安排。
+- **UAC 目标**：让 Switch 输出标准 48 kHz / 2ch / 16 bit 音频（192 B/ms）。
+- **已通过**：U0 枚举（257 B / 4 接口，macOS `AppleUSBAudio`）、U1a 控制
+  （13/13）、U1b alt 0→1→0；U2 单 burst（v14，3072 B，2/2）与顺序 4-burst
+  （v23，12288 B）。
+- **2 在飞已成立**：v29a 的驱动队列补丁让第二个请求进入 cave，v29b 的
+  per-set mailbox 修好完成账本——8/8 全部 `3072/3`，host = 设备 = 24576 B。
+- **滚动流**：v29c 用 8 槽复用跑 64 个 post，host 187968 B、61 个完整
+  3072 B 片段、持续 ~2.1 s；收尾在 **TD 环 wrap** 失败（cave link `+0xf70`
+  vs 驱动 `+0xff0`，一套 16-TD 被拆到环首）。
+- **下一步 v29d**：对齐 link 槽（首选 patch 驱动常量 `0xff0→0xf70`），或在
+  wrap 前 rearm/复位；修好后重跑 64/128 post 看 100%，再谈 lead 32→16 与
+  3 在飞。
+- **边界**：占空比仍约 47%（16 ms 音频 / ~34 ms 墙钟），48 kHz 连续不成立；
+  UAC 默认禁用（仅 `UAC_HOST_PROBE`）。收尾 `SET_INTERFACE(0)` 的 usb
+  `svcBreak`、DCI-9 `ISO_ENTRY=0x270`、8 个 descriptor NOP 仍未隔离。
+- **A23 线**（vendor alt1、short24、标准宿主 10s PCM）已挂起；其逐轮记录在
+  [README_HISTORY.md](README_HISTORY.md)，专题分组见
+  [docs/ARCHIVE_INDEX.md](docs/ARCHIVE_INDEX.md)；UAC 层概要见
+  [UAC_STANDARD_LAYER.md](docs/UAC_STANDARD_LAYER.md)。
 
 ## 目录
 
@@ -107,7 +40,7 @@
 | `device/` | 设备侧候选与 C 头文件 |
 | `patches/` | 汇编 patch 与部署材料 |
 | `private/` | 原始证据（不入库，只读） |
-| `README_HISTORY.md` | 2026-10-09 → 2026-10-27 逐轮时间线（历史） |
+| `README_HISTORY.md` | 2026-10-09 → 2026-11-02 逐轮时间线（历史） |
 
 ## 检查
 
@@ -129,6 +62,8 @@ make -C research/usb-ds-iso links      # 检查公开文档的相对链接
 
 ## 边界
 
-流程与安全边界以 [docs/RESEARCH_RULES.md](docs/RESEARCH_RULES.md) 为准。
-`private/` 中的原始日志、失败样本和封存材料不覆盖、不移动；未交还的 I/O 存储不释放、
-不覆盖、不复用。实机操作需要新的明确授权。
+流程与安全边界以 [docs/RESEARCH_RULES.md](docs/RESEARCH_RULES.md) 和
+[START_HERE.md](START_HERE.md) 的“当前边界”为准。2026-11-01 16:19 起为常设
+实机授权：部署/测试不再逐轮申请，插卡与开机前通知用户；一次 boot、失败即停、
+不重试。`private/` 中的原始日志、失败样本和封存材料不覆盖、不移动；未交还的
+I/O 存储不释放、不覆盖、不复用。

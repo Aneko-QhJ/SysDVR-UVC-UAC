@@ -17,15 +17,15 @@
 
 | 文件 | 日期 | 大小 | 摘要 |
 | --- | --- | --- | --- |
-| [CURRENT.md](CURRENT.md) | 2026-11-02 | 116K | U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-11-02 | 8K | 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。 |
 | [UAC_PCM_GAP.md](UAC_PCM_GAP.md) | 2026-11-02 | 2K | 一次 burst = 16 帧 × 192 B = **3072 B = 16 ms** PCM 数据（48kHz/2ch/16bit）； |
 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) | 2026-11-02 | 24K | v24（lead 32、light log）一次 burst 的时间线： |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-11-02 | 30K | U2 六次实机的结果见 [README_HISTORY.md](../README_HISTORY.md)（2026-10-30 条目）。 |
 | [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 42K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
 | [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 21K | **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
 | [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) | 2026-11-01 | 14K | 安装器 `0x295d0` 只是描述符遍历器，不碰控制器；真正把端点挂上控制器的是 |
 | [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md) | 2026-11-01 | 1K | 第一次在 Linux raw host 上收到完整 UAC ISO 数据： |
 | [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md) | 2026-11-01 | 24K | v16 r2 证明 cave 为第 2 个请求**写了完整 TD**，但驱动在完成时把 |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 30K | U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
 | [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) | 2026-10-31 | 5K | Debian/Linux raw claim 成功；第一次 raw 16×192 transfer 完成 |
 | [A23_SHORT24_PACKAGE_AND_ENTRY.md](A23_SHORT24_PACKAGE_AND_ENTRY.md) | 2026-10-30 | 8K | 本配套包已用于[首次短包实测](A23_SHORT24_FIRST_LIVE.md)：主机384字节观察通过，设备保存失败。 |
 | [UAC_CONFIG_PATH_AUDIT.md](UAC_CONFIG_PATH_AUDIT.md) | 2026-10-30 | 13K | 1. **复合 UVC+UAC 的 HS 配置正好 257 字节**（SS 269 字节）。usb:ds 在组装 |
@@ -253,7 +253,7 @@
 | [CARD_WORKFLOW.md](CARD_WORKFLOW.md) | 2026-10-27 | 6K | 读卡到安全推出的完整流程 — 当前操作范围按 [研究规则](RESEARCH_RULES.md) 和本次用户要求解释。 |
 | [CLOCK_AUDIT.md](CLOCK_AUDIT.md) | 2026-10-11 | 6K | A23主机帧时间戳诊断 — 最新3350byte失败设备日志已核验：A23安装及唯一URB正常终结，raw16包精确，但主机 |
 | [CONTEXT_AUDIT.md](CONTEXT_AUDIT.md) | 2026-10-09 | 5K | A21：ISO6 发布前硬件端点上下文 — A21已单次实机，context配置匹配但缺一槽，严格失败；完整设备日志已核验。 |
-| [CURRENT.md](CURRENT.md) | 2026-11-02 | 116K | 当前状态（2026-11-02 16:5x，Asia/Shanghai） — U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条 |
+| [CURRENT.md](CURRENT.md) | 2026-11-02 | 8K | 当前状态（2026-11-02 17:1x，Asia/Shanghai） — 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。 |
 | [DIRECTORY_LAYOUT.md](DIRECTORY_LAYOUT.md) | 2026-10-29 | 3K | 实验分支目录与本地产物 — 当前入口为 [START_HERE.md](../START_HERE.md)，当前事实只在 [CURRENT.md](CURRENT.md)。 |
 | [DOORBELL_AUDIT.md](DOORBELL_AUDIT.md) | 2026-10-09 | 4K | A20：ISO5 原门铃路径前后 MFI — A20已单次实机，raw连续正确但原生状态失败；完整设备日志已核验。 |
 | [EVENT_AUDIT.md](EVENT_AUDIT.md) | 2026-10-09 | 7K | A18：有界 ISO3 事件 / MFI 诊断 — A18已单次实机，16包内容与原生状态正确但缺一槽，严格失败；完整设备日志已核验。 |
@@ -309,7 +309,7 @@
 | [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 21K | UAC U2 连续 producer（v15 失败；v16 r2 排除 cave 门） — **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
 | [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) | 2026-11-01 | 14K | UAC U2：端点上下文、安装器与缺失的 commit（v23 离线） — 安装器 `0x295d0` 只是描述符遍历器，不碰控制器；真正把端点挂上控制器的是 |
 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) | 2026-11-02 | 24K | UAC U2：连续 ring / 双 buffer 流水线（v26 设计，离线） — v24（lead 32、light log）一次 burst 的时间线： |
-| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-10-31 | 30K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条： |
+| [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-11-02 | 30K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [README_HISTORY.md](../README_HISTORY.md)（2026-10-30 条目）。 |
 | [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md) | 2026-11-01 | 1K | U2 raw ISO success（2026-11-01 00:25） — 第一次在 Linux raw host 上收到完整 UAC ISO 数据： |
 | [UAC_U2_RING_RESET.md](UAC_U2_RING_RESET.md) | 2026-11-01 | 24K | UAC U2：第 2 个 burst 的 ring/dequeue 复位（v16 r2 → v19） — v16 r2 证明 cave 为第 2 个请求**写了完整 TD**，但驱动在完成时把 |
 | [UAC_U2_USB_CRASH.md](UAC_U2_USB_CRASH.md) | 2026-10-31 | 5K | U2 v11 `usb` sysmodule fatal（2026-10-31 22:40） — Debian/Linux raw claim 成功；第一次 raw 16×192 transfer 完成 |

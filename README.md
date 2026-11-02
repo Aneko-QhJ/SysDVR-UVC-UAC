@@ -159,12 +159,16 @@ See [the research notes](docs/RESEARCH.md) for the full investigation.
 
 ## Audio
 
-> **Current status (2026-10-27):** audio is still disabled. The latest short-packet
-> run received 384 bytes correctly on the host, but the device-side `capture`/`EXE3`
-> save failed with `0xD401`; the corrected offline candidate is not packaged or
-> deployed. The UAC1 descriptor/control layer now has an offline,
-> test-covered module (`uac_standard.c`), but `usb:ds` alt1 endpoint installation
-> is still unverified. See [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md) and
+> **Current status (2026-11-02):** audio is still disabled. UAC enumeration and
+> the control plane pass (257 B / 4 interfaces; 13/13 requests; alt 0→1→0).
+> The device-side ISO producer now keeps two requests in flight with an 8-slot
+> buffer pool and streamed for ~2.1 s (host 187,968 B; 61 full 3072 B segments), but a
+> TD-ring wrap tears down the tail; the next step is aligning the driver/cave
+> link slot (v29d). Duty cycle is ~47 %, so continuous 48 kHz is not
+> established. The 2026-10-27 short-packet run (384 B on the host, device save
+> `0xD401`) and the A23 vendor-audio work are history. See
+> [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md),
+> [UAC_U2_PIPELINE.md](research/usb-ds-iso/docs/UAC_U2_PIPELINE.md) and
 > [UAC_STANDARD_LAYER.md](research/usb-ds-iso/docs/UAC_STANDARD_LAYER.md). The text
 > below is the 2026-10-09 → 10-27 history.
 
@@ -198,11 +202,13 @@ and [cadence analysis](research/usb-ds-iso/docs/A23_AUDIO_CADENCE_GAP.md).
 UAC/PCM remains disabled; A23 video coexistence, sustained audio, SS and reset
 recovery still need separate validation.
 
-See the [research index](research/usb-ds-iso/README.md),
-[current status](research/usb-ds-iso/docs/STATUS.md) and
-[test prerequisites](research/usb-ds-iso/docs/TEST_PLAN.md). The current
-[research direction](research/usb-ds-iso/docs/RESEARCH_DIRECTION.md) connects
-these experiments to the standard USB audio/video goal.
+See the [research index](research/usb-ds-iso/README.md) and
+[current status](research/usb-ds-iso/docs/CURRENT.md). The historical
+[test prerequisites](research/usb-ds-iso/docs/TEST_PLAN.md) and
+[research direction](research/usb-ds-iso/docs/RESEARCH_DIRECTION.md) are
+2026-10-22 snapshots and no longer define the plan; the
+[progress handoff](research/usb-ds-iso/docs/PROGRESS_HANDOFF.md) is likewise
+archival.
 
 ### Workaround: Bluetooth audio (A2DP sink)
 

@@ -1,10 +1,11 @@
 # USB 等时传输实验
 
-> **历史时间线（2026-10-09 → 2026-10-29）。** 当前状态见 [docs/CURRENT.md](docs/CURRENT.md)，
+> **历史时间线（2026-10-09 → 2026-11-02）。** 当前状态见 [docs/CURRENT.md](docs/CURRENT.md)，
 > 入口见 [START_HERE.md](START_HERE.md)。本文只追加，不覆盖。
 
-当前工作以 [研究规则](docs/RESEARCH_RULES.md)、[当前状态](docs/STATUS.md) 和
-[进度交接](docs/PROGRESS_HANDOFF.md) 的当前说明为入口。
+当前工作以 [研究规则](docs/RESEARCH_RULES.md)、[当前状态](docs/CURRENT.md) 和
+[入口说明](START_HERE.md) 为入口；[STATUS.md](docs/STATUS.md) 与
+[PROGRESS_HANDOFF.md](docs/PROGRESS_HANDOFF.md) 自 2026-10-27 起是历史快照。
 2026-10-27 用户要求先不用虚拟机，并简化研究约束：使用现有 Mac，按具体问题推进有限诊断，
 区分探索观察和严格验收；原有 I/O 所有权、证据和适用硬件授权边界保留。
 旧工具的固定门禁尚未改写，当前没有新实测额度。
@@ -1547,3 +1548,9 @@ Mac 的新 IOUSBHost 接收器已实机执行空窗口与一次burst诊断。
 2026-11-02 16:4x v29c 滚动流（离线，0 实机）：把“train 长度”和“缓冲池”拆开——新增 `UAC_U2_STREAM_POSTS`（默认 = TRAIN_POSTS，本次 64），pipeline 不再在 8 个 buffer 后停止；8 槽池循环复用，但只在上一请求完成后的槽再次投递（`free_slot`），在飞仍 ≤2。cave/驱动补丁同 v29b（680/684B + 3 处 usb.elf 编辑）。风险：A23 曾因完成后立刻复用同一 DMA 缓冲崩 usb（`0xf601` + map svcBreak），这里复用间隔约 4 post（~200ms）且驱动已 unmap。构建 NSP `b1f812e4…`（92483B）、NSO `0aa4f494…`；工作目录 `private/analysis/UAC-u2-v29c-stream-20261102`；`tests/test_uac_u2_multi.py` 增加 stream/pool 用例。**未部署、0 实机**；`make check`（30 个文件）、`make links` 通过。host：`--packets 16 --transfers 8 --rearm --max-urbs 256 --timeout-ms 3000 --keep-alt`；判定 64/64 完成、设备 bytes = host bytes（~196608）、无复位/停滞。
 
 2026-11-02 16:54 v29c 滚动流实机（稳态成立，收尾 wrap 失败）：第一次开机时 VM 未 suspend，控制台崩溃（16:52 crash/fatal/erpt，已归档）；按纪律重开后候选 `b1f812e4…`（92483B，pipeline `STREAM_POSTS=64` + v29b cave/驱动补丁）跑一次。host `claim/alt1/SET_CUR` ok、exit=0；187 transfers、`valid=2073 bad=919 bytes=187968`，数据 t=33–2097ms（持续 ~2.1s）。设备 `pipe end posted=64 completed=63 bytes=187392`：61 个 `3072/3`，随后 2 个 `status=5`、1 个 stall→cancel。故障点：post 63 `prod=+0xddf0` → post 64 `prod=+0x080`、cycle 翻转——cave 在 `+0xf70` 回卷而驱动 link 在 `+0xff0`，一套 16-TD 被拆到环首；两次 status=5 正好落在 wrap。缓冲复用未崩（8 槽、2 在飞）。本次运行无崩溃。恢复 `52069a44…`、删日志与新报告、安全弹出。证据 `private/runs/UAC-u2-v29c-stream-20261102/`（`host-raw.txt` `d639d11c…`、`device-log-v29c.txt` `af16c11e…`、crash/fatal/erpt `785a6e75…/c7396803…/438a9136…`）、`private/card-cycles/20261102-u2-v29c-stream/`。下一步 v29d：对齐 link 槽（驱动 `0xff0→0xf70`）或 wrap 前复位，目标 100%。
+
+2026-11-02 17:1x 文档整理：入口收敛为 [CURRENT.md](docs/CURRENT.md)（唯一当前状态）、
+[START_HERE.md](START_HERE.md)（边界与 60 秒上手）、[README.md](README.md)（研究目录入口）；
+CURRENT 改为只写当前事实与下一步，逐轮记录留在本文件。上文 2026-10-27 的“文档导航 /
+STATUS.md / TEST_PLAN.md”指针已过时，保留为历史；当前文档索引见
+[docs/INDEX.md](docs/INDEX.md) 与 [docs/ARCHIVE_INDEX.md](docs/ARCHIVE_INDEX.md)。

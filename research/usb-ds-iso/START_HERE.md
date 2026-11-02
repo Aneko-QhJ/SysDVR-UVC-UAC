@@ -25,25 +25,24 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 16:5x）
+## 当前边界（2026-11-02 17:1x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
-  开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
+  开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- 最后实机：2026-11-02 16:20 **v29a 队列补丁，诊断通过**。host
-  **bytes=21504**（7×3072B，v24 同窗口 12288B），**不挂死**；cursor 证明
-  第二个 post 进 cave（`prod=+0x200` → `+0x400`、`cur=476→494`），控制器
-  接受 2×16 TD。剩余：共享 mailbox 的完成账本（status=2/5）与 ring 在
-  另一套排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`。
-- 结论：**驱动队列补丁 + 2 在飞成立**；v29b 做 per-set mailbox、阻止
-  复位、app 只把 status=3 当完成。
-- 下一阶段：v29c 稳态成立（2.1s、61 个完整 3072B 片段、无复用崩溃），
-  但收尾在 **TD 环 wrap** 失败（cave link `+0xf70` vs 驱动 `+0xff0`，
-  一套 TD 被拆到环首）→ v29d 对齐 link 槽或 wrap 前复位。修好后重跑
-  64/128 post 看 100%。详见 [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
+- 最后实机：2026-11-02 16:54 **v29c 滚动流，稳态成立**。host **187968 B**
+  （t=33–2097ms），设备 **posted=64 / 61 个完整 3072 B / 2×status=5 /
+  1×cancel**；2 在飞 + 8 槽复用持续 ~2.1 s，无复用崩溃。
+- 失败点：**TD 环 wrap**——post 63 `prod=+0xddf0`，下一套跨过 cave link
+  `+0xf70`；随后 `prod` 复位到 `+0x080`、cycle 翻转，一套 TD 被拆到环首。
+- 下一步 **v29d**：patch 驱动 link 常量 `0xff0→0xf70`（首选），或在 wrap 前
+  rearm/复位；修好后重跑 64/128 post 看 100%，再谈 lead 32→16 与 3 在飞。
+  详见 [docs/CURRENT.md](docs/CURRENT.md)、
+  [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
+- 占空比仍约 47%（16 ms 音频 / ~34 ms 墙钟），48 kHz 连续不成立；UAC 保持禁用。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
 
 ## 文件角色

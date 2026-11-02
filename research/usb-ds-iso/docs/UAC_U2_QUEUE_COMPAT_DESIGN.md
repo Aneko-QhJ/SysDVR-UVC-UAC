@@ -14,7 +14,8 @@
 
 ## 1. 现象
 
-U2 六次实机的结果见 [CURRENT.md](CURRENT.md#L10-L19)。与本设计直接相关的三条：
+U2 六次实机的结果见 [README_HISTORY.md](../README_HISTORY.md)（2026-10-30 条目）。
+与本设计直接相关的三条：
 
 1. precheck2：`post rc=0` 之后，usb 在完成/重提路径以 `0x1908c` 递归崩溃；
 2. breaker：`0x302c0` 的 `nop` 同时跳过了 EP0 的错误完成，未 post 就断言；

@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 host/iso-probe
 host/alt1-probe
+host/iso-stream
+host/usb-config-dump
 host/uac-control
 host/uac-burst
 host/uac-raw-probe
