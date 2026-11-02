@@ -2942,6 +2942,23 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
            next alt1 SET_CUR post a fresh burst again. */
         g_uacCtx.burstPosted = false;
 #endif
+#ifdef UAC_U2_PATCH
+        /* v29g: the host's alt0 re-installs the AS endpoint.  Any request the
+           driver still owns at that point makes usb:ds assert while it maps
+           the reinstalled ring (crash at +0x1927c).  Flush and reap before
+           the status stage so alt0 sees a quiet endpoint. */
+        if (g_uacCtx.audioEndpointIn) {
+            Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+            UsbDsReportData report;
+            Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
+                                    100E+6);
+            if (R_SUCCEEDED(wait)) {
+                eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
+                usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
+            }
+            LOG("UAC U2 teardown cancel rc=0x%x wait=0x%x\n", cancel, wait);
+        }
+#endif
         _ctrlAck(iface);
         break;
     case UAC_ACT_ACK:

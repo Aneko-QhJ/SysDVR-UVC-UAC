@@ -513,6 +513,23 @@ ring 被复位，下一套再走空 ring 的 re-arm，于是又 miss。v29f 不�
 - 下一步 v29g：断开时先 cancel/清端点状态；必要时隔离 `SET_INTERFACE(0)`
   路径；之后再 4 在飞或 lead 16。
 
+### 2026-11-02 21:0x v29g 收尾 cancel（离线）
+
+v29f 的数据路径最好（64/64、61 段、host==device），但 `pipe end` 之后
+host 断开/重连、重复 `SET_INTERFACE(0)`，usb sysmodule 在 `+0x1927c` 以
+User Break 崩溃；栈是 DMA map/submit 路径（`0x2c584 → 0x2a3f4 → 0x2a464`）。
+怀疑 alt0 重装端点时仍有排队/映射的请求。
+
+- app：`UAC_ACT_STOP`（alt0）在 `_ctrlAck` 前 `usbDsEndpoint_Cancel`，
+  `eventWait` 100 ms + `GetReportData` 收掉一份 report，日志
+  `UAC U2 teardown cancel rc=0x%x wait=0x%x`；
+- 数据路径与 v29f 相同（3 在飞、miss 容忍、stall 恢复），cave/mailbox 不变；
+- 构建：NSP `a599149a…`（92541 B）、NSO `d5b8c6db…`，44 条 edits；工作目录
+  `private/analysis/UAC-u2-v29g-teardown-20261102`；新增 teardown 测试
+  （cancel 在 ACK 之前、包含 GetReportData）。
+- 判定：数据仍 64/64、host==device；收尾无 crash/fatal。若仍崩，下一步隔离
+  `SET_INTERFACE(0)` 路径或 patch 断言点。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

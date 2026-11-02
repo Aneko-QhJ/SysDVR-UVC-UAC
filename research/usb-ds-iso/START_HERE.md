@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 21:1x）
+## 当前边界（2026-11-02 21:0x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -38,8 +38,9 @@
 - **收尾崩溃**：`pipe end` 之后 host 断开/重连、重复 `SET_INTERFACE(0)`，
   usb sysmodule User Break（base+0x19280，fatal PC +0x19254），与
   v16/v24/v26A 同签名。
-- 下一步 **v29g**：先处理收尾崩溃（断开时先 cancel/清端点状态，再隔离
-  `SET_INTERFACE(0)` 路径）；之后再消除剩余 3 次 miss（4 在飞或 lead 16）。
+- 下一步 **v29g 已离线构建**（NSP `a599149a…`，92541 B）：`SET_INTERFACE(0)`
+  （`UAC_ACT_STOP`）在 ACK 前先 `usbDsEndpoint_Cancel` + 收一份 report，日志
+  `UAC U2 teardown cancel`；数据路径同 v29f。待一次 boot 看收尾是否不再崩。
   详见 [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、

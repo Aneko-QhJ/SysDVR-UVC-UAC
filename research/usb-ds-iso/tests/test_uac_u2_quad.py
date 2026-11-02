@@ -89,5 +89,25 @@ class PipelineAppTests(unittest.TestCase):
         self.assertIn("++recoveries;", self.text)
 
 
+class TeardownTests(unittest.TestCase):
+    """v29g: alt0 must see a quiet endpoint before the status stage."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.text = SOURCE.read_text()
+
+    def test_alt0_cancels_and_reaps_before_ack(self):
+        start = self.text.index("case UAC_ACT_STOP:")
+        end = self.text.index("case UAC_ACT_ACK:", start)
+        block = self.text[start:end]
+        cancel = block.index("usbDsEndpoint_Cancel(")
+        ack = block.index("_ctrlAck(iface);")
+        self.assertLess(cancel, ack)
+        self.assertIn("UAC U2 teardown cancel", block)
+        self.assertIn("GetReportData", block)
+
+
 if __name__ == "__main__":
     unittest.main()
