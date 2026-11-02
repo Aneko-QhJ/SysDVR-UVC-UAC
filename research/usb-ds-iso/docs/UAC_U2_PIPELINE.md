@@ -602,6 +602,17 @@ v29h 之后收尾崩溃关闭，剩 2 次单套 miss。四在飞需要四个连�
   `private/analysis/UAC-u2-v29i-four-20261102`；新增四套环/链接槽测试。
 - 判定：64/64、0 miss、host==device（196608）；alt0 仍不得 crash。
 
+### 2026-11-02 22:30 v29i 实机：4 在飞/4 套环未降低 miss
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；312 transfers、`valid=2233 bad=2759
+  **bytes=187392**`，数据 t=33–2706 ms；host==device。
+- 设备：**posted=64 completed=64 bytes=187392 misses=3 recoveries=0**——
+  61 个 `3072/3`、3 个 `status=5`；每次 miss 前都出现 ring 复位
+  （`prod=cons=cur=0`）。
+- 收尾：alt0 仍走 map-soft 错误返回，无 crash/fatal，无新报告。
+- 判定：**4 在飞没有降 miss**（v29h 2 → v29i 3）；4 套环丢掉 6 套的缓冲
+  深度，负结果。回退 v29h 配置，只改 lead（v29j）。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 22:2x，Asia/Shanghai）
+# 当前状态（2026-11-02 22:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -28,9 +28,10 @@
 - 最后实机 v29h（22:16）：**posted=64 / completed=64 / bytes=190464
   （62×3072）/ misses=2 / recoveries=0**，host 与设备相等；剩 2 次单套 miss
   与 ~47% 占空比。
-- 下一步 **v29i 已离线构建**（NSP `35f49d8e…`，92589 B）：ring 改为 4 套
-  （link `+0x800`）+ **4 个请求在飞**；四个 mailbox 的 `&3` 在 4 套环上
-  跨 wrap 仍唯一。待一次 boot 看 miss 是否降到 0。
+- 最后实机 v29i（22:30）：4 在飞/4 套环**没有降低 miss**——61×`3072/3`、
+  **misses=3**（v29h 2），host==device 187392 B；收尾仍不崩。
+- 结论：4 套环丢掉了 6 套的缓冲深度，4 在飞不划算；下一步 **v29j** 回退到
+  v29h 配置（3 在飞、6 套环）只改 frame lead 32→16。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -64,7 +65,7 @@
 | v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5、0 recover | 数据最好；收尾 `SET_INTERFACE(0)` 崩溃 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | 193536 B（=设备） | posted=64、63×`3072/3`、1×status=5；cancel 执行 | 数据更好；alt0 仍崩 → app cancel 不够 |
 | v29h | IOVA 节点分配失败改为返回错误（`0x3fe0`→`0x409c`） | 190464 B（=设备） | posted=64、62×`3072/3`、2×status=5 | **收尾不崩**；数据 62 段 |
-| v29i | 4 套环（link `+0x800`）+ 4 在飞 | —（0 实机） | —（0 实机） | 离线构建 `35f49d8e…`，待一次 boot |
+| v29i | 4 套环（link `+0x800`）+ 4 在飞 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5 | miss 未降（3）；4 套深度不够 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | —（0 实机） | —（0 实机） | 离线构建 `a599149a…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
@@ -107,22 +108,22 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29i（4 在飞，已离线构建）
+## 下一步：v29j（回退 v29h + lead 16）
 
-v29h 后收尾已关闭，剩 2 次单套 miss。v29i 把在飞从 3 加到 4，同时把 ring
-从 6 套收成 **4 套**（link `+0x800`）：6 套时 4 个连续 set 跨 wrap 会变成
-`3,0,1,0`，两套共享 mailbox 0；4 套时 block 是 `0,1,2,3`，wrap `3→0` 用 `&3`
-仍唯一。
+v29i 是负结果：4 在飞/4 套环把 miss 从 v29h 的 2 升到 3，最后 61 段；原因是
+4 套环丢掉了 6 套的缓冲深度，每次 ring 复位仍会 wipe 一套，而 4 在飞没有
+额外余量。**回退到 v29h 的数据配置**（3 在飞、6 套环、link `+0xc00`、
+quad cave、map-soft），只改一个变量：cave 的 frame lead `32 → 16`。
 
-改动：
+v29j 改动：
 
-1. cave `patches/iso_burst_uac84_dci9_pipe_quad4.S`（680/684 B，link `+0x800`）；
-2. 驱动 link 编辑 12 条改为 `0x800/0x808`（builder `--link-slot 0x800`）；
-3. app `posted - completed < 4`；
-4. 其余（quad mailbox、miss 容忍、stall 恢复、alt0 cancel、map-soft）不变。
+1. cave 回到 `iso_burst_uac84_dci9_pipe_quad.S`（680/684 B）；
+2. `add w9, w9, #32` → `#16`（frame = MFI/8 + 16）；
+3. 其余（miss 容忍、stall 恢复、alt0 cancel、map-soft、link 0xc00）不变。
 
-候选 NSP `35f49d8e…`（92589 B，45 条 edits）。判定：64/64、0 miss、host==device
-（196608）；alt0 仍不得 crash；之后再测占空比与 48 kHz。
+判定：64/64、0 miss、host==device（196608），alt0 仍不得崩。若 lead 16 也
+miss，下一轮再试 24 或在保持 6 套的前提下把在飞加到 4（需要 8 个 mailbox
+或别的映射）。
 
 ## 仍未隔离
 

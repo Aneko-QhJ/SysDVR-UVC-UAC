@@ -169,8 +169,10 @@ See [the research notes](docs/RESEARCH.md) for the full investigation.
 > empty ring while completions are still pending. v29h delivered 62 full
 > segments (host and device both 190,464 B, two misses) and fixed the
 > `SET_INTERFACE(0)` teardown: the sysmodule now returns the IOVA-map failure
-> as an error instead of aborting the console. Duty cycle is ~47 %, so
-> continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
+> as an error instead of aborting the console. v29i (four in flight on a
+> four-set ring) was worse (61 segments, three misses), so the next candidate
+> keeps the v29h ring and lowers the frame lead from 32 to 16. Duty cycle is
+> ~47 %, so continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
 > `0xD401`) and the A23 vendor-audio work are history. See
 > [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md),
 > [UAC_U2_PIPELINE.md](research/usb-ds-iso/docs/UAC_U2_PIPELINE.md) and
