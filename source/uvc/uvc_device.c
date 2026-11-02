@@ -100,6 +100,14 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #error "UAC_U2_FRAMES must be 1..32 (the cave's ED bitmap is 32 bits)"
 #endif
 #define UAC_U2_BURST_BYTES (UAC_ISO_PACKET_SIZE * UAC_U2_FRAMES)
+/* v29c: keep posting buffers until this many posts have gone out (the
+   pipeline recycles the buffer pool only after a completion). */
+#ifndef UAC_U2_STREAM_POSTS
+#define UAC_U2_STREAM_POSTS UAC_U2_TRAIN_POSTS
+#endif
+#if UAC_U2_STREAM_POSTS < UAC_U2_TRAIN_POSTS
+#error "UAC_U2_STREAM_POSTS must be >= UAC_U2_TRAIN_POSTS"
+#endif
 /* One DMA row per post: rounded up to a page so every row stays 0x1000
    aligned (the cave's TDs point into it). */
 #define UAC_U2_BUF_BYTES ((UAC_U2_BURST_BYTES + 0xFFFu) & ~0xFFFu)
@@ -2577,12 +2585,18 @@ static void _postUacBurst(void)
        0x2feb0.  The 1 kHz pattern phase continues across buffers. */
     u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
     bool pipe_failed = false;
-    u8 done_flag[8] = {0};
+    u8 free_slot[8];
     u32 urb_ids[8] = {0};
+    const u32 stream_posts = UAC_U2_STREAM_POSTS;
     u64 last_progress = svcGetSystemTick();
+    for (u32 i = 0; i < 8; ++i) free_slot[i] = 1;
 
     for (;;) {
-        while (next < UAC_U2_TRAIN_POSTS && posted - completed < 2) {
+        /* v29c: rolling train.  A slot is posted again only after the
+           previous request that used it completed (free_slot), at most two
+           requests in flight, and never more than STREAM_POSTS total. */
+        while (posted < stream_posts && posted - completed < 2 &&
+               free_slot[next]) {
             u8 *buf = g_u2BurstBuffers[next];
             s16 *samples = (s16 *)buf;
             const u32 base = g_uacCtx.patternFrame;
@@ -2593,27 +2607,28 @@ static void _postUacBurst(void)
             g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
             armDCacheFlush(buf, UAC_U2_BURST_BYTES);
 #if defined(UAC_U2_CURSOR_DIAG)
-            _uacLogCursor("pre", next + 1);
+            _uacLogCursor("pre", posted + 1);
 #endif
             u32 urb = 0;
             Result rc = usbDsEndpoint_PostBufferAsync(
                 g_uacCtx.audioEndpointIn, buf, UAC_U2_BURST_BYTES, &urb);
             LOG("UAC U2 pipe post buf=%u urb=%u rc=0x%x seq=%u\n",
-                next, urb, rc, next + 1);
+                next, urb, rc, posted + 1);
 #if defined(UAC_U2_CURSOR_DIAG)
-            _uacLogCursor("post", next + 1);
+            _uacLogCursor("post", posted + 1);
 #endif
             if (R_FAILED(rc)) {
                 pipe_failed = true;
                 break;
             }
             urb_ids[next] = urb;
-            ++next;
+            free_slot[next] = 0;
             ++posted;
+            if (++next >= UAC_U2_TRAIN_POSTS) next = 0;
             last_progress = svcGetSystemTick();
         }
         if (pipe_failed) break;
-        if (posted == UAC_U2_TRAIN_POSTS && completed == posted) break;
+        if (posted == stream_posts && completed == posted) break;
         if (posted == completed) break; /* nothing in flight and nothing left */
 
         Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
@@ -2641,9 +2656,9 @@ static void _postUacBurst(void)
                That is not a completion; keep the buffer in flight and wait
                for the real status (3) or an error status. */
             if (report.report[i].urb_status == 2) continue;
-            for (u32 b = 0; b < next; ++b) {
-                if (done_flag[b] || urb_ids[b] != id) continue;
-                done_flag[b] = 1;
+            for (u32 b = 0; b < UAC_U2_TRAIN_POSTS; ++b) {
+                if (free_slot[b] || urb_ids[b] != id) continue;
+                free_slot[b] = 1;
                 ++completed;
                 xfer_total += report.report[i].transferredSize;
                 LOG("UAC U2 pipe done buf=%u urb=%u xfer=%u status=%u\n",

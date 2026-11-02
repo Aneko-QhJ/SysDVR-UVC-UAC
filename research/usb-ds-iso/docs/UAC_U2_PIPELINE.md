@@ -354,6 +354,24 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
 - 下一步 v29c：放宽 train 长度（或按时间持续投递）、测稳态占空比/丢包，
   再试 lead 32→16；在飞仍限 2 套（mailbox 只有 A/B）。
 
+### 2026-11-02 16:4x v29c 滚动流（离线）
+
+- v29b 的 train 被 `BURSTS=8` 限在 272ms；v29c 把“train 长度”和“缓冲池”
+  拆开：
+  - `UAC_U2_STREAM_POSTS`（默认 = TRAIN_POSTS）决定总 post 数，本次 64；
+  - 8 槽缓冲池循环复用，但**只有上一请求完成后的槽**才会再次投递
+    （`free_slot`），在飞仍 ≤2；
+- cave 与驱动队列补丁同 v29b（680/684B + 3 处 usb.elf 编辑）；
+- 风险：A23 曾因“完成后立刻复用同一 DMA 缓冲”崩 usb（`0xf601` + map
+  svcBreak）。这里复用间隔约 4 个 post（~200ms），驱动已 unmap；若复用仍
+  崩，前 1s 日志会暴露；
+- 构建：NSP `b1f812e4…`（92483B）、NSO `0aa4f494…`；工作目录
+  `private/analysis/UAC-u2-v29c-stream-20261102`；
+- host：`--packets 16 --transfers 8 --rearm --max-urbs 256
+  --timeout-ms 3000 --keep-alt`；
+- 判定：64/64 完成、设备 bytes = host bytes（~196608）、无复位/停滞，
+  测稳态占空比；之后再试 lead 32→16 与 3 在飞。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

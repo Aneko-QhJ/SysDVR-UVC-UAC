@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 16:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 16:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -19,7 +19,7 @@
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 16:3x）
+## 当前进度（2026-11-02 16:4x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -71,6 +71,7 @@
 | **PCM/时钟 gap 模型（离线）** | 96ms 周期只承载 16ms 数据 → 占空比 **16.6%**；10s 模型：线上 319488B、丢弃 1.54MB、host 空闲 8336ms、ring 顶满；60ms 周期也只有 ~27% → **标准 UAC 48kHz 不可连续**，UAC 保持禁用 | `tools/model_uac_pcm_ring.py`（`simulate_gap`）、[UAC_PCM_GAP.md](UAC_PCM_GAP.md) |
 | **v29a 队列补丁（实机一次，诊断通过）** | host **bytes=21504**（7×3072B，t=34–306ms；v24 为 12288B），**不挂死**；设备 cursor：post0 `prod=+0x200 cur=476`、post1 `prod=+0x400 cur=494` → 第二个请求确实进 cave，控制器接受 2×16 TD；但共享 mailbox 使完成返回 status=2/5、ring 在另一套 TD 排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`（16:20） | `private/runs/UAC-u2-v29a-queue-20261102`、`private/card-cycles/20261102-u2-v29a-queue`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v29b per-set mailbox（实机一次，通过）** | host **bytes=24576**（8×3072B，t=33–305ms）；设备 **8/8 全部 `3072/3`**、`pipe end posted=8 completed=8 bytes=24576`；A/B mailbox 交替干净，两套之间无 `prod=cons=ring` 复位（只有最后一次完成后的收尾复位）；无新 crash/erpt/fatal；占空比 ~47%（v24 16.7%），但 train 仍被 `BURSTS=8` 限长 | `private/runs/UAC-u2-v29b-sets-20261102`、`private/card-cycles/20261102-u2-v29b-sets`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v29c 滚动流（离线）** | pipeline 不再受 `BURSTS=8` 限长：新增 `UAC_U2_STREAM_POSTS`（默认 = TRAIN_POSTS，本次 64），8 槽缓冲池只在上一请求完成后复用，仍在飞 ≤2；cave/驱动补丁同 v29b；NSP `b1f812e4…`（92483B）；目标：64 post / 64 完成、设备与 host 字节相等、无复位/停滞，测稳态占空比 | `private/analysis/UAC-u2-v29c-stream-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -107,12 +108,12 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v29b 定性：per-set mailbox 成立，2 在飞稳定）：(0) v29c 把 train
-  变长：放宽 `UAC_U2_BURSTS` 上限或改成按时间/次数持续投递（目标 ≥5s），
-  测稳态占空比与丢包；(1) 再试把 lead 32→16，看占空比能否从 ~47% 再升；
-  (2) 每请求仍 ≤16 帧、在飞 ≤2 套（mailbox 只有 A/B）；(3) 收尾崩溃仍未
-  规避；(4) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未隔离。详见
-  [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+- 下一步（v29b 定性：per-set mailbox 成立；v29c 已离线构建）：(0) v29c
+  `b1f812e4…` 一次 boot：期望 64 post / 64 完成、设备 bytes = host bytes
+  （~196608）、无复位/停滞；若缓冲复用触发崩溃，日志会在前 1s 内暴露；
+  (1) 稳态数据到手后再试 lead 32→16，并评估把在飞加到 3（需再腾 mailbox
+  空间）；(2) 收尾崩溃仍未规避；(3) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未
+  隔离。详见 [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
 ## 最近一次实机：v29b per-set mailbox（2026-11-02 16:31，通过）
 

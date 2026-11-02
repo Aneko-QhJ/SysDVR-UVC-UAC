@@ -261,5 +261,32 @@ class AppStatusFilterTests(unittest.TestCase):
         self.assertIn("if (report.report[i].urb_status == 2) continue;", text)
 
 
+class StreamPipelineTests(unittest.TestCase):
+    """v29c: the pipeline keeps posting until STREAM_POSTS, reusing slots."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = SOURCE.read_text()
+
+    def test_stream_length_is_separate_from_the_buffer_pool(self):
+        self.assertIn("#ifndef UAC_U2_STREAM_POSTS", self.text)
+        self.assertIn("#define UAC_U2_STREAM_POSTS UAC_U2_TRAIN_POSTS", self.text)
+        self.assertIn("UAC_U2_STREAM_POSTS must be >= UAC_U2_TRAIN_POSTS",
+                      self.text)
+
+    def test_slots_are_reused_only_after_a_completion(self):
+        self.assertIn("u8 free_slot[8]", self.text)
+        self.assertIn("free_slot[next] = 0;", self.text)
+        self.assertIn("free_slot[b] = 1;", self.text)
+        self.assertIn("posted < stream_posts && posted - completed < 2 &&",
+                      self.text)
+
+    def test_train_breaks_only_after_stream_posts(self):
+        self.assertIn("if (posted == stream_posts && completed == posted) break;",
+                      self.text)
+        self.assertNotIn("posted == UAC_U2_TRAIN_POSTS && completed == posted",
+                         self.text)
+
+
 if __name__ == "__main__":
     unittest.main()
