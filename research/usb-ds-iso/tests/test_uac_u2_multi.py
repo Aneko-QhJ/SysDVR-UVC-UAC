@@ -164,5 +164,55 @@ class MultiFrameModelTests(unittest.TestCase):
         self.assertEqual(self.pick(2040, 24), 24)
 
 
+class QueuePatchTests(unittest.TestCase):
+    """v29a: submit the appended request immediately, skip the auto-submit."""
+
+    def test_stub_submits_the_appended_entry(self):
+        from build_uac_u2_producer import (QUEUE_GATE_AFTER, QUEUE_SKIP_AFTER,
+                                           QUEUE_STUB_AFTER)
+        words = [int.from_bytes(QUEUE_STUB_AFTER[i:i + 4], "little")
+                 for i in range(0, 12, 4)]
+        self.assertEqual(words[0], 0x51000589)   # sub w9, w12, #1
+        self.assertEqual(words[1], 0x12000929)   # and w9, w9, #7
+        # b 0x2c62c, pc 0x0cc
+        self.assertEqual(words[2] & 0xFC000000, 0x14000000)
+        target = 0x0CC + ((words[2] & 0x3FFFFFF) << 2)
+        self.assertEqual(target, 0x2C62C)
+
+    def test_gate_branches_to_the_stub(self):
+        from build_uac_u2_producer import QUEUE_GATE_AFTER
+        word = int.from_bytes(QUEUE_GATE_AFTER, "little")
+        self.assertEqual(word & 0xFC000000, 0x14000000)
+        imm = word & 0x3FFFFFF
+        if imm & (1 << 25):
+            imm -= 1 << 26
+        self.assertEqual(0x2C628 + (imm << 2), 0x0C4)
+
+    def test_skip_branch_jumps_over_the_auto_submit(self):
+        from build_uac_u2_producer import QUEUE_SKIP_AFTER
+        word = int.from_bytes(QUEUE_SKIP_AFTER, "little")
+        imm = word & 0x3FFFFFF
+        if imm & (1 << 25):
+            imm -= 1 << 26
+        self.assertEqual(0x2C80C + (imm << 2), 0x2C84C)
+
+    def test_builder_counts_the_three_extra_edits(self):
+        text = PRODUCER.read_text()
+        self.assertIn('"--driver-queue"', text)
+        self.assertIn("QUEUE_EDITS if driver_queue else 0", text)
+        self.assertIn("driver_queue=args.driver_queue", text)
+
+    def test_work_dir_manifest_matches_when_present(self):
+        import json
+        work = ROOT / "private/analysis/UAC-u2-v29a-queue-20261102"
+        if not (work / "manifest.json").is_file():
+            self.skipTest("v29a payload not built here")
+        doc = json.loads((work / "manifest.json").read_text())
+        self.assertTrue(doc["driver_queue"])
+        self.assertEqual(doc["edit_count"], 32)
+        addrs = {entry["address"] for entry in doc["edits"]}
+        self.assertTrue({"0xc4", "0x2c628", "0x2c80c"} <= addrs)
+
+
 if __name__ == "__main__":
     unittest.main()

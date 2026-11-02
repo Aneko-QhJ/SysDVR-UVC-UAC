@@ -280,6 +280,28 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
 - 下一步：回到 v24 基线（16 帧、gap ~96 ms），做 PCM/时钟/与视频共存；
   连续流挂账。不要重试 >16 帧的单次请求。
 
+### 2026-11-02 16:3x v29a 驱动队列补丁（离线，诊断）
+
+拆解结论：驱动队列是**串行**的——`0x2c520` 只在队列为空时提交
+（`0x2c628` 的 `b.ne`），`0x2c690` 在完成清理后于 `0x2c808–0x2c848`
+自动提交下一个排队项。v26A/v27 的第二个 post 没进 cave，就是因为这个门。
+
+v29a 补丁（usb.elf，3 处）：
+- `0x0c4` 放 3 条指令的 stub：`sub w9,w12,#1`（w12 = 追加后的 tail，故
+  w9 = 刚追加的 entry）、`and w9,w9,#7`、`b 0x2c62c`；
+- `0x2c628`：`b.ne 0x2c668` → `b 0x0c4`（总是走提交块）；
+- `0x2c80c`：`cbz w8,0x2c84c` → `b 0x2c84c`（跳过完成的自动提交，由 app
+  pipeline 保持 2 个在飞）。
+
+配置：cave 仍用 v26B cursor（672/684B），app `BURSTS=8 + LIGHT_LOG +
+PIPELINE + CURSOR_DIAG`；NSP `feaa2d55…`（92899B），payload 32 条。
+
+**这一轮只回答两个问题**：第二个 post 是否被驱动提交（cursor 行
+`prod=+0x200` → `+0x400`、`cur` 前进），以及控制器是否接受两个 16-TD 集
+（挂死 = 不接受，同 v28 类）。共享 mailbox（magic/done/bitmap/sum/first
+TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过后再做 v29b
+的 per-set 账本。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

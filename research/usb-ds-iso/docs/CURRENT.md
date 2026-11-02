@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 16:0x，Asia/Shanghai）
+# 当前状态（2026-11-02 16:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -17,7 +17,7 @@
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 16:0x）
+## 当前进度（2026-11-02 16:3x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -67,6 +67,7 @@
 | **v28 多段单 transfer（实机一次，挂死）** | 一次 6144B（2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全部 `valid=32 bad=0`）；设备 **停在 `UAC U2 post begin`**、`PostBufferAsync` 未返回，控制台死机需硬关机；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）；单次上限仍是 3072B | `private/runs/UAC-u2-v28-multi-20261102`、`private/card-cycles/20261102-u2-v28-multi`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v28b 20 帧单 transfer（实机一次，挂死）** | 一次 3840B（20×192B、20 对 TD）请求：host `bytes=0`（50×20 包全部 `valid=20 bad=0`）；设备停在 `UAC U2 multi frames=20 size=3840` → `post begin`，`PostBufferAsync` 未返回，控制台死机（USB 链路未掉）；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）→ **单次上限在 17–19 帧**，加大单次 transfer 路线关闭 | `private/runs/UAC-u2-v28b-20frame-20261102`、`private/card-cycles/20261102-u2-v28b-20frame`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **PCM/时钟 gap 模型（离线）** | 96ms 周期只承载 16ms 数据 → 占空比 **16.6%**；10s 模型：线上 319488B、丢弃 1.54MB、host 空闲 8336ms、ring 顶满；60ms 周期也只有 ~27% → **标准 UAC 48kHz 不可连续**，UAC 保持禁用 | `tools/model_uac_pcm_ring.py`（`simulate_gap`）、[UAC_PCM_GAP.md](UAC_PCM_GAP.md) |
+| **v29a 队列补丁（离线）** | 驱动 3 处编辑：`0x0c4` stub 提交刚追加的 entry、`0x2c628` 固定跳转、`0x2c80c` 跳过完成自动提交；cave 仍用 v26B cursor 672/684B，app 2 在飞 pipeline + `CURSOR_DIAG`；NSP `feaa2d55…`（92899B），32 条 payload；先回答“第二个 post 是否进 cave、控制器是否接受 2×16 TD”，共享 mailbox 的完成账本问题留 v29b | `private/analysis/UAC-u2-v29a-queue-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -103,19 +104,15 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v28b 定性：20 帧也挂死，单次上限 17–19 帧；路线关闭）：
-  (0) 可用配置固定为 v24 单 burst（`2b7680ef…`，16 帧 / 3072B、4/4、
-  gap ~96 ms）；不要再试 >16 帧的单次请求；(1) 连续流改挂账：本驱动 API
-  同时只允许一个在飞请求，且控制器对单请求 TD 数有硬上限，暂无可绕路径；
-  除非另找驱动侧入口（UVC 式队列）或改驱动；(2) 收尾崩溃仍未规避：
-  `--keep-alt` 不够，需要在 app 的 alt0 处理里先 cancel，或研究内核重绑/
-  重枚举路径；(3) PCM/时钟 gap 模型已完成：96ms 周期只能承载 16.6% 的
-  48kHz 音频，标准 UAC 不可用、保持禁用，详见
-  [UAC_PCM_GAP.md](UAC_PCM_GAP.md)；(4) 下一步做视频共存与收尾崩溃规避；
-  `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未隔离。详见
+- 下一步（v29a 队列补丁已离线构建）：(0) 可用配置仍是 v24 单 burst；
+  (1) v29a `feaa2d55…` 先做一次诊断 boot：看第二个 post 是否被驱动提交
+  （cursor 行 `prod=+0x200` → `+0x400`、`cur` 前进），以及控制器是否接受
+  2×16 TD（挂死 = 不接受，路终止）；(2) 若通过，v29b 重做 cave 的 per-set
+  mailbox/完成账本（当前共享 mailbox 会错完成）；(3) 收尾崩溃仍未规避；
+  (4) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未隔离。详见
   [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 最近一次实机：v28b 20 帧（2026-11-02 16:0x，挂死）
+## 最近一次实机：v28b 20 帧（2026-11-02 16:3x，挂死）
 
 | 项 | 结果 |
 | --- | --- |

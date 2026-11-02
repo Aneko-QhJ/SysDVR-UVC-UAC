@@ -49,6 +49,20 @@ ENDPOINT_WORD = 0x00C00584    # addr 0x84, attrs 0x05 (ISO|async), MPS 192
 BURST_BYTES = 16 * 192
 EDITS_COUNT = 1 + 3 + len(DESCRIPTOR_EDITS) + len(NOP_EDITS)
 EDITS_COUNT_NO_REPORT = 1 + 2 + len(DESCRIPTOR_EDITS) + len(NOP_EDITS)
+
+# v29: queue patch.  0x2c520 only submits the queued entry when the queue is
+# empty; the patch submits the entry it just appended and skips the
+# completion-path auto-submit so the app owns the in-flight window.
+QUEUE_STUB_ADDR = 0x0C4
+QUEUE_GATE_ADDR = 0x2C628
+QUEUE_SKIP_ADDR = 0x2C80C
+QUEUE_STUB_BEFORE = bytes(12)
+QUEUE_STUB_AFTER = bytes.fromhex("890500512909001258b10014")
+QUEUE_GATE_BEFORE = bytes.fromhex("01020054")
+QUEUE_GATE_AFTER = bytes.fromhex("a74eff17")
+QUEUE_SKIP_BEFORE = bytes.fromhex("08020034")
+QUEUE_SKIP_AFTER = bytes.fromhex("10000014")
+QUEUE_EDITS = 3 if QUEUE_STUB_ADDR else 0
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -75,9 +89,11 @@ def payload_ready(work):
     if not header.is_file() or not manifest_path.is_file():
         raise SystemExit(f"missing payload under {work}; run build_uac_u2_producer.py")
     doc = json.loads(manifest_path.read_text())
-    if doc["edit_count"] not in (
-            EDITS_COUNT, EDITS_COUNT_BREAKER,
-            EDITS_COUNT_NO_REPORT, EDITS_COUNT_NO_REPORT_BREAKER):
+    allowed = (EDITS_COUNT, EDITS_COUNT_BREAKER,
+               EDITS_COUNT_NO_REPORT, EDITS_COUNT_NO_REPORT_BREAKER)
+    if doc.get("driver_queue"):
+        allowed = tuple(value + QUEUE_EDITS for value in allowed)
+    if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
@@ -119,7 +135,8 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
     return binary.read_bytes(), symbols
 
 
-def build_edits(nso, code, symbols, breaker=False, report=True):
+def build_edits(nso, code, symbols, breaker=False, report=True,
+                driver_queue=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -174,7 +191,15 @@ def build_edits(nso, code, symbols, breaker=False, report=True):
     if breaker:
         edit(BREAKER_HOOK, BREAKER_BEFORE, BREAKER_AFTER,
              "break the completion/retry recursion: skip the ISO submit error completion")
-    expected = (EDITS_COUNT if report else EDITS_COUNT_NO_REPORT) + (1 if breaker else 0)
+    if driver_queue:
+        edit(QUEUE_STUB_ADDR, QUEUE_STUB_BEFORE, QUEUE_STUB_AFTER,
+             "queue stub: submit the entry just appended at the tail")
+        edit(QUEUE_GATE_ADDR, QUEUE_GATE_BEFORE, QUEUE_GATE_AFTER,
+             "always run the submit block instead of only when the queue is empty")
+        edit(QUEUE_SKIP_ADDR, QUEUE_SKIP_BEFORE, QUEUE_SKIP_AFTER,
+             "skip the completion-path auto-submit (post-time submit owns it)")
+    expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
+                + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -208,7 +233,7 @@ def render(edits):
 
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
-             segments=1, frames=None):
+             segments=1, frames=None, driver_queue=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -232,6 +257,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
                    "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)},
         "breaker": bool(breaker),
         "report_hook": bool(report),
+        "driver_queue": bool(driver_queue),
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
                                  if report else ("iso_enter", "iso_event"))},
@@ -262,6 +288,8 @@ def check(nso, work):
         raise SystemExit("unexpected edit counts")
     allowed = (EDITS_COUNT if report else EDITS_COUNT_NO_REPORT,
                EDITS_COUNT_BREAKER if report else EDITS_COUNT_NO_REPORT_BREAKER)
+    if doc.get("driver_queue"):
+        allowed = tuple(value + QUEUE_EDITS for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -321,6 +349,9 @@ def main():
                         help="cave assembly (default patches/iso_burst_uac84.S)")
     parser.add_argument("--segments", type=int, default=1, choices=(1, 2),
                         help="v28 only: 3072 B segments in one transfer (1..2)")
+    parser.add_argument("--driver-queue", action="store_true",
+                        help="v29: submit the appended request immediately and "
+                             "skip the completion auto-submit")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -342,12 +373,14 @@ def main():
     report = not args.no_report
     code, symbols = assemble(args.toolchain, work / "asm", args.asm,
                              require_report=report)
-    edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report)
+    edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report,
+                        driver_queue=args.driver_queue)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
-                   report=report, segments=args.segments, frames=args.frames)
+                   report=report, segments=args.segments, frames=args.frames,
+                   driver_queue=args.driver_queue)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -356,6 +389,7 @@ def main():
         f"wrote {work / 'uac_u2_payload.h'}: {len(edits)} edits, "
         f"cave {len(code)}/{CAVE_END - CAVE} B, "
         f"endpoint {ENDPOINT_WORD:#010x}, {doc['frames']} frame(s)"
+        + (", driver-queue" if doc["driver_queue"] else "")
     )
 
 
