@@ -319,7 +319,7 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
 - v29b：per-set mailbox（bitmap/sum/first TRB 各两套）、定位并阻止复位
   来源（`0x2c690` 清理 / `0x2a8b0` / 错误路径）、app 只把 status=3 当完成。
 
-### 2026-11-02 17:0x v29b per-set mailbox（离线）
+### 2026-11-02 16:2x v29b per-set mailbox（离线）
 
 - v29a 证明控制器接受两个 16-TD 集（host 21504B），但单一 mailbox 把两套的
   ED 混在一起：完成返回 status=2/5，驱动的错误路径把另一套排队 TD 的 ring
@@ -337,6 +337,22 @@ TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过�
   工作目录 `private/analysis/UAC-u2-v29b-sets-20261102`。
 - 判定：两套各自 `3072/3`、无复位、流超过 306ms、host >21504B → 继续
   v29c（lead/节奏）；若复位仍在 → 下一个目标是驱动 report/complete 路径。
+
+### 2026-11-02 16:31 v29b 实机：per-set mailbox 成立，2 在飞稳定
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；62 transfers、`valid=281 bad=711
+  bytes=24576`（t=33–305 ms 八个 3072B 片段）；
+- 设备：8 个 post、8 个完成**全部 `xfer=3072 status=3`**；
+  `pipe end posted=8 completed=8 bytes=24576`（与 host 完全相等）；
+- ring：prod 从 `+0x200` 一路推进到 `+0xc00`，cons 逐步跟随，**两套之间
+  没有 `prod=cons=ring` 复位**；只有最后一次完成后的收尾复位；
+- cursor：每套 +16 前进，收尾回 0；
+- 无新 crash/erpt/fatal（27 / 21 项 / 14 不变）；
+- 判定：**per-set mailbox 修好了完成账本**，2 在飞可以稳定跑完 8 个 buffer；
+  数据 128 ms / 墙钟 272 ms ≈ **47% 占空比**（v24 单请求 16.7%）。train 仍受
+  `BURSTS=8` 限制，不是持续流。
+- 下一步 v29c：放宽 train 长度（或按时间持续投递）、测稳态占空比/丢包，
+  再试 lead 32→16；在飞仍限 2 套（mailbox 只有 A/B）。
 
 ## 里程碑
 
