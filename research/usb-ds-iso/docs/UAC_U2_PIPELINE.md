@@ -266,6 +266,20 @@ A 先用 16 ms 节拍验证“ring 不空就不会复位”；若 A 成立，B �
 - 判定：若同样挂死 → 单次上限在 **17–20 帧**，连续流在本驱动上关闭；
   若通过 → 上限在 **21–32 帧**，可再二分。
 
+### 2026-11-02 15:5x v28b 实机：20 帧（3840B）也挂死，上限 17–19 帧
+
+- host：`claim/alt1/SET_CUR` ok；`packets=20`、50 个 URB 全部
+  `valid=20 bad=0 bytes=0`，`done ... bytes=0`；
+- 设备：precheck 通过；`train begin count=1`；`UAC U2 multi frames=20
+  size=3840`；`post begin seq=1/1` 之后日志中断——`PostBufferAsync` 没有
+  返回；控制台死机，但 **USB 链路没有掉**（guest 仍看得到 `1209:ca57`）；
+- 无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）；
+- 判定：**16 帧（3072B）可用、20 帧（3840B）卡死 → 单次请求上限在
+  17–19 帧**。“加大单次 transfer”路线关闭；连续流只剩“另找驱动提交入口
+  （UVC 式队列）”或“改驱动”两条路，当前不做。
+- 下一步：回到 v24 基线（16 帧、gap ~96 ms），做 PCM/时钟/与视频共存；
+  连续流挂账。不要重试 >16 帧的单次请求。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

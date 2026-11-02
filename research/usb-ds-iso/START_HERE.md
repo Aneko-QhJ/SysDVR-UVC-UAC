@@ -25,23 +25,23 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 14:1x）
+## 当前边界（2026-11-02 15:5x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- 最后实机：2026-11-02 13:1x **v28 多段单 transfer，挂死**。一次 6144B
-  （2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全 `valid=32 bad=0`）；
-  设备停在 `UAC U2 post begin`，`PostBufferAsync` 未返回，控制台死机、硬关机；
-  无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）。
-- 结论：**单次请求上限仍是 3072B（16 对 TD）**；v28 的“加大单次 transfer”
-  在当前驱动上走不通，不能重试 6144。可用基线 = v24 单 burst `2b7680ef…`
+- 最后实机：2026-11-02 15:5x **v28b 20 帧，挂死**。一次 3840B
+  （20×192B、20 对 TD）请求：host `bytes=0`（50×20 包全 `valid=20 bad=0`）；
+  设备停在 `UAC U2 multi frames=20 size=3840` → `post begin`，
+  `PostBufferAsync` 未返回；控制台死机但 USB 链路未掉；无新
+  crash/erpt/fatal（27 / 20 文件+dumps / 14）。
+- 结论：**16 帧（3072B）可用、20 帧卡死 → 单次上限在 17–19 帧**；
+  “加大单次 transfer”路线关闭。唯一可用配置 = v24 单 burst `2b7680ef…`
   （4/4、gap ~96 ms）。
-- 下一阶段：v28b `b9b5459b…`（20 帧、3840B）已离线构建，待一次 boot
-  定位单次上限：若挂死 → 上限 17–20 帧，连续流在本驱动上关闭；若通过 →
-  上限 21–32 帧，可再二分。提交路径拆解未发现 16-TD 常量，上限更可能在
-  控制器/硬件。详见 [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
+- 下一阶段：回到 v24 基线，做 PCM/时钟/与视频共存；连续流挂账（只剩
+  “另找驱动提交入口/UVC 式队列”或“改驱动”两条路）。不要重试 >16 帧的
+  单次请求。详见 [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡恢复 `52069a44…`、删日志、安全弹出；设备现场状态不推定。
