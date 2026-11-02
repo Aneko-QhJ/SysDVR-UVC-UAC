@@ -302,6 +302,23 @@ PIPELINE + CURSOR_DIAG`；NSP `feaa2d55…`（92899B），payload 32 条。
 TRB 都在 `ring+0xf80`）会导致完成账本错误，v29a 不解决；通过后再做 v29b
 的 per-set 账本。
 
+### 2026-11-02 16:20 v29a 实机：队列补丁成立，2 在飞被接受
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；62 transfers、`valid=249 bad=743
+  **bytes=21504**`（t=34–306 ms 七个 3072B 片段，之后为空）；
+- 设备 cursor：`post buf=0` → `prod=ring+0x200 cur=476`；`post buf=1`
+  → `prod=ring+0x400 cur=494`——**第二个 post 确实进了 cave**；
+- 完成：`done buf=0 3072/3`、`done buf=1 0/status=2`；后续 post 到
+  `+0x600/+0x800`，完成返回 status=2/5，ring 在另一套 TD 排队时被复位；
+  `pipe end posted=8 completed=8 bytes=3840`（app 只记到 3840，host 实收
+  21504）；
+- 无死机；新增 1 份 erpt `2162-0004`（Data Abort，16:20）；
+- 判定：**队列补丁 + 控制器 2 在飞成立**（v24 同窗口 12288B → 21504B）。
+  剩余问题是账本：cave mailbox 共享、driver 对仍在飞的 entry 返回
+  status=2、完成清理把另一套排队 TD 的 ring 复位。
+- v29b：per-set mailbox（bitmap/sum/first TRB 各两套）、定位并阻止复位
+  来源（`0x2c690` 清理 / `0x2a8b0` / 错误路径）、app 只把 status=3 当完成。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

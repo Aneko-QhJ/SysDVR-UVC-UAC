@@ -25,23 +25,20 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 16:3x）
+## 当前边界（2026-11-02 16:5x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v27 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- 最后实机：2026-11-02 15:5x **v28b 20 帧，挂死**。一次 3840B
-  （20×192B、20 对 TD）请求：host `bytes=0`（50×20 包全 `valid=20 bad=0`）；
-  设备停在 `UAC U2 multi frames=20 size=3840` → `post begin`，
-  `PostBufferAsync` 未返回；控制台死机但 USB 链路未掉；无新
-  crash/erpt/fatal（27 / 20 文件+dumps / 14）。
-- 结论：**16 帧（3072B）可用、20 帧卡死 → 单次上限在 17–19 帧**；
-  “加大单次 transfer”路线关闭。唯一可用配置 = v24 单 burst `2b7680ef…`
-  （4/4、gap ~96 ms）。
-- 下一阶段：v29a 队列补丁 `feaa2d55…`（3 处驱动编辑 + 2 在飞 pipeline）
-  已离线构建，待一次**诊断 boot**：看第二个 post 是否被驱动提交、控制器是否
-  接受 2×16 TD（挂死即终止）。通过后做 v29b 的 per-set mailbox。详见
+- 最后实机：2026-11-02 16:20 **v29a 队列补丁，诊断通过**。host
+  **bytes=21504**（7×3072B，v24 同窗口 12288B），**不挂死**；cursor 证明
+  第二个 post 进 cave（`prod=+0x200` → `+0x400`、`cur=476→494`），控制器
+  接受 2×16 TD。剩余：共享 mailbox 的完成账本（status=2/5）与 ring 在
+  另一套排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`。
+- 结论：**驱动队列补丁 + 2 在飞成立**；v29b 做 per-set mailbox、阻止
+  复位、app 只把 status=3 当完成。
+- 下一阶段：v29b（离线改 cave + 复位来源定位）。详见
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

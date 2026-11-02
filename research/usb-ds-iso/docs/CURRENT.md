@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 16:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 16:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -12,12 +12,14 @@
 > **系统在 `PostBufferAsync` 内挂死**——无 post rc、host 0 字节、无新
 > crash/erpt；单次上限仍是 3072B。拆解驱动提交路径未发现 16-TD 常量，
 > 上限更像在控制器；v28b（20 帧 = 3840B）实机**同样挂死**——16 帧可用、
-> 20 帧卡死，单次上限落在 17–19 帧，“加大单次 transfer”路线关闭。收尾
-> usb `svcBreak` 仍未规避。详见
+> 20 帧卡死，单次上限落在 17–19 帧，“加大单次 transfer”路线关闭。v29a
+> 驱动队列补丁实机一次：**两个在飞 16-TD 集被接受，host 收到 21504B**
+> （v24 12288B）且不挂死；但共享 mailbox 的完成账本和 ring 复位仍会截断
+> 数据流（~306ms 后停）。收尾 usb `svcBreak` 仍未规避。详见
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 16:3x）
+## 当前进度（2026-11-02 16:5x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -67,7 +69,7 @@
 | **v28 多段单 transfer（实机一次，挂死）** | 一次 6144B（2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全部 `valid=32 bad=0`）；设备 **停在 `UAC U2 post begin`**、`PostBufferAsync` 未返回，控制台死机需硬关机；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）；单次上限仍是 3072B | `private/runs/UAC-u2-v28-multi-20261102`、`private/card-cycles/20261102-u2-v28-multi`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v28b 20 帧单 transfer（实机一次，挂死）** | 一次 3840B（20×192B、20 对 TD）请求：host `bytes=0`（50×20 包全部 `valid=20 bad=0`）；设备停在 `UAC U2 multi frames=20 size=3840` → `post begin`，`PostBufferAsync` 未返回，控制台死机（USB 链路未掉）；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）→ **单次上限在 17–19 帧**，加大单次 transfer 路线关闭 | `private/runs/UAC-u2-v28b-20frame-20261102`、`private/card-cycles/20261102-u2-v28b-20frame`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **PCM/时钟 gap 模型（离线）** | 96ms 周期只承载 16ms 数据 → 占空比 **16.6%**；10s 模型：线上 319488B、丢弃 1.54MB、host 空闲 8336ms、ring 顶满；60ms 周期也只有 ~27% → **标准 UAC 48kHz 不可连续**，UAC 保持禁用 | `tools/model_uac_pcm_ring.py`（`simulate_gap`）、[UAC_PCM_GAP.md](UAC_PCM_GAP.md) |
-| **v29a 队列补丁（离线）** | 驱动 3 处编辑：`0x0c4` stub 提交刚追加的 entry、`0x2c628` 固定跳转、`0x2c80c` 跳过完成自动提交；cave 仍用 v26B cursor 672/684B，app 2 在飞 pipeline + `CURSOR_DIAG`；NSP `feaa2d55…`（92899B），32 条 payload；先回答“第二个 post 是否进 cave、控制器是否接受 2×16 TD”，共享 mailbox 的完成账本问题留 v29b | `private/analysis/UAC-u2-v29a-queue-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v29a 队列补丁（实机一次，诊断通过）** | host **bytes=21504**（7×3072B，t=34–306ms；v24 为 12288B），**不挂死**；设备 cursor：post0 `prod=+0x200 cur=476`、post1 `prod=+0x400 cur=494` → 第二个请求确实进 cave，控制器接受 2×16 TD；但共享 mailbox 使完成返回 status=2/5、ring 在另一套 TD 排队时被复位，~306ms 后流中断；新增 1 份 erpt `2162-0004`（16:20） | `private/runs/UAC-u2-v29a-queue-20261102`、`private/card-cycles/20261102-u2-v29a-queue`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -104,15 +106,28 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v29a 队列补丁已离线构建）：(0) 可用配置仍是 v24 单 burst；
-  (1) v29a `feaa2d55…` 先做一次诊断 boot：看第二个 post 是否被驱动提交
-  （cursor 行 `prod=+0x200` → `+0x400`、`cur` 前进），以及控制器是否接受
-  2×16 TD（挂死 = 不接受，路终止）；(2) 若通过，v29b 重做 cave 的 per-set
-  mailbox/完成账本（当前共享 mailbox 会错完成）；(3) 收尾崩溃仍未规避；
+- 下一步（v29a 定性：2 在飞可用；账本/复位待解）：(0) 可用配置仍是 v24
+  单 burst；(1) v29b 三件事：cave 的 **per-set mailbox**（两套 TD 各自
+  的 bitmap/sum/first TRB，不再互相覆盖）、阻止完成路径在另一套 TD 排队时
+  把 ring 复位（定位 `0x2c690` 清理/`0x2a8b0`/错误路径里的 reset 来源）、
+  app 侧 report 只把 status=3/非 2 当完成；(2) 目标：连续 16ms 片段、
+  host 无空洞；每请求仍 ≤16 帧；(3) 收尾崩溃仍未规避；
   (4) `ISO_ENTRY=0x270` 与 8 个 NOP 仍未隔离。详见
   [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
-## 最近一次实机：v28b 20 帧（2026-11-02 16:3x，挂死）
+## 最近一次实机：v29a 队列补丁（2026-11-02 16:20，诊断通过）
+
+| 项 | 结果 |
+| --- | --- |
+| 纪律 | 部署读回一致；VM 开机前 suspend；主界面后 resume，设备 attach 后 guest 未枚举，一次 VM suspend/resume 后见 `1209:ca57`；probe 一次（`--packets 16 --keep-alt`）；无重试 |
+| host | `claim/alt1/SET_CUR` ok；exit=0；62 transfers、`valid=249 bad=743 bytes=21504`（t=34–306ms 七个 3072B 片段，之后空） |
+| 设备 | `post buf=0` → `prod=ring+0x200 cur=476`；`post buf=1` → `prod=ring+0x400 cur=494`（第二请求进 cave）；`done buf=0 3072/3`、`done buf=1 0/status=2`；后续 post 到 `+0x600/+0x800`，完成返回 status=2/5，ring 在另一套排队时复位；`pipe end posted=8 completed=8 bytes=3840`（app 侧只记到 3840） |
+| 判定 | **队列补丁和控制器 2 在飞都成立**（v24 同窗口 12288B → 21504B，不挂死）；剩余问题是完成账本（共享 mailbox）和复位（排队 TD 被清），不是队列/控制器 |
+| crash | 无死机；新增 1 份 erpt `2162-0004`（16:20，Data Abort）；crash 21 项、fatal 14 不变 |
+| 证据 | `private/runs/UAC-u2-v29a-queue-20261102`（`host-raw.txt` `0300e67b…`、`device-log-v29a.txt` `143f6fee…`、`erpt-5f964d2a…` `e8950ada…`）、`private/card-cycles/20261102-u2-v29a-queue` |
+| 收尾 | 恢复 `52069a44…`、删日志与新 erpt、安全弹出；无重试 |
+
+## 上一次实机：v28b 20 帧（2026-11-02 15:5x，挂死）## 上一次实机：v28b 20 帧（2026-11-02 15:5x，挂死）
 
 | 项 | 结果 |
 | --- | --- |
