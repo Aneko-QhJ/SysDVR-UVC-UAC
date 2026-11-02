@@ -46,8 +46,9 @@
   不变——**v16 起的收尾崩溃已关闭**。
 - 最后实机 **v29i（22:30）**：4 在飞/4 套环 **没有降低 miss**——61 段、
   misses=3（v29h 2），host==device；收尾仍不崩。
-- 下一步 **v29j**：回退 v29h 配置（3 在飞、6 套环、link `+0xc00`、map-soft），
-  只把 frame lead 32→16。详见 [docs/CURRENT.md](docs/CURRENT.md)、
+- 下一步 **v29j 已离线构建**（NSP `b6e80871…`，92589 B）：回退 v29h 配置
+  （3 在飞、6 套环、link `+0xc00`、map-soft），只把 frame lead 32→16；
+  待一次 boot 看 miss 是否下降。详见 [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。

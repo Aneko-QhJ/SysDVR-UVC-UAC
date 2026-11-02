@@ -86,9 +86,9 @@ class UacU2PipeAppTests(unittest.TestCase):
         end = self.text.index("#else", start)
         return self.text[start:end]
 
-    def test_four_buffers_stay_in_flight(self):
+    def test_three_buffers_stay_in_flight(self):
         block = self._pipeline()
-        self.assertIn("posted - completed < 4", block)
+        self.assertIn("posted - completed < 3", block)
         self.assertIn("UAC U2 pipe post buf=%u urb=%u", block)
         self.assertIn("UAC U2 pipe done buf=%u urb=%u", block)
         self.assertIn("UAC U2 pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u", block)

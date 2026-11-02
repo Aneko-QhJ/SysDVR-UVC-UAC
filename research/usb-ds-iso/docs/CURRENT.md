@@ -30,8 +30,9 @@
   与 ~47% 占空比。
 - 最后实机 v29i（22:30）：4 在飞/4 套环**没有降低 miss**——61×`3072/3`、
   **misses=3**（v29h 2），host==device 187392 B；收尾仍不崩。
-- 结论：4 套环丢掉了 6 套的缓冲深度，4 在飞不划算；下一步 **v29j** 回退到
-  v29h 配置（3 在飞、6 套环）只改 frame lead 32→16。
+- 结论：4 套环丢掉了 6 套的缓冲深度，4 在飞不划算；下一步 **v29j 已离线
+  构建**（NSP `b6e80871…`，92589 B）：回退 v29h 配置（3 在飞、6 套环、
+  link `+0xc00`、map-soft），只把 frame lead 32→16。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -66,6 +67,7 @@
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | 193536 B（=设备） | posted=64、63×`3072/3`、1×status=5；cancel 执行 | 数据更好；alt0 仍崩 → app cancel 不够 |
 | v29h | IOVA 节点分配失败改为返回错误（`0x3fe0`→`0x409c`） | 190464 B（=设备） | posted=64、62×`3072/3`、2×status=5 | **收尾不崩**；数据 62 段 |
 | v29i | 4 套环（link `+0x800`）+ 4 在飞 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5 | miss 未降（3）；4 套深度不够 |
+| v29j | v29h 回退 + cave frame lead 32→16 | —（0 实机） | —（0 实机） | 离线构建 `b6e80871…`，待一次 boot |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | —（0 实机） | —（0 实机） | 离线构建 `a599149a…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
@@ -108,22 +110,18 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29j（回退 v29h + lead 16）
+## 下一步：v29j（lead 16，已离线构建）
 
-v29i 是负结果：4 在飞/4 套环把 miss 从 v29h 的 2 升到 3，最后 61 段；原因是
-4 套环丢掉了 6 套的缓冲深度，每次 ring 复位仍会 wipe 一套，而 4 在飞没有
-额外余量。**回退到 v29h 的数据配置**（3 在飞、6 套环、link `+0xc00`、
-quad cave、map-soft），只改一个变量：cave 的 frame lead `32 → 16`。
+v29i 是负结果（miss 2→3），所以回退到 v29h 的数据配置，只改一个变量：
 
-v29j 改动：
+1. cave `patches/iso_burst_uac84_dci9_pipe_quad16.S`（680/684 B，link `+0xc00`，
+   `frame = MFI/8 + 16`）；
+2. app 回到 `posted - completed < 3`；
+3. 驱动 12 条 link 编辑（`+0xc00`）+ map-soft，共 45 条。
 
-1. cave 回到 `iso_burst_uac84_dci9_pipe_quad.S`（680/684 B）；
-2. `add w9, w9, #32` → `#16`（frame = MFI/8 + 16）；
-3. 其余（miss 容忍、stall 恢复、alt0 cancel、map-soft、link 0xc00）不变。
-
-判定：64/64、0 miss、host==device（196608），alt0 仍不得崩。若 lead 16 也
-miss，下一轮再试 24 或在保持 6 套的前提下把在飞加到 4（需要 8 个 mailbox
-或别的映射）。
+候选 NSP `b6e80871…`（92589 B）。判定：64/64、0 miss、host==device
+（196608），alt0 仍不得崩。若 lead 16 太大/太小：miss 更多或出现
+`0x748c` 类漏服务，则下一步试 24 或回到 32。
 
 ## 仍未隔离
 

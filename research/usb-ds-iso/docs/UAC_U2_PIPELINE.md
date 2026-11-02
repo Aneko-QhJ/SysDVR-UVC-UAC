@@ -613,6 +613,21 @@ v29h 之后收尾崩溃关闭，剩 2 次单套 miss。四在飞需要四个连�
 - 判定：**4 在飞没有降 miss**（v29h 2 → v29i 3）；4 套环丢掉 6 套的缓冲
   深度，负结果。回退 v29h 配置，只改 lead（v29j）。
 
+### 2026-11-02 22:3x v29j lead 16（离线）
+
+v29i（4 在飞/4 套环）是负结果，miss 2→3。v29j 回到 v29h 的数据配置（3 在飞、
+6 套环、link `+0xc00`、quad mailbox、miss 容忍、stall 恢复、alt0 cancel、
+map-soft），只改 TD 帧 lead：`MFI/8 + 32` → `+16`。
+
+- cave：`patches/iso_burst_uac84_dci9_pipe_quad16.S`（680/684 B），
+  `add w9, w9, #32` → `#16`；
+- app：`posted - completed < 3`；
+- 驱动：45 条 edits（12 条 link `+0xc00` + map-soft + 3 queue）；
+- 构建：NSP `b6e80871…`（92589 B）、NSO `74fa23da…`；工作目录
+  `private/analysis/UAC-u2-v29j-lead16-20261102`；新增 lead-16 cave 测试。
+- 判定：64/64、0 miss、host==device（196608）；若 miss 更多或出现 `0x748c`
+  类漏服务，说明 16 太小，下一步试 24 或回 32。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
