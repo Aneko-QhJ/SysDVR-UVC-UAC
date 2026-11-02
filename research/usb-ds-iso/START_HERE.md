@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 19:5x）
+## 当前边界（2026-11-02 20:3x）
 
 - 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -38,8 +38,9 @@
 - 失败点：4 次 miss 与 cave 在空 ring 上的 re-arm 对齐——`prod==cons` 只说明
   ring 里没有 TD，不说明没有完成 pending；rearm 会复位 ring/上下文，随后那套
   以 `status=5` 结束。
-- 下一步 **v29f**：只在驱动复位后 re-arm（普通空 ring 直接写 base），或把在飞
-  加到 4（四个 mailbox 已支持 `&3`）；之后 lead 32→16。详见
+- 下一步 **v29f 已离线构建**（NSP `7b242bf8…`，92934 B）：`status=5` 只释放
+  失败槽并补投，不再 cancel 其余在飞请求；真停住时由 100 ms stall 路径
+  cancel+重投（最多 8 次）。待一次 boot 看 miss 是否降到 0。详见
   [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、

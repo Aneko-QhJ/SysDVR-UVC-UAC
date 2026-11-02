@@ -91,15 +91,16 @@ class UacU2PipeAppTests(unittest.TestCase):
         self.assertIn("posted - completed < 3", block)
         self.assertIn("UAC U2 pipe post buf=%u urb=%u", block)
         self.assertIn("UAC U2 pipe done buf=%u urb=%u", block)
-        self.assertIn("UAC U2 pipe end posted=%u completed=%u bytes=%u", block)
+        self.assertIn("UAC U2 pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u", block)
 
     def test_pending_requests_are_cancelled(self):
         block = self._pipeline()
-        cancel = block.index("Result cancel = usbDsEndpoint_Cancel(")
+        cancel = block.rindex("Result cancel = usbDsEndpoint_Cancel(")
         guard = block.index("if (completed < posted)")
         self.assertLess(guard, cancel)
         self.assertIn("pipe cancel pending=%u", block)
-        self.assertIn("pipe recover cancelled=%u", block)
+        self.assertIn("pipe stall recover cancelled=%u", block)
+        self.assertIn("pipe miss buf=%u status=%u", block)
 
     def test_burst_limit_allows_eight_and_submit_dump_is_guarded(self):
         self.assertIn("#if defined(UAC_U2_PIPELINE)", self.text)

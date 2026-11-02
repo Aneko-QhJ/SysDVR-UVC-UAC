@@ -474,6 +474,27 @@ v29d 的失败点不在 wrap：一次空 ring re-arm 后（seq 3），一次在 
 - 下一步 v29f：普通空 ring 直接写 base（只在驱动复位后 re-arm），或加到
   4 在飞；之后再 lead 32→16。判定 0 `status=5`、bytes=196608。
 
+### 2026-11-02 20:3x v29f miss 容忍 / stall 恢复（离线）
+
+v29e 的 4 次 miss 都紧跟在一套 `status=5` 之后：app 立即 cancel 其余在飞请求，
+ring 被复位，下一套再走空 ring 的 re-arm，于是又 miss。v29f 不再主动 cancel：
+
+- `status=5` 只释放失败槽、`++misses`，日志 `UAC U2 pipe miss buf=%u status=%u`；
+  循环立刻补投一套，其余在飞请求保持；
+- 100 ms 无完成时走 stall 路径：`usbDsEndpoint_Cancel`、释放其余槽、
+  `++recoveries`，日志 `UAC U2 pipe stall recover cancelled=%u rc=0x%x`，
+  然后继续投递，最多 8 次；
+- end 行改为
+  `pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u`；
+- cave/mailbox 与 v29e 相同（quad 680/684 B）；app 其余 defines 不变。
+- 构建：NSP `7b242bf8…`（92934 B）、NSO `eb433668…`，44 条 edits；工作目录
+  `private/analysis/UAC-u2-v29f-miss-20261102`；`tests/test_uac_u2_quad.py`
+  改为检查 miss 分支与 stall 分支。
+- host：`--packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000
+  --keep-alt`（给 stall 恢复留出跑完 64 posts 的窗口）。
+- 判定：64/64、0 `status=5`、device bytes → 196608；若 stall recover 后继续
+  也算恢复成立。仍 miss 时再加到 4 在飞或 lead 32→16。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

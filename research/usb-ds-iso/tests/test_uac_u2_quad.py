@@ -77,11 +77,16 @@ class PipelineAppTests(unittest.TestCase):
         self.assertIn("posted - completed < 3", self.text)
         self.assertNotIn("posted - completed < 2", self.text)
 
-    def test_status5_cancels_the_remaining_requests(self):
-        self.assertIn('UAC U2 pipe recover cancelled=%u', self.text)
-        self.assertIn("if (posted > completed) {", self.text)
-        self.assertIn("usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);", self.text)
-        self.assertIn("++completed;", self.text)
+    def test_status5_only_counts_a_miss(self):
+        self.assertIn('UAC U2 pipe miss buf=%u status=%u', self.text)
+        self.assertIn("++misses;", self.text)
+        self.assertNotIn("pipe recover cancelled=%u", self.text)
+
+    def test_stall_cancels_and_reposts(self):
+        self.assertIn("UAC U2 pipe stall recover cancelled=%u", self.text)
+        self.assertIn("recoveries < 8", self.text)
+        self.assertIn("usbDsEndpoint_Cancel(", self.text)
+        self.assertIn("++recoveries;", self.text)
 
 
 if __name__ == "__main__":

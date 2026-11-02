@@ -2581,10 +2581,12 @@ static void _postUacBurst(void)
 #if defined(UAC_U2_PIPELINE)
     /* v26A: 16 ms timer pipeline.  v29e keeps three requests in flight so
        the cave always has TD sets queued while the app posts about every
-       30 ms; a status=5 cancels the remaining requests so the next post takes
-       the empty re-arm path.  The 1 kHz pattern phase continues across
-       buffers. */
+       30 ms.  v29f treats a status=5 as a single lost set (free the slot and
+       keep posting) and only cancels + reposts after a 100 ms stall, so one
+       miss does not reset the ring and trigger another.  The 1 kHz pattern
+       phase continues across buffers. */
     u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
+    u32 misses = 0, recoveries = 0;
     bool pipe_failed = false;
     u8 free_slot[8];
     u32 urb_ids[8] = {0};
@@ -2636,6 +2638,25 @@ static void _postUacBurst(void)
                                 16E+6);
         if (R_FAILED(wait)) {
             if ((svcGetSystemTick() - last_progress) > 100ULL * 19200) {
+                if (recoveries < 8 && posted < stream_posts) {
+                    /* v29f: a miss leaves the endpoint idle; cancel what is
+                       still queued and let the next post take the empty
+                       re-arm path.  Bounded so a dead endpoint cannot spin. */
+                    Result cancel = usbDsEndpoint_Cancel(
+                        g_uacCtx.audioEndpointIn);
+                    u32 freed = 0;
+                    for (u32 c = 0; c < UAC_U2_TRAIN_POSTS; ++c) {
+                        if (free_slot[c]) continue;
+                        free_slot[c] = 1;
+                        ++completed;
+                        ++freed;
+                    }
+                    ++recoveries;
+                    LOG("UAC U2 pipe stall recover cancelled=%u rc=0x%x\n",
+                        freed, cancel);
+                    last_progress = svcGetSystemTick();
+                    continue;
+                }
                 LOG("UAC U2 pipe stall posted=%u completed=%u\n",
                     posted, completed);
                 break;
@@ -2669,21 +2690,13 @@ static void _postUacBurst(void)
                 _uacLogCursor("done", b + 1);
 #endif
                 if (report.report[i].urb_status != 3) {
-                    /* v29e: an empty-ring/underrun completion halts the
-                       endpoint.  Cancel the remaining in-flight requests so
-                       the next post takes the cave's empty re-arm path
-                       instead of waiting for completions that never come. */
-                    u32 cancelled = 0;
-                    if (posted > completed) {
-                        usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
-                        for (u32 c = 0; c < UAC_U2_TRAIN_POSTS; ++c) {
-                            if (free_slot[c]) continue;
-                            free_slot[c] = 1;
-                            ++completed;
-                            ++cancelled;
-                        }
-                    }
-                    LOG("UAC U2 pipe recover cancelled=%u\n", cancelled);
+                    /* v29f: a status=5 is one lost set, not a dead stream.
+                       Keep the other requests in flight and let the loop
+                       post a replacement; a real halt is caught by the
+                       100 ms stall path above. */
+                    ++misses;
+                    LOG("UAC U2 pipe miss buf=%u status=%u\n",
+                        b, report.report[i].urb_status);
                 }
                 break;
             }
@@ -2699,8 +2712,8 @@ static void _postUacBurst(void)
 #if defined(UAC_U2_CURSOR_DIAG)
     _uacLogCursor("end", 0);
 #endif
-    LOG("UAC U2 pipe end posted=%u completed=%u bytes=%u\n",
-        posted, completed, xfer_total);
+    LOG("UAC U2 pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u\n",
+        posted, completed, xfer_total, misses, recoveries);
     _uacLogInstallState();
     _uacLogRingState();
 #else

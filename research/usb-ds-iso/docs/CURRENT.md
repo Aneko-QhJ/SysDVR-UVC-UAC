@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 19:5x，Asia/Shanghai）
+# 当前状态（2026-11-02 20:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -15,8 +15,9 @@
 - 最后实机 v29e（19:45）：**posted=64 / completed=64 / 56×`3072/3`**，host
   180672 B、数据 ~2.6 s；4 次 `status=5` 都被 `pipe recover cancelled=1` 接住
   并继续到 64 posts。**3 在飞 + 4 mailbox 成立，恢复路径成立**。
-- 下一步：剩余 4 次 miss 与 cave 在空 ring 上的 re-arm 对齐（rearm 时仍有
-  完成 pending）；v29f 先修 re-arm 条件，或再加到 4 在飞。
+- 下一步 **v29f 已离线构建**（NSP `7b242bf8…`，92934 B）：`status=5` 只释放
+  失败槽并补投，不再 cancel 其余在飞请求；真停住时由 100 ms stall 路径
+  cancel+重投（最多 8 次）。待一次 boot 看 miss 是否降到 0。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -45,6 +46,7 @@
 | v29c | 64 post 滚动 + 8 槽复用（在飞 ≤2） | 187968 B，t=33–2097 ms | posted=64、61×`3072/3`、2×status=5、1×cancel | 稳态成立；收尾在 TD 环 wrap |
 | v29d | link 槽 `+0xf70`→`+0xc00`：六套对齐 TD，驱动 4 处 link 常量 | 57024 B，t=33–801 ms | posted=22、18×`3072/3`、2×status=5；两次 wrap 干净 | wrap 修好；ring 跑空/underrun 提前停 |
 | v29e | 4 mailbox（`+0xf00` 起，`&3`）+ 3 在飞 + status=5 恢复 | 180672 B，t=33–2673 ms | posted=64、56×`3072/3`、4×status=5 + 4×recover | 3 在飞成立；miss 与空 ring rearm 对齐 |
+| v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | —（0 实机） | —（0 实机） | 离线构建 `7b242bf8…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
 游标漂移 0x90；到 post 63 时 `prod=+0xddf0`，一套跨过 0x200 边界，ED 分属
@@ -86,25 +88,23 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29f（rearm 条件 / 4 在飞）
+## 下一步：v29f（已离线构建，待一次实机）
 
-v29e 已经把两次运行都跑不完的流推进到 **64/64 posts**：56 个 `3072/3`，4 次
-`status=5` 都被 `pipe recover cancelled=1` 接住并继续（172032 B，87.5%）。
+v29e 的 4 次 miss 都在一套 `status=5` 后：app 立刻 cancel 其余在飞请求，ring
+被复位，下一套再走 cave 的空 ring re-arm，于是又 miss 一套。v29f 不再主动
+cancel：
 
-剩余 miss 的共同点不是 wrap，而是 **cave 在空 ring 上 re-arm**：seq 37/44/54
-的 post 把 prod/cons/cur 复位到 base，而上一套的完成报告还没被 app 取走；随后
-那一套以 `status=5` 结束，app 走恢复。也就是说，`prod == cons` 只表示 ring 里
-没有 TD，不表示没有完成 pending。
+1. `status=5` 只释放失败槽、记 `UAC U2 pipe miss buf=%u status=%u`，循环立刻
+   补投一套，其余在飞请求保持；
+2. 真停住时（100 ms 无完成）才 cancel 剩余请求、释放槽、继续投递，日志
+   `UAC U2 pipe stall recover cancelled=%u`，最多 8 次；
+3. 在飞仍为 3，cave/mailbox 不变。
 
-v29f 的候选，按顺序：
+候选 NSP `7b242bf8…`（92934 B，44 条 edits，cave 680/684 B）。host 延长到
+`--max-urbs 512 --timeout-ms 5000`，让 stall 恢复后仍能跑完 64 posts。
 
-1. 只在“驱动复位后”re-arm：给 app 一个显式标志（例如恢复后第一次 post）或
-   在 cave 里检查端点上下文/cycle，普通空 ring 直接写 base、不 memset；
-2. 若仍 miss，把在飞加到 4（四个 mailbox 已支持 `&3`，4 套连续仍唯一）；
-3. lead 32→16（v25 的 4 ms 太低）。
-
-判定：≥64 posts、0 `status=5`、device bytes = host bytes（196608）。之后才谈
-48 kHz 的 16 ms/段与占空比。
+判定：**64/64、0 `status=5`、device bytes → 196608**；若出现 stall recover
+后继续，也算恢复成立。仍 miss 时再加到 4 在飞或 lead 32→16。
 
 ## 仍未隔离
 
