@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 22:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 22:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -30,9 +30,10 @@
   与 ~47% 占空比。
 - 最后实机 v29i（22:30）：4 在飞/4 套环**没有降低 miss**——61×`3072/3`、
   **misses=3**（v29h 2），host==device 187392 B；收尾仍不崩。
-- 结论：4 套环丢掉了 6 套的缓冲深度，4 在飞不划算；下一步 **v29j 已离线
-  构建**（NSP `b6e80871…`，92589 B）：回退 v29h 配置（3 在飞、6 套环、
-  link `+0xc00`、map-soft），只把 frame lead 32→16。
+- 最后实机 v29j（22:44）：lead 16 **太小的负结果**——165888 B（54×3072）、
+  **misses=4、recoveries=2**（两次 100 ms stall，各 cancel 3）；收尾仍不崩。
+- 当前最好仍是 **v29h：62 段、2 miss、host==device**。下一步试更大的 lead
+  （40/48），或给驱动 ring 复位加诊断；16/24 方向不再继续。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -67,7 +68,7 @@
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | 193536 B（=设备） | posted=64、63×`3072/3`、1×status=5；cancel 执行 | 数据更好；alt0 仍崩 → app cancel 不够 |
 | v29h | IOVA 节点分配失败改为返回错误（`0x3fe0`→`0x409c`） | 190464 B（=设备） | posted=64、62×`3072/3`、2×status=5 | **收尾不崩**；数据 62 段 |
 | v29i | 4 套环（link `+0x800`）+ 4 在飞 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5 | miss 未降（3）；4 套深度不够 |
-| v29j | v29h 回退 + cave frame lead 32→16 | —（0 实机） | —（0 实机） | 离线构建 `b6e80871…`，待一次 boot |
+| v29j | v29h 回退 + cave frame lead 32→16 | 170688 B | posted=64、54×`3072/3`、4×status=5、2×recover | lead 16 太小；负结果 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | —（0 实机） | —（0 实机） | 离线构建 `a599149a…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
@@ -110,18 +111,21 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29j（lead 16，已离线构建）
+## 下一步：回到 lead 32，或试 40/48
 
-v29i 是负结果（miss 2→3），所以回退到 v29h 的数据配置，只改一个变量：
+v29j（lead 16）是负结果：54 段、4 miss、2 次 stall cancel。当前**最好配置仍是
+v29h**：3 在飞、6 套环、link `+0xc00`、lead 32、map-soft——62 段、2 miss、
+host==device、收尾不崩。
 
-1. cave `patches/iso_burst_uac84_dci9_pipe_quad16.S`（680/684 B，link `+0xc00`，
-   `frame = MFI/8 + 16`）；
-2. app 回到 `posted - completed < 3`；
-3. 驱动 12 条 link 编辑（`+0xc00`）+ map-soft，共 45 条。
+下一步两个方向，按顺序：
 
-候选 NSP `b6e80871…`（92589 B）。判定：64/64、0 miss、host==device
-（196608），alt0 仍不得崩。若 lead 16 太大/太小：miss 更多或出现
-`0x748c` 类漏服务，则下一步试 24 或回到 32。
+1. **lead 40/48**：16 变差、32 最好，先确认更大的 lead 是否还能再降 miss
+   （larger lead 给 app 更多排队时间，但会增加空档）；
+2. **诊断 ring 复位**：3 次 miss 前都出现 `prod=cons=cur=0` 的复位；需要
+   在 cave/app 记录触发者（是 driver 的 0x30ff4 错误路径，还是 cave 的空
+   ring rearm），再决定是阻止复位还是绕开。
+
+判定：≥62 段（先不倒退），0 miss 是目标；48 kHz 连续仍是大目标。
 
 ## 仍未隔离
 

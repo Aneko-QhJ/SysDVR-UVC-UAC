@@ -628,6 +628,16 @@ map-soft），只改 TD 帧 lead：`MFI/8 + 32` → `+16`。
 - 判定：64/64、0 miss、host==device（196608）；若 miss 更多或出现 `0x748c`
   类漏服务，说明 16 太小，下一步试 24 或回 32。
 
+### 2026-11-02 22:44 v29j 实机：lead 16 太小
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；312 transfers、`valid=1601 bad=3391
+  **bytes=170688**`，数据 t=33–2898 ms。
+- 设备：**posted=64 completed=64 bytes=165888 misses=4 recoveries=2**——
+  54 个 `3072/3`、4 个 `status=5`；两次 100 ms stall 各 cancel 3 个请求。
+- 收尾：alt0 仍走 map-soft，无 crash/fatal/erpt。
+- 判定：**lead 16 太小**（miss 2→4、段数 62→54）；current best 仍是 v29h
+  （lead 32）。下一步试 40/48，或诊断 ring 复位来源。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
