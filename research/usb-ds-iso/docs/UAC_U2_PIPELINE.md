@@ -421,6 +421,24 @@ mailbox 各记一部分，`sum == 3072` 永远不成立 → status=5（v29c 的 
 status=5，说明它不接受提前的 link；下一步把 mailbox 移出 ring（或按 set 序号
 记账），不再继续挪 link。
 
+### 2026-11-02 19:28 v29d 实机：wrap 修好，空 ring/underrun 提前停流
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；187 transfers、`valid=697 bad=2295
+  **bytes=57024**`，数据 t=33–801 ms（18 个完整 3072 B + 192 B），之后空。
+- 设备：`posted=22 completed=20 bytes=55296`——18 个 `3072/3`、2 个
+  `xfer=0 status=5`；seq 11 与 seq 17 两次 wrap 都是 `prod=+0xa00 → +0x000`、
+  cycle 1→0 / 0→1，wrap 后的 sets 继续 `3072/3`。**一套 TD 不再被拆开，
+  A/B mailbox 相位保持**。
+- 失败点：第一次 `status=5` 在 seq 3（第 3 个 post），驱动把 ring 复位到
+  base；第二次在 seq 21（sets `+0x600/+0x800` 已排队）后 100 ms 无完成，
+  app 取消 2 个在飞请求。两次都不在 wrap 上。
+- 判定：**link 对齐成立**；ring 在“2 在飞 + 约 34–40 ms/post”的节奏下会被
+  控制器跑空，一次 `status=5` 后 app 只等完成、不再 re-arm，流停住。
+- 下一步 v29e：16 ms tick 投递（不等完成）、`status=5` 后 cancel+重投、
+  lead 32→16；3 在飞需要第三个 mailbox。
+- 无 crash/fatal，USB 链路未掉；新增 erpt `8bb5ccee…` 已归档并删除；卡恢复
+  `52069a44…`、删日志、安全弹出。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
