@@ -545,7 +545,7 @@ User Break 崩溃；栈是 DMA map/submit 路径（`0x2c584 → 0x2a3f4 → 0x2a
 - 下一步 v29h：隔离 AS 的 `SET_INTERFACE(0)`（stall 不 ACK）；或离线确认
   `0x9448 → 0x9650` 断言点的安全跳过；或先接受收尾崩溃、把 miss 降到 0。
 
-### 2026-11-02 21:3x 收尾崩溃分析 + v29h map-soft（离线）
+### 2026-11-02 21:2x 收尾崩溃分析 + v29h map-soft（离线）
 
 崩溃签名（v29f/v29g）：`PC +0x1927c`（`svc #0x26`）、`LR +0x9668`，栈
 `0x944c → 0x9514 → 0x9534 → 0x9560 → 0x40d0 → 0x3ce0 → 0x2c584 → 0x2a3f4
@@ -572,6 +572,18 @@ v29h 只改一处驱动：`0x3fe0` 的 `cbz x0, 0x40d0` → `cbz x0, 0x409c`。
   `tests/test_uac_u2_quad.py` 增加 map-soft 编码/目标测试。
 - 判定：数据仍 64/64、host==device；alt0 可以报错，但**不得**产生
   crash/fatal；若仍崩，说明还有第二个 panic stub 被命中。
+
+### 2026-11-02 22:16 v29h 实机：收尾崩溃关闭，数据 62 段
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；312 transfers、`valid=2329 bad=2663
+  **bytes=190464**`，数据 t=33–2769 ms；host bytes 与设备 bytes 相等。
+- 设备：**posted=64 completed=64 bytes=190464 misses=2 recoveries=0**——
+  62 个 `3072/3`、2 个 `status=5`（单套丢失）。
+- 收尾：`UAC U2 teardown cancel` 后 alt0 走 map-soft 的错误返回，
+  **没有 crash/fatal**（22/15/2 不变），控制台留在主界面；新增 1 份 erpt
+  `8f0c9c7b` 已归档并从卡删除。
+- 判定：**v16 起的 `SET_INTERFACE(0)` 收尾崩溃关闭**（IOVA 节点耗尽改为
+  错误返回）；数据 62 段、host==device。剩余：2 次 miss、~47% 占空比。
 
 ## 里程碑
 

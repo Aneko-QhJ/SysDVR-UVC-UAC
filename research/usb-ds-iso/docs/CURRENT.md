@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 21:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 22:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -22,10 +22,12 @@
   （63×3072）/ misses=1 / recoveries=0**——数据继续变好。但 `UAC_ACT_STOP`
   里的 `teardown cancel rc=0x0 wait=0xea01` 执行后，alt0 仍然崩溃
   （+0x1927c）；**app 侧 cancel 不足以规避**。
-- 离线分析已定位崩溃：不是状态断言，而是 alt0 重装端点时的 **IOVA 节点分配
-  失败**——`0x3fe0` 的 `cbz x0, 0x40d0` 在 `0x3140` 返回 0 时进 panic stub。
-  下一步 **v29h 已离线构建**（NSP `9610b3a0…`，92589 B）：把该分支改到
-  `0x409c` 失败返回路径，map 失败变成错误码而不是 `svcBreak`。
+- **收尾崩溃已修好**：v29h 把 `0x3fe0` 的 panic 分支改到 `0x409c` 失败返回
+  路径；实机 `pipe end` 后 alt0 只返回错误，**控制台没有崩**，crash/fatal
+  基线不变（22/15/2）。
+- 最后实机 v29h（22:16）：**posted=64 / completed=64 / bytes=190464
+  （62×3072）/ misses=2 / recoveries=0**，host 与设备相等；剩 2 次单套 miss
+  与 ~47% 占空比。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -42,6 +44,7 @@
 | U2 wrap 对齐 | 通过 | v29d：两次 `+0xa00→+0x000` wrap，cycle 翻转，set 不拆 | `UAC-u2-v29d-wrap-20261102` |
 | U2 3 在飞 + 恢复 | 通过 | v29e：64 posts、56×`3072/3`、4×status=5 均 recover | `UAC-u2-v29e-quad-20261102` |
 | U2 miss 容忍 | 通过 | v29f：64 posts、61×`3072/3`、host==device、3 miss 无连锁 | `UAC-u2-v29f-miss-20261102` |
+| U2 收尾 map-soft | 通过 | v29h：alt0 只返回错误，控制台不崩；62 段、2 miss | `UAC-u2-v29h-map-soft-20261102` |
 
 单次请求上限仍是 **3072 B / 16 帧**：20 帧（3840 B）、32 帧（6144 B）都会挂死
 `usb:ds`，上限落在 17–19 帧，“加大单次 transfer”路线已关闭。
@@ -57,7 +60,7 @@
 | v29e | 4 mailbox（`+0xf00` 起，`&3`）+ 3 在飞 + status=5 恢复 | 180672 B，t=33–2673 ms | posted=64、56×`3072/3`、4×status=5 + 4×recover | 3 在飞成立；miss 与空 ring rearm 对齐 |
 | v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5、0 recover | 数据最好；收尾 `SET_INTERFACE(0)` 崩溃 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | 193536 B（=设备） | posted=64、63×`3072/3`、1×status=5；cancel 执行 | 数据更好；alt0 仍崩 → app cancel 不够 |
-| v29h | IOVA 节点分配失败改为返回错误（`0x3fe0`→`0x409c`） | —（0 实机） | —（0 实机） | 离线构建 `9610b3a0…`，待一次 boot |
+| v29h | IOVA 节点分配失败改为返回错误（`0x3fe0`→`0x409c`） | 190464 B（=设备） | posted=64、62×`3072/3`、2×status=5 | **收尾不崩**；数据 62 段 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | —（0 实机） | —（0 实机） | 离线构建 `a599149a…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
@@ -100,21 +103,19 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29h（已离线构建，待一次实机）
+## 下一步：清 miss 与占空比
 
-崩溃已定位：不是状态断言。`0x40d0` 是 5 个 panic stub 之一，全文件只有
-`0x3fe0` 的 `cbz x0, 0x40d0` 跳到它；那里在 `0x3140`（全局分配器）申请
-0x80 B 的 IOVA 节点，返回 0 就 abort。alt0 重装端点需要再 map 一次，节点池
-已被前面的请求/复位耗尽，于是 usb:ds 整机 User Break。
+v29h 之后，收尾崩溃（从 v16 起的老问题）**已关闭**：alt0 重装时的 IOVA 节点
+耗尽现在只返回错误，控制台留在主界面。数据路径剩两件事：
 
-v29h 只改一处驱动：`0x3fe0` 的 `cbz x0, 0x40d0` → `cbz x0, 0x409c`。
-`0x409c` 记账后返回 0，map 失败变成 `0x19a8c` 错误，submit 路径报错而不是
-`svcBreak`。
+1. **2 次单套 miss**（v29f 3 次、v29g 1 次、v29h 2 次）：都跟 cave 的空 ring
+   re-arm 有关；可以把在飞加到 4（四个 mailbox 的 `&3` 已支持），或把 lead
+   32→16；
+2. **占空比 ~47%**：每套 16 ms 音频、实际约 34–40 ms 一套；48 kHz 需要
+   16 ms/段，换 3/4 在飞与更小 lead 后再测。
 
-候选 NSP `9610b3a0…`（92589 B，45 条 edits，cave 680/684 B）。判定：
-数据仍 64/64、host==device；alt0 可以报错，但**不得**产生 crash/fatal。
-若仍崩，说明还有第二个 panic stub 被命中；之后再处理 1 次 miss（4 在飞或
-lead 16）。
+判定：64/64、0 miss、device bytes = host bytes（196608）；之后再谈长跑与
+48 kHz 连续。收尾不再作为阻断项。
 
 ## 仍未隔离
 

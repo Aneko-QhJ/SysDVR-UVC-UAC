@@ -166,11 +166,11 @@ See [the research notes](docs/RESEARCH.md) for the full investigation.
 > clean (two wraps, no split set); v29e then ran all 64 posts and recovered
 > from four underrun completions (56 full 3072 B sets, device 172,032 B, host
 > 180,672 B, ~2.6 s). The remaining misses follow the cave's re-arm on an
-> empty ring while completions are still pending. v29g delivered 63 full
-> segments (host and device both 193,536 B, one miss), but the usb sysmodule
-> still crashes on the `SET_INTERFACE(0)` teardown after the data run; an
-> app-side endpoint cancel before the alt0 ACK did not prevent it. Duty cycle
-> is ~47 %, so continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
+> empty ring while completions are still pending. v29h delivered 62 full
+> segments (host and device both 190,464 B, two misses) and fixed the
+> `SET_INTERFACE(0)` teardown: the sysmodule now returns the IOVA-map failure
+> as an error instead of aborting the console. Duty cycle is ~47 %, so
+> continuous 48 kHz is not established. The 2026-10-27 short-packet run (384 B on the host, device save
 > `0xD401`) and the A23 vendor-audio work are history. See
 > [CURRENT.md](research/usb-ds-iso/docs/CURRENT.md),
 > [UAC_U2_PIPELINE.md](research/usb-ds-iso/docs/UAC_U2_PIPELINE.md) and
