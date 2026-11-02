@@ -25,36 +25,20 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-02 22:5x）
+## 当前边界（2026-11-02 23:0x）
 
-- 实机授权：2026-11-01 16:19 起用户常设授权“部署测试不再需要授权；通知插卡/
-  开机即可”（v24–v29c 依此执行：一次 boot、失败即停、不重试）。旧 A23 票据的
+- 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
+  开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- 最后实机：2026-11-02 21:00 **v29f miss 容忍，数据最好一轮**。host
-  **187392 B**（t=34–2610ms），设备 **posted=64 / completed=64 /
-  61×`3072/3` / misses=3 / recoveries=0**；3 次 miss 只丢一套、无 cancel
-  连锁，**host bytes 与设备完全相等**。
-- **收尾崩溃**：`pipe end` 之后 host 断开/重连、重复 `SET_INTERFACE(0)`，
-  usb sysmodule User Break（base+0x19280，fatal PC +0x19254），与
-  v16/v24/v26A 同签名。
-- 最后实机 **v29g（21:10）**：数据 **193536 B（63×3072）、misses=1**，host 与
-  设备相等；但 alt0 的 `teardown cancel rc=0x0 wait=0xea01` 执行后仍崩
-  （+0x1927c）——**app 侧 cancel 不够**。
-- 最后实机 **v29h（22:16）**：数据 **190464 B（62×3072）、misses=2**，
-  host==device；**收尾 alt0 只返回错误，控制台没有崩**，crash/fatal 基线
-  不变——**v16 起的收尾崩溃已关闭**。
-- 最后实机 **v29i（22:30）**：4 在飞/4 套环 **没有降低 miss**——61 段、
-  misses=3（v29h 2），host==device；收尾仍不崩。
-- 最后实机 **v29j（22:44）**：lead 16 太小——54 段、misses=4、2 次 stall
-  cancel；收尾仍不崩。**当前最好仍是 v29h：62 段、2 miss、host==device**。
-- 下一步：回到 lead 32，或试 40/48；也可给驱动 ring 复位加诊断。详见
-  [docs/CURRENT.md](docs/CURRENT.md)、
-  [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
-- 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
-  DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 占空比仍约 47%（16 ms 音频 / ~34 ms 墙钟），48 kHz 连续不成立；UAC 保持禁用。
-- v29j 卡已恢复 `52069a44…`、删日志（无新报告）、安全弹出；设备现场状态不推定。
+- **当前最佳 v29h（22:16）**：64/64 posts、**62×3072（190464 B）**、
+  host==device、**misses=2 / recoveries=0**；**收尾 alt0 只返回错误，控制台
+  不崩**——v16 起的收尾崩溃已关闭。
+- 最近否定：v29i（4 在飞/4 套环）miss 2→3；v29j（lead 16）miss 2→4、54 段。
+- 下一步：lead 40/48，或给驱动 ring 复位加诊断；目标 0 miss，再谈占空比
+  与 48 kHz 连续。
+- 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
+- 卡：安全 `52069a44…`，已弹出；设备现场状态不推定。
 
 ## 文件角色
 
