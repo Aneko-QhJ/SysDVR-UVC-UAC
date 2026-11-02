@@ -73,9 +73,9 @@ class PipelineAppTests(unittest.TestCase):
             raise unittest.SkipTest(f"missing {SOURCE}")
         cls.text = SOURCE.read_text()
 
-    def test_three_requests_in_flight(self):
-        self.assertIn("posted - completed < 3", self.text)
-        self.assertNotIn("posted - completed < 2", self.text)
+    def test_four_requests_in_flight(self):
+        self.assertIn("posted - completed < 4", self.text)
+        self.assertNotIn("posted - completed < 3", self.text)
 
     def test_status5_only_counts_a_miss(self):
         self.assertIn('UAC U2 pipe miss buf=%u status=%u', self.text)
@@ -129,6 +129,51 @@ class MapSoftTests(unittest.TestCase):
             return pc + (imm << 2)
         self.assertEqual(target(before, 0x3FE0), 0x40D0)
         self.assertEqual(target(after, 0x3FE0), 0x409C)
+
+
+QUAD4 = ROOT / "patches/iso_burst_uac84_dci9_pipe_quad4.S"
+
+
+class FourSetRingTests(unittest.TestCase):
+    """v29i: four sets per ring so four in-flight sets keep distinct mailboxes."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = QUAD4.read_text()
+
+    def test_link_after_four_aligned_sets(self):
+        self.assertEqual(self.text.count("add x13, x10, #0x800"), 2)
+        self.assertIn("cmp x7, #0x800", self.text)
+        self.assertIn("add x6, x6, #0x800", self.text)
+        self.assertNotIn("add x13, x10, #0xc00", self.text)
+        self.assertEqual(0x800 // SET, 4)
+
+    def test_four_consecutive_sets_are_unique_across_the_wrap(self):
+        boxes = [(offset // SET) & 3 for offset in range(0, 0x800, SET)]
+        self.assertEqual(boxes, [0, 1, 2, 3])
+        self.assertNotEqual(boxes[3], boxes[0])
+
+    def test_cave_size_is_unchanged(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            quad4, symbols = assemble(TOOLCHAIN, Path(tmp), QUAD4,
+                                      require_report=False)
+        self.assertEqual(len(quad4), 680)
+        self.assertEqual(symbols["iso_enter"], 0x68D54)
+
+
+class LinkSlotTests(unittest.TestCase):
+    def test_edits_follow_the_slot(self):
+        import build_uac_u2_producer as builder
+        edits = builder.link_edits(0x800)
+        self.assertEqual(len(edits), 12)
+        add = int.from_bytes(edits[0][2], "little")
+        self.assertEqual((add >> 10) & 0xFFF, 0x800)
+        high = int.from_bytes(edits[1][2], "little")
+        low = int.from_bytes(edits[2][2], "little")
+        self.assertEqual(((high >> 10) & 0xFFF) * 8, 0x808)
+        self.assertEqual(((low >> 10) & 0xFFF) * 8, 0x800)
 
 
 if __name__ == "__main__":

@@ -585,6 +585,23 @@ v29h 只改一处驱动：`0x3fe0` 的 `cbz x0, 0x40d0` → `cbz x0, 0x409c`。
 - 判定：**v16 起的 `SET_INTERFACE(0)` 收尾崩溃关闭**（IOVA 节点耗尽改为
   错误返回）；数据 62 段、host==device。剩余：2 次 miss、~47% 占空比。
 
+### 2026-11-02 22:2x v29i 四套环 / 四在飞（离线）
+
+v29h 之后收尾崩溃关闭，剩 2 次单套 miss。四在飞需要四个连续 set 在整环周期内
+落到四个不同 mailbox：6 套环上 block `3,4,5,0` 的 `&3` 是 `3,0,1,0`，两套
+共享 mailbox 0；所以 v29i 把环收成 4 套（link `+0x800`），block
+`0,1,2,3`，wrap `3→0` 仍唯一。
+
+- cave：`patches/iso_burst_uac84_dci9_pipe_quad4.S`（680/684 B），三处
+  `0xc00`→`0x800`；mailbox/游标位置不变；
+- 驱动：12 条 link 编辑改为 `0x800/0x808`（builder `--link-slot 0x800`），
+  另有 v29h 的 map-soft 编辑，共 45 条；
+- app：`posted - completed < 4`；其余（miss 容忍、stall 恢复、alt0 cancel）
+  不变；
+- 构建：NSP `35f49d8e…`（92589 B）、NSO `996738db…`；工作目录
+  `private/analysis/UAC-u2-v29i-four-20261102`；新增四套环/链接槽测试。
+- 判定：64/64、0 miss、host==device（196608）；alt0 仍不得 crash。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

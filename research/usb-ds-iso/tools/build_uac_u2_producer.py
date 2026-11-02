@@ -70,23 +70,23 @@ QUEUE_EDITS = 3 if QUEUE_STUB_ADDR else 0
 # the link to +0xc00 (six aligned sets).  Four inline copies of the endpoint
 # setup (install, re-arm, alt set, completion error) each clear and fill the
 # 16-byte link TRB, so each copy needs the address and both slot clears.
-LINK_EDITS = tuple(
-    (address, bytes.fromhex(before), bytes.fromhex(after), reason)
-    for address, before, after, reason in (
-        (0x2F530, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
-        (0x2F538, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
-        (0x2F53C, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
-        (0x2FF40, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
-        (0x2FF48, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
-        (0x2FF4C, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
-        (0x30578, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
-        (0x30580, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
-        (0x30584, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
-        (0x310C8, "09c13f91", "09013091", "link slot: ring+0xff0 -> ring+0xc00"),
-        (0x310D0, "1ffd07f9", "1f0506f9", "clear the new slot instead of ring+0xff8"),
-        (0x310D4, "1ff907f9", "1f0106f9", "clear the new slot instead of ring+0xff0"),
-    )
-)
+def link_edits(slot):
+    """The four ring setups: link address and the two clears for one slot."""
+    add = struct.pack("<I", 0x91000000 | (slot << 10) | (8 << 5) | 9)
+    clear_low = struct.pack("<I", 0xF9000000 | ((slot // 8) << 10) | (8 << 5) | 31)
+    clear_high = struct.pack("<I", 0xF9000000 | (((slot + 8) // 8) << 10) | (8 << 5) | 31)
+    site = "link slot: ring+0xff0 -> ring+{:#x}".format(slot)
+    edits = []
+    for base in (0x2F530, 0x2FF40, 0x30578, 0x310C8):
+        edits.append((base, bytes.fromhex("09c13f91"), add, site))
+        edits.append((base + 8, bytes.fromhex("1ffd07f9"), clear_high,
+                      "clear the new slot instead of ring+0xff8"))
+        edits.append((base + 12, bytes.fromhex("1ff907f9"), clear_low,
+                      "clear the new slot instead of ring+0xff0"))
+    return tuple(edits)
+
+
+LINK_EDITS = link_edits(0xC00)
 LINK_EDIT_COUNT = len(LINK_EDITS)
 
 # v29h: the alt0 teardown makes usb:ds map one more request; when its IOVA
@@ -176,7 +176,8 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 
 
 def build_edits(nso, code, symbols, breaker=False, report=True,
-                driver_queue=False, driver_link=False, driver_map_soft=False):
+                driver_queue=False, driver_link=False, link_slot=0xC00,
+                driver_map_soft=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -239,7 +240,7 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
         edit(QUEUE_SKIP_ADDR, QUEUE_SKIP_BEFORE, QUEUE_SKIP_AFTER,
              "skip the completion-path auto-submit (post-time submit owns it)")
     if driver_link:
-        for address, before, after, reason in LINK_EDITS:
+        for address, before, after, reason in link_edits(link_slot):
             edit(address, before, after, reason)
     if driver_map_soft:
         for address, before, after, reason in MAP_SOFT_EDITS:
@@ -282,7 +283,7 @@ def render(edits):
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
              segments=1, frames=None, driver_queue=False, driver_link=False,
-             driver_map_soft=False):
+             link_slot=0xC00, driver_map_soft=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -309,7 +310,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "driver_queue": bool(driver_queue),
         "driver_link": bool(driver_link),
         "driver_map_soft": bool(driver_map_soft),
-        "link_slot": "0xc00",
+        "link_slot": hex(link_slot) if driver_link else None,
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
                                  if report else ("iso_enter", "iso_event"))},
@@ -410,7 +411,11 @@ def main():
                              "skip the completion auto-submit")
     parser.add_argument("--driver-link", action="store_true",
                         help="v29d: move the driver ring link from +0xff0 to "
-                             "+0xc00 so six aligned TD sets fit")
+                             "the --link-slot address")
+    parser.add_argument("--link-slot", type=lambda value: int(value, 0),
+                        default=0xC00,
+                        help="ring link slot for --driver-link (default 0xc00; "
+                             "0x800 for the four-set v29i ring)")
     parser.add_argument("--driver-map-soft", action="store_true",
                         help="v29h: return DMA-map node exhaustion as an error "
                              "instead of the 0x40d0 panic")
@@ -437,6 +442,7 @@ def main():
                              require_report=report)
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report,
                         driver_queue=args.driver_queue, driver_link=args.driver_link,
+                        link_slot=args.link_slot,
                         driver_map_soft=args.driver_map_soft)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
@@ -444,6 +450,7 @@ def main():
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
                    report=report, segments=args.segments, frames=args.frames,
                    driver_queue=args.driver_queue, driver_link=args.driver_link,
+                   link_slot=args.link_slot,
                    driver_map_soft=args.driver_map_soft)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)

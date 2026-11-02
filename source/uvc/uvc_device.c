@@ -2579,12 +2579,12 @@ static void _postUacBurst(void)
        v11 crash).  The 1 kHz phase continues across buffers, which lets the
        host check continuity instead of four separate 16 ms bursts. */
 #if defined(UAC_U2_PIPELINE)
-    /* v26A: 16 ms timer pipeline.  v29e keeps three requests in flight so
-       the cave always has TD sets queued while the app posts about every
-       30 ms.  v29f treats a status=5 as a single lost set (free the slot and
-       keep posting) and only cancels + reposts after a 100 ms stall, so one
-       miss does not reset the ring and trigger another.  The 1 kHz pattern
-       phase continues across buffers. */
+    /* v26A: 16 ms timer pipeline.  v29i keeps four requests in flight; the
+       four-set ring maps each consecutive set to a different mailbox for the
+       whole wrap.  v29f treats a status=5 as a single lost set (free the slot
+       and keep posting) and only cancels + reposts after a 100 ms stall, so
+       one miss does not reset the ring and trigger another.  The 1 kHz
+       pattern phase continues across buffers. */
     u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
     u32 misses = 0, recoveries = 0;
     bool pipe_failed = false;
@@ -2596,9 +2596,9 @@ static void _postUacBurst(void)
 
     for (;;) {
         /* v29c: rolling train.  A slot is posted again only after the
-           previous request that used it completed (free_slot), at most three
+           previous request that used it completed (free_slot), at most four
            requests in flight, and never more than STREAM_POSTS total. */
-        while (posted < stream_posts && posted - completed < 3 &&
+        while (posted < stream_posts && posted - completed < 4 &&
                free_slot[next]) {
             u8 *buf = g_u2BurstBuffers[next];
             s16 *samples = (s16 *)buf;

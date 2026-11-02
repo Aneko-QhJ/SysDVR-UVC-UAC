@@ -44,8 +44,10 @@
 - 最后实机 **v29h（22:16）**：数据 **190464 B（62×3072）、misses=2**，
   host==device；**收尾 alt0 只返回错误，控制台没有崩**，crash/fatal 基线
   不变——**v16 起的收尾崩溃已关闭**。
-- 下一步：把 miss 降到 0（4 在飞或 lead 32→16），再测 ~47% 占空比与 48 kHz
-  连续。详见 [docs/CURRENT.md](docs/CURRENT.md)、
+- 下一步 **v29i 已离线构建**（NSP `35f49d8e…`，92589 B）：ring 4 套
+  （link `+0x800`）+ 4 个请求在飞，四个 mailbox 的 `&3` 跨 wrap 仍唯一；
+  待一次 boot 看 miss 是否降到 0。详见
+  [docs/CURRENT.md](docs/CURRENT.md)、
   [docs/UAC_U2_PIPELINE.md](docs/UAC_U2_PIPELINE.md)。
 - 仍未隔离：收尾 `SET_INTERFACE(0)` 的 usb `svcBreak`（`--keep-alt` 不够）、
   DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
