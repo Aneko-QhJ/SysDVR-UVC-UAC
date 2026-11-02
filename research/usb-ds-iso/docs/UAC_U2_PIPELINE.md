@@ -530,6 +530,21 @@ User Break 崩溃；栈是 DMA map/submit 路径（`0x2c584 → 0x2a3f4 → 0x2a
 - 判定：数据仍 64/64、host==device；收尾无 crash/fatal。若仍崩，下一步隔离
   `SET_INTERFACE(0)` 路径或 patch 断言点。
 
+### 2026-11-02 21:10 v29g 实机：数据 63 段，alt0 cancel 执行但仍崩
+
+- host：`claim/alt1/SET_CUR` ok、exit=0；312 transfers、`valid=2273 bad=2719
+  **bytes=193536**`，数据 t=33–2673 ms；host bytes 与设备 bytes 相等。
+- 设备：**posted=64 completed=64 bytes=193536 misses=1 recoveries=0**——
+  63 个 `3072/3`、1 个 `status=5`（单套丢失，流继续）。
+- 收尾：`UAC_ACT_STOP` 的 cancel 执行了
+  `UAC U2 teardown cancel rc=0x0 wait=0xea01`（没有 pending report 可收），
+  随后 host 断开/重连、重复 `SET_INTERFACE(0)`，仍在 `+0x1927c` User Break；
+  crash/fatal `01793625172`、erpt `cf451457` 已归档。
+- 判定：**数据最好的一轮**；**app 侧 alt0 cancel 不能规避崩溃**，问题在
+  usb:ds 自己的 alt0/DMA-map 路径。
+- 下一步 v29h：隔离 AS 的 `SET_INTERFACE(0)`（stall 不 ACK）；或离线确认
+  `0x9448 → 0x9650` 断言点的安全跳过；或先接受收尾崩溃、把 miss 降到 0。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

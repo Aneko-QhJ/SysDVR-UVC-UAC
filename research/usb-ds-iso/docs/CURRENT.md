@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 21:0x，Asia/Shanghai）
+# 当前状态（2026-11-02 21:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -18,9 +18,10 @@
 - **但收尾崩溃了**：`pipe end` 之后 host 断开/重连、重复 `SET_INTERFACE(0)`，
   usb sysmodule User Break（base+0x19280，fatal PC +0x19254），与 v16/v24/v26A
   同签名。这是当前**第一优先**要解决的问题。
-- 下一步 **v29g 已离线构建**（NSP `a599149a…`，92541 B）：`SET_INTERFACE(0)`
-  （`UAC_ACT_STOP`）在 ACK 前先 `usbDsEndpoint_Cancel` + 收一份 report，日志
-  `UAC U2 teardown cancel`；数据路径同 v29f。待一次 boot 看收尾是否不再崩。
+- 最后实机 v29g（21:10）：**posted=64 / completed=64 / bytes=193536
+  （63×3072）/ misses=1 / recoveries=0**——数据继续变好。但 `UAC_ACT_STOP`
+  里的 `teardown cancel rc=0x0 wait=0xea01` 执行后，alt0 仍然崩溃
+  （+0x1927c）；**app 侧 cancel 不足以规避**。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
 ## 阶段进度
@@ -51,6 +52,7 @@
 | v29d | link 槽 `+0xf70`→`+0xc00`：六套对齐 TD，驱动 4 处 link 常量 | 57024 B，t=33–801 ms | posted=22、18×`3072/3`、2×status=5；两次 wrap 干净 | wrap 修好；ring 跑空/underrun 提前停 |
 | v29e | 4 mailbox（`+0xf00` 起，`&3`）+ 3 在飞 + status=5 恢复 | 180672 B，t=33–2673 ms | posted=64、56×`3072/3`、4×status=5 + 4×recover | 3 在飞成立；miss 与空 ring rearm 对齐 |
 | v29f | status=5 只记 miss 并补投，stall 才 cancel+重投 | 187392 B（=设备） | posted=64、61×`3072/3`、3×status=5、0 recover | 数据最好；收尾 `SET_INTERFACE(0)` 崩溃 |
+| v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | 193536 B（=设备） | posted=64、63×`3072/3`、1×status=5；cancel 执行 | 数据更好；alt0 仍崩 → app cancel 不够 |
 | v29g | alt0 STOP 在 ACK 前 cancel 端点 + 收 report | —（0 实机） | —（0 实机） | 离线构建 `a599149a…`，待一次 boot |
 
 v29c 的故障点：第一次 wrap（`+0xf70`）就把一套 TD 拆开，之后每次 wrap 让写
@@ -93,22 +95,23 @@ crash/fatal/erpt 属于“VM 未 suspend 就开机”的那次，已归档。
 | v29c | `b1f812e4…` | 92483 B | `0aa4f494…` | per-set 680/684 B；+ `STREAM_POSTS=64` |
 | v29d | `287907b8…` | 92628 B | `36b801d7…` | v29d wrap cave 680/684 B；+ 12 条 link 编辑 |
 
-## 下一步：v29g（已离线构建，待一次实机）
+## 下一步：v29h（收尾崩溃需要动 usb:ds）
 
-v29f 的数据路径最好（64/64、61 段、host==device），但 `pipe end` 之后
-host 断开/重连、重复 `SET_INTERFACE(0)`，usb sysmodule 在 DMA map/submit 路径
-断言（+0x1927c；栈 `0x2c584 → 0x2a3f4 → 0x2a464`）。怀疑 alt0 重装端点时仍有
-排队/映射的请求。
+v29g 的数据是最好的一轮：63 个完整 3072 B（193536 B）、只 1 次 miss、host 与
+设备字节相等。app 侧的 alt0 cancel 也确实执行了
+（`teardown cancel rc=0x0 wait=0xea01`，没有 pending report），但
+`SET_INTERFACE(0)` 仍然在 `+0x1927c` 触发 User Break——崩溃在 usb:ds 自己的
+alt0/DMA-map 路径，不在 app 能看到的状态里。
 
-v29g 只在 app 收尾动手，数据路径不变：
+v29h 的候选，按代价排序：
 
-1. `UAC_ACT_STOP`（alt0）在 `_ctrlAck` 前调用 `usbDsEndpoint_Cancel`，并
-   `eventWait` + `GetReportData` 收掉一份 report；
-2. 日志 `UAC U2 teardown cancel rc=0x%x wait=0x%x`，用于确认 alt0 前队列已空。
+1. **隔离 alt0 路径**：app 对 AS 的 `SET_INTERFACE(0)` 先不 ACK/直接 stall，
+   看主机是否容忍、崩溃是否消失（最轻，但可能破坏 host）；
+2. **patch 断言点**：`0x9650 → 0x1927c` 是 sysmodule 的 abort helper，
+   0x9448 调用它；需要先离线确认 0x9370/0x9400 的判定与安全跳过方式，再改；
+3. 接受收尾崩溃（数据路径已可用），转去把 miss 降到 0（4 在飞或 lead 16）。
 
-候选 NSP `a599149a…`（92541 B，44 条 edits，cave 680/684 B），host 命令同
-v29f。判定：数据仍 64/64、host==device；收尾**无 crash/fatal**。若仍崩，
-下一步隔离 `SET_INTERFACE(0)` 路径或 patch 断言点。
+判定：数据 64/64、host==device，且收尾无 crash/fatal。
 
 ## 仍未隔离
 
