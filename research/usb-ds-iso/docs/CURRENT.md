@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 13:3x，Asia/Shanghai）
+# 当前状态（2026-11-02 14:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”。历史细节见 [STATUS.md](STATUS.md)、[PROGRESS_HANDOFF.md](PROGRESS_HANDOFF.md)
 > 和 `A23_*.md` 专题；那些文件不再作为入口。
@@ -10,11 +10,13 @@
 > 走不通，v26A/v26B 路线终止。可用基线是 v24 单 burst（`2b7680ef…`，4/4、
 > gap ~96 ms）。v28 实机一次：一次 6144B（2×3072B、32 对 TD）请求让
 > **系统在 `PostBufferAsync` 内挂死**——无 post rc、host 0 字节、无新
-> crash/erpt；单次上限仍是 3072B。收尾 usb `svcBreak` 仍未规避。详见
+> crash/erpt；单次上限仍是 3072B。拆解驱动提交路径未发现 16-TD 常量，
+> 上限更像在控制器；v28b（20 帧 = 3840B）已离线构建，待一次 boot 定位
+> 悬崖。收尾 usb `svcBreak` 仍未规避。详见
 > [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 > UAC 默认仍禁用（仅 `UAC_HOST_PROBE`）。
 
-## 当前进度（2026-11-02 13:3x）
+## 当前进度（2026-11-02 14:1x）
 
 | 阶段 | 状态 | 证据 |
 | --- | --- | --- |
@@ -62,6 +64,7 @@
 | **v27 游标诊断（离线）** | **0 实机**：v26B cave + `-DUAC_U2_CURSOR_DIAG`；`_uacLogCursor` 读 `ring+0xFB8` 与 ring prod/cons/cycle，每个 post 前后/reap/结束各一行；NSP `bdb80208…`（92862B）；用于区分“游标没生效”与“驱动复位清掉奇数 set” | `private/analysis/UAC-u2-v27-cursor-diag-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v27 游标诊断（实机一次，已判读）** | **驱动是单 transfer**：偶数 post 写入 `prod=+0x200`、`cur=frame+16`（906→1006→1105→1205），奇数 post 后 `prod/cons/cur` 全不变、cave 未被调用，随后 `xfer=0 status=5`；每次完成 ring 复位。两 buffer 流水线走不通；本轮无新 crash/erpt | `private/runs/UAC-u2-v27-cursor-diag-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | **v28 多段单 transfer（实机一次，挂死）** | 一次 6144B（2×3072B、32 对 TD）请求：host `bytes=0`（31×32 包全部 `valid=32 bad=0`）；设备 **停在 `UAC U2 post begin`**、`PostBufferAsync` 未返回，控制台死机需硬关机；无新 crash/erpt/fatal（27 / 20 文件+dumps / 14）；单次上限仍是 3072B | `private/runs/UAC-u2-v28-multi-20261102`、`private/card-cycles/20261102-u2-v28-multi`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
+| **v28b 20 帧单 transfer（离线）** | **0 实机**：一次 3840B 请求（20×192B、20 对 TD），cave `iso_burst_uac84_dci9_pipe_multi20.S` 672/684B（长度门 `0xf00`、ED 槽上界 `0x280`、完成门 `sum==3840`）；app `-DUAC_U2_FRAMES=20 -DUAC_U2_BURSTS=1 -DUAC_U2_LIGHT_LOG`；NSP `b9b5459b…`（92135B）；用于判定上限在 17–20 还是 21–32 | `private/analysis/UAC-u2-v28b-20frame-20261102`、[UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) |
 | 卡 | 安全 `52069a44…`，已弹出 | `private/card-cycles/20261101-u2-v23-rearm` |
 
 - U1a/U1b 使用 r7 NSP `01c6ff26…`（87321B）。U2 基础在其上追加 8 条
@@ -98,15 +101,16 @@
 - 应用侧 `UAC_U2_PATCH` 在 `usbDsEnable()` 前应用 29 条，失败即拒绝启用；
   alt1 后的 SET_CUR 顺序 post 1..4 个 3072B（默认 1，v15 为 4），每个等
   一次完成（100ms 上限；超时先 cancel，不重试）。
-- 下一步（v28 定性：6144B 单次 transfer 挂死，单次上限仍是 3072B）：
-  (0) 可用基线仍是 v24 单 burst（`2b7680ef…` / lead 32，4/4、gap ~96 ms）；
-  (1) v28 `85861e90…` 否决：`PostBufferAsync(6144)` 在驱动内死循环/挂起，
-  没有 rc、没有 completion；不要重试 6144；(2) 若要继续攻连续流，先离线读
-  驱动 ISO 提交路径（`0x30364` 之后）找 16-TD / 0x200 的固定假设，确认上限
-  来源；或接受 ~96 ms gap，先做 PCM/时钟/与视频共存；(3) 收尾崩溃仍未
-  规避：`--keep-alt` 不够，需要在 app 的 alt0 处理里先 cancel，或研究内核
-  重绑/重枚举路径；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP
-  仍未隔离。详见 [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
+- 下一步（v28 定性：32 帧/6144B 挂死；提交路径拆解无线程内 16-TD 常量）：
+  (0) 可用基线仍是 v24 单 burst（`2b7680ef…`，4/4、gap ~96 ms）；
+  (1) v28b `b9b5459b…`（20 帧、3840B）已离线构建，待一次 boot：若同样
+  挂死，单次上限落在 17–20 帧，连续流在本驱动上关闭；若通过，上限在
+  21–32 帧，可再二分；(2) 拆解结论：`0x2c520` 只做 map/入队/提交后立即
+  返回，`0x2feb0`/`0x30ff4` 的 poll 都有 2000 次上限，endpoint context 无
+  TD 计数——上限更可能在控制器/硬件；(3) 收尾崩溃仍未规避：
+  `--keep-alt` 不够，需要在 app 的 alt0 处理里先 cancel，或研究内核重绑/
+  重枚举路径；(4) `ISO_ENTRY=0x270` 与 8 个 descriptor-parser NOP 仍未
+  隔离。详见 [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md)。
 
 ## 最近一次实机：v28 多段单 transfer（2026-11-02 13:1x，挂死）
 

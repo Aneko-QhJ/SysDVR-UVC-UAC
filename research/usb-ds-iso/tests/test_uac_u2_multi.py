@@ -2,13 +2,14 @@
 
 v27 proved the usb:ds AS endpoint is single-transfer: a second post while one
 request is in flight never reaches the cave and completes xfer=0/status=5.
-v28 therefore keeps one post and makes the request larger: two 3072 B segments
-(32 x 192 B frames) in one buffer.  The cave builds one Isoch+ED TD pair per
-192 B of the request (the loop ends at buffer + request length, not a fixed
-counter) and completes only when the 32-bit ED bitmap is full.
+v28 therefore keeps one post and makes the request larger.  The cave builds
+one Isoch+ED TD pair per 192 B of the request (the loop ends at buffer +
+request length, not a fixed counter) and completes on the frame count it was
+built for.
 
-Offline only: these tests assemble the cave and pin the source structure; no
-hardware is needed.
+v28 used 32 frames (6144 B) and hung the console inside PostBufferAsync, so
+v28b steps down to 20 frames (3840 B) to find the cliff.  These tests pin
+both caves, the app frame macro and the builders; no hardware is needed.
 """
 import sys
 import tempfile
@@ -22,13 +23,13 @@ sys.path.insert(0, str(ROOT / "tools"))
 from build_uac_u2_producer import assemble  # noqa: E402
 
 MULTI = ROOT / "patches/iso_burst_uac84_dci9_pipe_multi.S"
+MULTI20 = ROOT / "patches/iso_burst_uac84_dci9_pipe_multi20.S"
 CURSOR = ROOT / "patches/iso_burst_uac84_dci9_pipe_cursor.S"
 SOURCE = REPO / "source/uvc/uvc_device.c"
 PRODUCER = ROOT / "tools/build_uac_u2_producer.py"
 PROBE = ROOT / "tools/build_uac_u2_probe.py"
 TOOLCHAIN = Path("/opt/devkitpro/devkitA64/bin")
 FRAME_BYTES = 192
-SEGMENT_BYTES = 16 * FRAME_BYTES
 
 
 class MultiCaveTests(unittest.TestCase):
@@ -66,16 +67,45 @@ class MultiCaveTests(unittest.TestCase):
         self.assertEqual(len(multi), len(cursor) + 4)  # mov/cmp instead of cmp
         self.assertEqual(symbols["iso_enter"], 0x68D54)
 
+
+class Multi20CaveTests(unittest.TestCase):
+    """v28b: the same shape with a 20-frame (3840 B) request."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = MULTI20.read_text()
+
+    def test_size_and_ed_sum_are_3840_bytes(self):
+        self.assertIn("cmp w3, #0xf00", self.text)   # 20 x 192 B request
+        self.assertIn("cmp w4, #0xf00", self.text)   # 20 distinct EDs
+        self.assertIn("cmp x6, #0x280", self.text)   # 20 TD pairs x 32 B
+
+    def test_td_count_still_follows_the_request_length(self):
+        self.assertIn("add x16, x2, w3, uxtw", self.text)
+        self.assertIn("cmp x2, x16", self.text)
+        self.assertNotIn("mov w14, #16", self.text)
+        self.assertNotIn("subs w14, w14, #1", self.text)
+
+    def test_assembled_cave_is_byte_neutral(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            multi20, symbols = assemble(TOOLCHAIN, tmp / "m20", MULTI20,
+                                        require_report=False)
+            cursor, _ = assemble(TOOLCHAIN, tmp / "c", CURSOR,
+                                 require_report=False)
+        self.assertLessEqual(len(multi20), 0x69000 - 0x68D54)
+        self.assertEqual(len(multi20), len(cursor))
+        self.assertEqual(symbols["iso_enter"], 0x68D54)
+
     def test_model_matches_the_request(self):
-        # packets = bytes / 192; each TD pair is 32 B; the set must stay below
-        # the link slot at ring+0xf70; the 32-bit bitmap caps 32 packets.
-        for segments in (1, 2):
-            size = segments * SEGMENT_BYTES
-            packets = size // FRAME_BYTES
-            self.assertEqual(packets, 16 * segments)
-            self.assertLess(packets * 32, 0xF70)
-            self.assertEqual(packets * FRAME_BYTES, size)
-        self.assertEqual(32, 2 * 16)  # two segments fill every bitmap bit
+        frames = 20
+        size = frames * FRAME_BYTES
+        self.assertEqual(size, 3840)
+        self.assertLess(frames * 32, 0xF70)       # TD pairs stay before the link
+        self.assertLess(frames, 32)               # bitmap covers 32 slots
+        self.assertEqual((1 << frames) - 1, 0xFFFFF)
 
 
 class MultiAppTests(unittest.TestCase):
@@ -85,36 +115,37 @@ class MultiAppTests(unittest.TestCase):
             raise unittest.SkipTest(f"missing {SOURCE}")
         cls.text = SOURCE.read_text()
 
-    def test_one_request_carries_all_segments(self):
+    def test_one_request_carries_all_frames(self):
+        self.assertIn("#define UAC_U2_FRAMES (16 * UAC_U2_SEGMENTS)", self.text)
         self.assertIn("#define UAC_U2_BURST_BYTES "
-                      "(UAC_ISO_PACKET_SIZE * 16 * UAC_U2_SEGMENTS)", self.text)
+                      "(UAC_ISO_PACKET_SIZE * UAC_U2_FRAMES)", self.text)
         self.assertIn("#define UAC_U2_BUF_BYTES", self.text)
         self.assertIn("g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES]",
                       self.text)
 
-    def test_two_segments_is_the_ceiling_and_pipeline_is_excluded(self):
-        self.assertIn("UAC_U2_SEGMENTS must be 1..2", self.text)
+    def test_frame_range_and_pipeline_are_guarded(self):
+        self.assertIn("UAC_U2_FRAMES must be 1..32", self.text)
         self.assertIn("a pipeline build keeps two transfers in flight", self.text)
 
     def test_multi_build_logs_its_shape(self):
-        self.assertIn("UAC U2 multi segments=%u size=%u", self.text)
+        self.assertIn("UAC U2 multi frames=%u size=%u", self.text)
 
 
 class MultiBuilderTests(unittest.TestCase):
-    def test_producer_records_segments_and_burst_bytes(self):
+    def test_producer_records_frames_and_burst_bytes(self):
         text = PRODUCER.read_text()
-        self.assertIn('"--segments"', text)
-        self.assertIn('"burst_bytes": BURST_BYTES * segments', text)
-        self.assertIn('if doc["burst_bytes"] != BURST_BYTES * segments', text)
+        self.assertIn('"--frames"', text)
+        self.assertIn('"burst_bytes": 192 * frames', text)
+        self.assertIn('if doc["burst_bytes"] != 192 * frames', text)
 
-    def test_probe_builder_marks_only_a_multi_segment_build(self):
+    def test_probe_builder_marks_multi_frame_builds(self):
         text = PROBE.read_text()
         self.assertIn('markers.append(b"UAC U2 multi")', text)
-        self.assertIn('d != "UAC_U2_SEGMENTS=1"', text)
+        self.assertIn("int(v) > 16", text)
 
 
 class MultiFrameModelTests(unittest.TestCase):
-    """The cave frame/cursor arithmetic for a 32-frame request."""
+    """The cave frame/cursor arithmetic for a larger request."""
 
     @staticmethod
     def pick(mfi_frame, cursor):

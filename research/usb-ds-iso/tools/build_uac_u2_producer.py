@@ -208,7 +208,9 @@ def render(edits):
 
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
-             segments=1):
+             segments=1, frames=None):
+    if frames is None:
+        frames = 16 * segments
     return {
         "schema": "UAC-u2-producer-payload-1",
         "assembly": str(asm.relative_to(ROOT)),
@@ -223,7 +225,8 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "endpoint": {"word": hex(ENDPOINT_WORD), "address": "0x84",
                      "attributes": "0x05", "max_packet": 192, "interval": 4},
         "segments": segments,
-        "burst_bytes": BURST_BYTES * segments,
+        "frames": frames,
+        "burst_bytes": 192 * frames,
         "edit_count": len(edits),
         "counts": {"cave": 1, "branch": (3 if report else 2) + (1 if breaker else 0),
                    "descriptor": len(DESCRIPTOR_EDITS), "nop": len(NOP_EDITS)},
@@ -276,8 +279,9 @@ def check(nso, work):
     if not endpoint_constants_ok(code, require_report=report):
         raise SystemExit("cave does not encode endpoint 0x84 / MPS192 / attrs 0x05")
     segments = doc.get("segments", 1)
-    if doc["burst_bytes"] != BURST_BYTES * segments:
-        raise SystemExit("burst_bytes does not match segments")
+    frames = doc.get("frames", 16 * segments)
+    if doc["burst_bytes"] != 192 * frames:
+        raise SystemExit("burst_bytes does not match frames")
     print(f"ok: {len(doc['edits'])} edits, cave {len(code)}/{doc['cave_limit']} B")
 
 
@@ -317,6 +321,9 @@ def main():
                         help="cave assembly (default patches/iso_burst_uac84.S)")
     parser.add_argument("--segments", type=int, default=1, choices=(1, 2),
                         help="v28 only: 3072 B segments in one transfer (1..2)")
+    parser.add_argument("--frames", type=int, default=None,
+                        help="v28 only: 192 B frames in one transfer (1..32; "
+                             "overrides --segments)")
     parser.add_argument("--endpoint-word", type=lambda x: int(x, 0),
                         default=ENDPOINT_WORD,
                         help="endpoint descriptor word (default 0x00C00584)")
@@ -337,8 +344,10 @@ def main():
                              require_report=report)
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report)
     header = render(edits)
+    if args.frames is not None and not 1 <= args.frames <= 32:
+        raise SystemExit("--frames must be 1..32")
     doc = manifest(edits, code, symbols, breaker=args.breaker, asm=args.asm,
-                   report=report, segments=args.segments)
+                   report=report, segments=args.segments, frames=args.frames)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -346,7 +355,7 @@ def main():
     print(
         f"wrote {work / 'uac_u2_payload.h'}: {len(edits)} edits, "
         f"cave {len(code)}/{CAVE_END - CAVE} B, "
-        f"endpoint {ENDPOINT_WORD:#010x}, {args.segments} segment(s)"
+        f"endpoint {ENDPOINT_WORD:#010x}, {doc['frames']} frame(s)"
     )
 
 

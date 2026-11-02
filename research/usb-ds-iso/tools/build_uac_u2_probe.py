@@ -63,8 +63,13 @@ def main():
         markers.append(b"UAC U2 pipe end")
     else:
         markers.append(b"UAC U2 complete")
-    if any(d.startswith("UAC_U2_SEGMENTS=") and d != "UAC_U2_SEGMENTS=1"
-           for d in args.define):
+    def _values(name):
+        return [d.split("=", 1)[1] for d in args.define if d.startswith(name)]
+
+    multi = any(v != "1" for v in _values("UAC_U2_SEGMENTS="))
+    multi = multi or any(v.isdigit() and int(v) > 16
+                         for v in _values("UAC_U2_FRAMES="))
+    if multi:
         markers.append(b"UAC U2 multi")
     for marker in markers:
         if marker not in elf.read_bytes():
