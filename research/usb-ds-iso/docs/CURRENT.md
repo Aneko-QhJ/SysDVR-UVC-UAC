@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 12:2x，Asia/Shanghai）
+# 当前状态（2026-11-03 12:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -9,28 +9,27 @@
 ## 一分钟
 
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
-- **数据路径最好一轮（v29h）**：64/64 posts、**62 个完整 3072 B 片段
-  （190464 B）**、host 与设备字节相等、2 次单套 miss、收尾不崩。
-- **收尾崩溃没有彻底关闭，v29l 已补第二个入口**：v29h 的 map-soft
-  （`0x3fe0`→`0x409c`）只覆盖 IOVA 节点分配失败；v29k 开机枚举在
-  `0x3dac`→`0x40cc` 命中同一栈（`0x40d0←0x3ce0`）。v29l 把 `0x3dac` 也
-  改成跳 `0x409c` 错误收尾，待实机确认。
-- **已否掉的路线**：单次请求 >16 帧（17–19 帧处挂死）、两 buffer 流水线
-  （驱动单 transfer）、4 在飞/4 套环（v29i，miss 2→3）、lead 4（v25）与
-  lead 16（v29j，miss 2→4）。
-- **v29k（lead 40）实机无效**：12:06 第一次开机，VM 未 suspend 就 attach，
-  host 枚举在 probe 之前触发上面的崩溃；**0 数据，lead 40 仍未验证**。
-- **候选 v29l（lead 40 + map-soft-2）已离线构建**：NSP `49956ad1…`
-  （92676 B），46 条 edits（v29k + `0x3dac`）；alt0 两个 panic 入口都改成
-  错误返回，待一次 boot。
+- **数据路径最好一轮（v29h，lead 32）**：64/64 posts、**62 个完整 3072 B
+  片段（190464 B）**、host 与设备字节相等、2 次单套 miss、0 恢复。
+- **lead 扫描收敛**：lead 16（v29j）54 段、lead 32（v29h）62 段、lead 40
+  （v29l）**58 段 / 3 miss / 1 recover**——40 是负结果，32 附近最好，
+  继续加大 lead 不再有用。
+- **收尾/map 安全**：v29l 在枚举阶段经历了 4 次 `SET_INTERFACE(0)` 没有
+  `svcBreak`（map-soft-2 起效），但新增 1 份非致命 erpt `2162-0004`
+  （Data Abort，v16-r2 也出现过同类），需要继续观察。
+- **已否掉的路线**：单次请求 >16 帧、两 buffer 流水线、4 在飞/4 套环
+  （v29i）、lead 4/16/40。
+- **候选 v29m 已构建并部署**：NSP `a1318cf0…`（92676 B），46 条 edits =
+  v29h 数据路径（lead 32）+ `0x3fe0` map-soft + `0x3dac` map-soft-2；
+  待一次 boot 确认 62 段、host==device、alt0 不崩。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：部署 v29l，一次 boot；VM 在 Switch 开机前 suspend/detach、主界面
-  后再 attach，确认 guest 只在 attach 后看到 `1209:ca57`。lead 48 与 ring
-  复位诊断排在其后。
+- 下一步：v29m 一次 boot；之后做 **ring 复位诊断**——miss 前都出现
+  `prod=cons=cur=0`（v29l seq 40 也看到 `prod` 回 base），要记录触发者是
+  驱动 `0x30ff4` 还是 cave 的空 ring rearm。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…` 已恢复并弹出（12:08）；崩溃日志与 2 份新报告已
-  归档并从卡删除。
+- 卡：v29m 已部署（`a1318cf0…`）；v29l 日志与 1 份新 erpt 已归档并从卡
+  删除，12:3x 弹出。
 
 ## 阶段进度
 
@@ -55,7 +54,6 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29c | 64 post 滚动 + 8 槽复用（≤2 在飞） | 187968 B | 61×`3072/3`、2×status=5 | 稳态成立；wrap 失败 |
 | v29d | link `+0xf70`→`+0xc00`，六套对齐 | 57024 B | 18×`3072/3`；两次 wrap 干净 | wrap 修好；ring 跑空 |
 | v29e | 4 mailbox + 3 在飞 + status=5 恢复 | 180672 B | 56×`3072/3`、4 recover | 3 在飞成立 |
 | v29f | miss 只释放槽并补投，stall 才 cancel | 187392 B | 61×`3072/3`、3 miss | 数据好；收尾仍崩 |
@@ -64,20 +62,21 @@
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
 | v29k | v29h + lead 32→40 | —（崩溃，无数据） | —（开机枚举 alt0 崩溃） | 0 数据；第二入口 `0x3dac` 崩溃，v29k 未测 |
-| v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | —（0 实机） | —（0 实机） | 离线构建 `49956ad1…`，46 条 edits，待一次 boot |
+| v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | 179712 B | 58×`3072/3`、3 miss、1 recover | lead 40 负结果；host 比设备多 1536 |
+| v29m | 回退 lead 32 + 双 map-soft | —（0 实机） | —（0 实机） | 离线 `a1318cf0…`（92676 B），已部署待 boot |
 
-## 当前最佳配置（v29h）
+## 当前最佳配置（v29h 数据路径 + v29m 安全补丁）
 
 | 项 | 值 |
 | --- | --- |
-| NSP / NSO | `9610b3a0…`（92589 B）/ `b136b181…` |
-| cave | `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B） |
+| NSP / NSO | v29m `a1318cf0…`（92676 B）/ `7bd8bf08…`；v29h 结果来自 `9610b3a0…` |
+| cave | `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B，lead 32） |
 | ring | link `+0xc00`（六套对齐）；mailbox `+0xf00/+0xf40/+0xf80/+0xfc0`，`set=(offset>>9)&3`；游标 `+0xfb8` |
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；100 ms stall 才 cancel + 重投；alt0 STOP 先 cancel + 收 report |
-| 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + 1 处 map-soft（45 条 edits） |
+| 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_CURSOR_DIAG` |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | 62×3072（190464 B）、host==device、misses=2、recoveries=0、无 crash/fatal |
+| 结果 | v29h：62×3072（190464 B）、host==device、misses=2、recoveries=0、无 crash/fatal；v29m 待 boot |
 
 ## 构件与关键事实
 
@@ -91,20 +90,23 @@
   mailbox、全局游标、空 ring 时重放 `0x2feb0`；lead 32。
 - **驱动补丁**：队列 3 处（`0x0c4` stub、`0x2c628` 总是提交、`0x2c80c`
   跳过自动提交）、link 12 处（`0x2f530`/`0x2ff40`/`0x30578`/`0x310c8` 的
-  `add`/`clear`）、map-soft 1 处（`0x3fe0` 的 `cbz x0, 0x40d0` → `0x409c`）。
-- **payload**：45 条 = cave + 2 分支 + 18 描述符 + 8 NOP + 3 队列 + 12 link
-  + 1 map-soft。
+  `add`/`clear`）、map-soft 1 处（`0x3fe0` 的 `cbz x0, 0x40d0` → `0x409c`）、
+  map-soft-2 1 处（`0x3dac` 的 `cbz w0, 0x40cc` → `0x409c`）。
+- **payload**：46 条 = cave + 2 分支 + 18 描述符 + 8 NOP + 3 队列 + 12 link
+  + 1 map-soft + 1 map-soft-2。
 - **接口预算**：`usb:ds`/libnx 最多 4 个接口，UVC 2 + UAC 2 = 4，因此 UAC 不能与
   `ISO_PROBE` 的 vendor 接口同 build。
 
 ## 下一步
 
-1. **v29l 实机（一次 boot）**：部署 `49956ad1…`；Switch 开机前
+1. **v29m 实机（一次 boot）**：卡上已是 `a1318cf0…`；Switch 开机前
    suspend/detach VM，主界面后再 attach，确认 guest 只在 attach 后看到
    `1209:ca57`，然后跑一次 probe；
-2. 判定：≥62 段、host==device、alt0 不崩（0x19a8c 错误返回算通过）；
-   若 lead 40 不改善，试 lead 48 或做 ring 复位诊断；
-3. 0 miss 之后再做占空比与 48 kHz 连续评估。
+2. 判定：62 段、host==device（190464）、alt0 不崩（0x19a8c 算通过）；
+   若回归，先回 v29h 再查；
+3. 之后做 **ring 复位诊断**：miss 前 `prod=cons=cur=0`（v29l seq 40 也看到
+   `prod` 回 base），要在 cave/驱动记录触发者；0 miss 之后再做占空比与
+   48 kHz 连续。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。

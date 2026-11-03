@@ -695,6 +695,34 @@ v29k 的开机崩溃栈（`0x40d0←0x3ce0`）对应 `0x3dac` 的
 - 判定：alt0/IOVA 两个 panic 入口都变成错误返回；数据路径仍回答 lead 40
   的问题（≥62 段、host==device、alt0 不崩）。
 
+### 2026-11-03 12:3x v29l 实机：lead 40 负结果
+
+- host：`rc=0`，claim/alt1/`SET_CUR` ok；312 transfers、`valid=2113
+  bad=2879 **bytes=179712**`，数据 t=49–2449 ms。
+- 设备：**posted=64 completed=64 bytes=178176 misses=3 recoveries=1**——
+  58 个 `3072/3`、3 次 `status=5`（buf 2/5/6），seq 42 后 100 ms stall
+  cancel 3 个请求；**host 比设备多 1536 B**（一个被打断的半套）。
+- 枚举：4 次 `SET_INTERFACE(0)` 都执行了 teardown cancel，没有 `svcBreak`；
+  新增 1 份非致命 erpt `2162-0004`（Data Abort，v16-r2 也出现过），
+  无 crash/fatal。
+- 判定：**lead 40 是负结果**（v29h lead 32：62 段 / 2 miss / 0 recover）；
+  lead 16/32/40 = 54/62/58，32 附近最好，lead 路线收敛。map-soft-2 第一次
+  经受住枚举 alt0，但 `--keep-alt` 下没走到收尾 alt0。
+- 恢复：日志与 erpt 已归档并删除；卡随即部署 v29m。证据
+  `private/runs/UAC-u2-v29l-map-soft2-20261103`。
+
+### 2026-11-03 12:3x v29m lead 32 + map-soft-2（离线，已部署）
+
+v29l 证明 lead 40 不如 32，所以 v29m 回到 v29h 的数据路径（quad cave、
+lead 32、3 在飞），保留 v29h 的 `0x3fe0` map-soft 和 v29l 的 `0x3dac`
+map-soft-2，共 46 条 edits。
+
+- NSP `a1318cf0…`（92676 B）、NSO `7bd8bf08…`；cave
+  `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B）；
+- 与 v29h manifest 比较只多 `0x3dac` 一条；app 不变；
+- 判定：62 段、host==device（190464）、alt0 不崩；这是做 ring 复位诊断前
+  的基线配置。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
