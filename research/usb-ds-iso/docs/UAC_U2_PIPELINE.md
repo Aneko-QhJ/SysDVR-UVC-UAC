@@ -723,6 +723,20 @@ map-soft-2，共 46 条 edits。
 - 判定：62 段、host==device（190464）、alt0 不崩；这是做 ring 复位诊断前
   的基线配置。
 
+### 2026-11-03 12:4x v29m 实机：lead 32 未复现 v29h
+
+- host：`rc=0`；312 transfers、`valid=2241 bad=2751 **bytes=179904**`，
+  数据 t=18–2802 ms。
+- 设备：**posted=64 completed=64 bytes=178176 misses=3 recoveries=1**——
+  58 个 `3072/3`、3 次 `status=5`、1 次 100 ms stall；host 比设备多 1728 B。
+- 与 v29l（lead 40 + map-soft-2）数值完全相同（58/3/1、178176 B），
+  与 v29h（lead 32 + map-soft only）不同（62/2/0、190464 B）。
+- 枚举：5 次 `SET_INTERFACE(0)` 无 `svcBreak`，无新 crash/fatal/erpt；
+  v29l 的 `2162-0004` 没有复现。
+- 判定：**回退 lead 没有恢复 62**。两轮 map-soft-2 一致、map-soft-only
+  的 v29h 不同，所以先重复 v29m 分离方差与 map-soft-2 影响；不要在这之前
+  改 ring 或 lead。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

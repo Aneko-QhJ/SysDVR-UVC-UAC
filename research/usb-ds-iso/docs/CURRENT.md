@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 12:3x，Asia/Shanghai）
+# 当前状态（2026-11-03 12:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -12,24 +12,22 @@
 - **数据路径最好一轮（v29h，lead 32）**：64/64 posts、**62 个完整 3072 B
   片段（190464 B）**、host 与设备字节相等、2 次单套 miss、0 恢复。
 - **lead 扫描收敛**：lead 16（v29j）54 段、lead 32（v29h）62 段、lead 40
-  （v29l）**58 段 / 3 miss / 1 recover**——40 是负结果，32 附近最好，
-  继续加大 lead 不再有用。
-- **收尾/map 安全**：v29l 在枚举阶段经历了 4 次 `SET_INTERFACE(0)` 没有
-  `svcBreak`（map-soft-2 起效），但新增 1 份非致命 erpt `2162-0004`
-  （Data Abort，v16-r2 也出现过同类），需要继续观察。
+  （v29l）58 段——40 是负结果，32 最好，继续加大 lead 不再有用。
+- **v29m 没有复现 v29h**：lead 32 + 双 map-soft 也是 **58 段 / 3 miss /
+  1 recover（178176 B）**，与 v29l 完全相同；host 179904（多 1728）。
+  两轮 map-soft-2 一致、与 map-soft-only 的 v29h 不同，因此要么
+  map-soft-2 扰动了 map/ring 状态，要么是 run-to-run 方差。
+- **收尾/map 安全**：v29m 枚举阶段 5 次 `SET_INTERFACE(0)` 无 `svcBreak`，
+  无新 crash/fatal/erpt；v29l 的 1 份非致命 `2162-0004` 未复现。
 - **已否掉的路线**：单次请求 >16 帧、两 buffer 流水线、4 在飞/4 套环
   （v29i）、lead 4/16/40。
-- **候选 v29m 已构建并部署**：NSP `a1318cf0…`（92676 B），46 条 edits =
-  v29h 数据路径（lead 32）+ `0x3fe0` map-soft + `0x3dac` map-soft-2；
-  待一次 boot 确认 62 段、host==device、alt0 不崩。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：v29m 一次 boot；之后做 **ring 复位诊断**——miss 前都出现
-  `prod=cons=cur=0`（v29l seq 40 也看到 `prod` 回 base），要记录触发者是
-  驱动 `0x30ff4` 还是 cave 的空 ring rearm。
+- 下一步：**用同一 v29m NSP 再跑一次**，先分离方差与 map-soft-2 影响；
+  若仍是 58/3/1，回退 map-soft-2（即 v29h）做对照，或查 `0x4a20` 失败
+  本身；ring 复位诊断排在后面。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：v29m 已部署（`a1318cf0…`）；v29l 日志与 1 份新 erpt 已归档并从卡
-  删除，12:3x 弹出。
+- 卡：安全 `52069a44…` 已恢复并弹出（12:5x）；v29m 日志已归档并从卡删除。
 
 ## 阶段进度
 
@@ -63,7 +61,7 @@
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
 | v29k | v29h + lead 32→40 | —（崩溃，无数据） | —（开机枚举 alt0 崩溃） | 0 数据；第二入口 `0x3dac` 崩溃，v29k 未测 |
 | v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | 179712 B | 58×`3072/3`、3 miss、1 recover | lead 40 负结果；host 比设备多 1536 |
-| v29m | 回退 lead 32 + 双 map-soft | —（0 实机） | —（0 实机） | 离线 `a1318cf0…`（92676 B），已部署待 boot |
+| v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 未复现 v29h；与 v29l 相同 |
 
 ## 当前最佳配置（v29h 数据路径 + v29m 安全补丁）
 
@@ -99,14 +97,12 @@
 
 ## 下一步
 
-1. **v29m 实机（一次 boot）**：卡上已是 `a1318cf0…`；Switch 开机前
-   suspend/detach VM，主界面后再 attach，确认 guest 只在 attach 后看到
-   `1209:ca57`，然后跑一次 probe；
-2. 判定：62 段、host==device（190464）、alt0 不崩（0x19a8c 算通过）；
-   若回归，先回 v29h 再查；
-3. 之后做 **ring 复位诊断**：miss 前 `prod=cons=cur=0`（v29l seq 40 也看到
-   `prod` 回 base），要在 cave/驱动记录触发者；0 miss 之后再做占空比与
-   48 kHz 连续。
+1. **重复 v29m（同一 NSP `a1318cf0…`）一次**：先判断 58/3/1 是方差
+   还是 map-soft-2 的稳定影响；卡已恢复安全版，需要重新部署；
+2. 若重复得到 62/2/0：回到 ring 复位诊断；若仍是 58/3/1：回退 map-soft-2
+   （即 v29h，注意 `0x3dac` 崩溃风险）做对照，或查 `0x4a20` 为何返回 0；
+3. 之后再做 **ring 复位诊断**（miss 前 `prod=cons=cur=0`），0 miss 后再谈
+   占空比与 48 kHz 连续。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。
