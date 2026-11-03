@@ -143,7 +143,14 @@
 - **宿主侧采集修正**：那次开的 `xhci-hcd` tracepoint 采到空 trace——
   设备在 **Bus 001 / `ehci-pci`**，xhci 是 Bus 002/003 的键盘鼠标，内核
   没有 ehci tracepoint。改用 **usbmon bus 1**（工具 `--format usbmon`）。
-- 卡：安全 `52069a44…` 已恢复并弹出（21:5x）；v29q…v29z 日志均已归档。
+- **v30c 复跑未跑成（设备消失，不是设备侧故障）**：probe 返回
+  `SysDVR 1209:ca57 not accessible`，guest `lsusb` 与 `prlsrvctl usb list`
+  都没有设备——物理链路已断。设备日志显示 app 正常启动（4 个接口注册、
+  三个 attach 周期都响应控制请求），**无 crash**；每次 attach 的
+  `GET_DESCRIPTOR(STRING 0)` 都被 stall（app 从未实现 USB 字符串描述符），
+  这正是宿主只能看到 VID/PID、没有设备名的原因。一次尝试、按纪律不重试，
+  卡已恢复安全版。
+- 卡：安全 `52069a44…` 已恢复并弹出（20:4x）；v29q…v30b 日志均已归档。
 
 ## 阶段进度
 
