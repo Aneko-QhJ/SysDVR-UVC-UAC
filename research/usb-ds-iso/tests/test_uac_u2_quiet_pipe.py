@@ -126,6 +126,25 @@ class UacU2StallLimitTests(unittest.TestCase):
                       self.text)
 
 
+class UacU2InFlightTests(unittest.TestCase):
+    """v29u: the in-flight depth is a build define (default 3, ring allows 6)."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.text = SOURCE.read_text()
+
+    def test_default_and_range(self):
+        self.assertIn("#ifndef UAC_U2_IN_FLIGHT", self.text)
+        self.assertIn("#define UAC_U2_IN_FLIGHT 3", self.text)
+        self.assertIn('#error "UAC_U2_IN_FLIGHT must be 2..5', self.text)
+
+    def test_loop_uses_the_define(self):
+        self.assertIn("posted - completed < UAC_U2_IN_FLIGHT", self.text)
+        self.assertNotIn("posted - completed < 3", self.text)
+
+
 class UacU2MissRecoveryTests(unittest.TestCase):
     """v29t: a status=5 report cancels and reposts immediately.
 

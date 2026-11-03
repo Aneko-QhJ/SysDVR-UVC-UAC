@@ -88,7 +88,9 @@ class UacU2PipeAppTests(unittest.TestCase):
 
     def test_three_buffers_stay_in_flight(self):
         block = self._pipeline()
-        self.assertIn("posted - completed < 3", block)
+        # v29u made the depth a define; the default is still three
+        self.assertIn("posted - completed < UAC_U2_IN_FLIGHT", block)
+        self.assertIn("#define UAC_U2_IN_FLIGHT 3", self.text)
         self.assertIn("UAC U2 pipe post buf=%u urb=%u", block)
         self.assertIn("UAC U2 pipe done buf=%u urb=%u", block)
         self.assertIn("UAC U2 pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u", block)

@@ -132,6 +132,18 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #ifndef UAC_U2_MAX_RECOVERIES
 #define UAC_U2_MAX_RECOVERIES 8
 #endif
+/* v29u: how many requests the pipeline keeps in flight.  Three fills the
+   six-set ring's cursor path exactly, but the missed-service events always
+   land on the last Isoch slots of a set (11-14 of 16), i.e. where the
+   controller runs out of fetched TD material; a fourth set keeps a whole set
+   of lookahead in front of it.  The ring is 0xc00 long, so four sets
+   (0x800) still leave prod != cons and the empty-ring re-arm cannot fire. */
+#ifndef UAC_U2_IN_FLIGHT
+#define UAC_U2_IN_FLIGHT 3
+#endif
+#if UAC_U2_IN_FLIGHT < 2 || UAC_U2_IN_FLIGHT > 5
+#error "UAC_U2_IN_FLIGHT must be 2..5 (the ring holds six 0x200 sets)"
+#endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES];
 #endif
 
@@ -2698,9 +2710,10 @@ static void _postUacBurst(void)
 
     for (;;) {
         /* v29c: rolling train.  A slot is posted again only after the
-           previous request that used it completed (free_slot), at most three
-           requests in flight, and never more than STREAM_POSTS total. */
-        while (posted < stream_posts && posted - completed < 3 &&
+           previous request that used it completed (free_slot), at most
+           UAC_U2_IN_FLIGHT requests in flight, and never more than
+           STREAM_POSTS total. */
+        while (posted < stream_posts && posted - completed < UAC_U2_IN_FLIGHT &&
                free_slot[next]) {
             u8 *buf = g_u2BurstBuffers[next];
             s16 *samples = (s16 *)buf;

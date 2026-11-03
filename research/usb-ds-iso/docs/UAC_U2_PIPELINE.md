@@ -1041,6 +1041,23 @@ UAC U2 pipe stall recover cancelled=3 rc=0x0 limit_ms=100
 - 下一步不需要重建：同一镜像把 probe 的 `--transfers` 从 8 加到 16
   （256 帧预排），看 code 23 是否消失。
 
+### 2026-11-03 19:3x v29t-h16 实机：host 预排不是原因
+
+- 同一 v29t 镜像，只把 probe 的 `--transfers` 从 8 改成 16（256 帧预排）：
+  设备 `posted=64 completed=64 bytes=187392 misses=2 recoveries=1`、
+  `span_ms=1169 **max_gap_ms=88** max_react_ms=42`；host 188928 B、
+  覆盖 86.6%。**与 8 URB 的 188544 B / 88.9% / 77 ms 在噪声内相同。**
+- `evlog miss count=2` → `code=23 len=192 off=0xb60/0xb80`（第 5 套
+  Isoch 槽 11/12）。
+- **规律**：三次实机的漏帧位置是 v29s `0xba0/0xbc0`（槽 13/14）、
+  v29t `0x580/0x5a0`（槽 12/13）、h16 `0xb60/0xb80`（槽 11/12）——
+  全部落在**一套 16 帧的尾部几帧**（槽 11–14）。随机命中这个区间的概率
+  约 25%，连续三次说明是结构性的：控制器走到一套末尾时，**前面已取到的
+  TD 材料用尽**。
+- 因此 v29u 把在飞深度 3→4 套（`-DUAC_U2_IN_FLIGHT=4`）：六套环里
+  0x800 仍然 `prod != cons`，空 ring 的 rearm 门不会误触；控制器手里多
+  一整套 TD。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

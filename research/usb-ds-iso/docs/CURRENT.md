@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 19:4x，Asia/Shanghai）
+# 当前状态（2026-11-03 19:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -91,8 +91,17 @@
   `recoveries=1`、`cancelled=1`（v29s 是 3），**`max_gap_ms=77`**
   （v29s 194）、`max_react_ms=31`（147）；**61 段 / 187392 B**、span
   1146 ms，host 188544 B、覆盖 **88.9%**（v29s 78.7%）。
-- 卡：安全 `52069a44…` 已恢复并弹出（19:2x）；v29q/v29r/v29s/v29t
-  日志均已归档。
+- **host 预排关闭**：同一 v29t 镜像、probe 改 `--transfers 16`（256 帧
+  预排）结果与 8 个几乎一样——仍是一条 `code=23`（第 5 套槽 11/12，
+  off=0xb60/0xb80）、`misses=2`、61 段、`max_gap_ms=88`、覆盖 86.6%。
+  宿主不缺排队的工作，漏服务不是预排问题。
+- **漏帧位置有规律**：v29s `0xba0/0xbc0`、v29t `0x580/0x5a0`、h16
+  `0xb60/0xb80`——**永远是某套的 Isoch 槽 11–14**（一套 16 帧的尾部几帧），
+  也就是控制器“已取到的 TD 材料用尽”的位置。
+- **候选 v29u 已离线构建**：`UAC_U2_IN_FLIGHT=4`（默认 3，范围 2..5），
+  NSP `22288aeb…`（93059 B）——把在飞深度从 3 套加到 4 套（0x800/0xc00），
+  给控制器多留一整套 TD；`prod-cons=0x800≠0`，空 ring 的 rearm 门不会误触。
+- 卡：安全 `52069a44…` 已恢复并弹出（19:3x）；v29q…v29t-h16 日志均已归档。
 
 ## 阶段进度
 
@@ -131,6 +140,8 @@
 | v29r | v29q + `STALL_MS=32` | **4032 B** | posted=27、completed=24、**bytes=0**、8 recover | **负结果**：阈值 < lead+一套（≈48 ms）→ cancel 风暴 |
 | v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | 183744 B（59.8 套） | 59×`3072`、2 miss、1 recover、span 1250 ms | **诊断命中**：code=23（Missed Service）@0xba0/0xbc0；驱动只置 halt |
 | v29t | v29s + miss 立即 cancel/重投（app-only） | **188544 B（61.4 套）** | **61×`3072`、2 miss、1 recover/cancelled=1、span 1146 ms** | **成立，新最好**：`max_gap_ms` 194→**77**、覆盖 **88.9%** |
+| v29t-h16 | 同一镜像 + host `--transfers 16` | 188928 B（61.5 套） | 61×`3072`、2 miss、1 recover、`max_gap_ms=88` | **负结果**：host 预排不是杠杆；漏帧仍在槽 11–14 |
+| v29u | v29t + `IN_FLIGHT=4` | —（0 实机） | —（0 实机） | 离线 `22288aeb…`（93059 B），待 boot；多一整套 TD 预取 |
 
 ## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
 
@@ -168,19 +179,16 @@
 
 ## 下一步
 
-1. **同一 v29t 镜像，只改 host：`--transfers 16`**（16 个 URB × 16 帧 =
-   256 帧 ≈ 256 ms 预排）。code 23 是“控制器没被及时服务”，最像是宿主
-   URB 补投的抖动；8 个 URB 只有 128 ms 余量，补投晚一点都不行。这一轮
-   不需要重新构建，只换 probe 参数。
-   - 判定：`evlog` 里不再出 `code=23`、`misses=0`、`max_gap_ms` 归零或
-     只剩最初的启动空档 → **0 miss 达成**，测 8 s/10 s 连续；
-   - 若仍有 code 23 且时间点分散 → host/VM 的 ISO 调度上限，转去宿主
-     侧（非设备侧）继续。
-2. **不要在 miss 还在的时候动 cave**：v29t 已经把单次 miss 的代价压到
-   ~77 ms + 1 套，先看能不能把 miss 本身去掉。
+1. **跑 v29u**（`22288aeb…`）：同一 host 命令（`--transfers 8` 即可，
+   预排已证明不影响），看 `evlog` 里 code 23 是否消失、`misses` 是否到 0。
+   - `misses=0` 且 64 段（196608 B）→ 达成 0 miss，接着测 8–10 s 连续；
+   - 仍 2 miss 且 offset 仍是槽 11–14 → 漏服务不是“TD 材料不足”，设备侧
+     这个形状到头了，转宿主/VM 侧（或换 lead 之外的手段）。
+2. **不要再动**：host 预排（8/16 等价）、stall 阈值（100 ms）、cave 的空
+   ring 门、memset 长度；这些都已各有一轮负结果。
 3. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
 
-判定：先看 `evlog` 有没有 code 23 与 `misses`，再看覆盖；不倒退（≥61 段）。
+判定：先看 `evlog` 与 `misses`，再看覆盖；不倒退（≥61 段）。
 
 ## 边界与纪律
 

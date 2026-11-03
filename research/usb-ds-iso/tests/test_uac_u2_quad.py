@@ -74,7 +74,9 @@ class PipelineAppTests(unittest.TestCase):
         cls.text = SOURCE.read_text()
 
     def test_three_requests_in_flight(self):
-        self.assertIn("posted - completed < 3", self.text)
+        # v29u: depth is UAC_U2_IN_FLIGHT (default 3); no hard-coded 4
+        self.assertIn("posted - completed < UAC_U2_IN_FLIGHT", self.text)
+        self.assertIn("#define UAC_U2_IN_FLIGHT 3", self.text)
         self.assertNotIn("posted - completed < 4", self.text)
 
     def test_status5_only_counts_a_miss(self):
