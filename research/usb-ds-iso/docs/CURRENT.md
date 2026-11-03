@@ -9,6 +9,10 @@
 ## 一分钟
 
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
+- **macOS 裸机首测（v30e）不成立，原因干净**：AppleUSBAudio 绑定、识别 2ch/48k，
+  但日志里**没有任何 class SET_CUR**，只有 13 次 `SET_INTERFACE(alt0/alt1)`；
+  `_postUacBurst()` 只挂在 SET_CUR 分支 → 流没 arm、录音全零。**标准宿主靠
+  alt1 开流，触发必须挂到 SET_INTERFACE(alt=1)**（v30f，app-only）。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -252,20 +256,18 @@
 
 ## 下一步
 
-1. **长跑已收口（v30e 两轮）**：498 / 494 套、5 / 7 事件、0.56 / 0.78 次/s，
-   合计 **0.67/s**，与 v29v/v30d 完全同量级；交付 96.5–97.3%、覆盖 88–90%。
-   产品数字：**~90% 占空、~90 ms 空洞、0.6–0.8 次/s**；48 kHz 连续仍不成立，
-   且这是宿主（EHCI/VM）漏服务，不是设备侧可修。
-2. **~1.85 s 周期已排除**：r1 的五次事件看似等距，r2 变成
-   2096/463/480/689/463/2337 ms（含 4 个 ~0.47 s 的密集间隔）——单轮巧合，
-   没有周期性触发源可追。
-3. 若要 **>10 s** 的样本：probe 的 `--timeout-ms` 上限（10000）同时被当成
-   run deadline，需要拆成两个参数（host-only 小改动），否则长训练会被 10 s
-   截断、尾段变成假 miss。
-4. 设备侧不再动；8 个 descriptor-parser NOP 与 USB 字符串描述符两个小
-   缺口仍未做（后者只影响宿主显示名字）。
+1. **先修 macOS 触发（v30f，app-only）**：在 `SET_INTERFACE(alt=1)` 的 AS
+   接口分支里也调用 `_postUacBurst()`（幂等，只在未 arm 时启动）。这是
+   macOS 首测暴露的产品路径缺陷：标准宿主不发 SET_CUR，只切 alt1。
+2. **macOS 复测**：同一 512-post 训练，判据是设备日志出现 `pipe end`、录音
+   出现 1 kHz 方波。若 macOS 上 miss≈0 → 88–90% 是 Parallels 虚拟 EHCI 的
+   伪影，真实宿主连续；若仍是 0.6–0.8/s → 漏服务在设备/控制器路径。
+3. **VM 长跑数字已收口**（498/494 套、0.67 事件/s、~90% 占空、~90 ms 空洞、
+   ~1.85 s 周期已排除）；只有上一条 macOS 结论会改写它。
+4. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
+   字符串描述符仍未做。
 
-判定：稳态数字已足够写产品结论；下一步要么补 >10 s 的样本，要么转文档/收尾。
+判定：先让 macOS 出流，再谈连续；VM 数字只作对照。
 
 ## 边界与纪律
 
@@ -280,7 +282,7 @@
 
 ## 不证明
 
-48 kHz 连续 PCM、标准宿主（Linux `snd-usb-audio`）互操作、>9 s 稳态与更长期
+48 kHz 连续 PCM、标准宿主（macOS `AppleUSBAudio` / Linux `snd-usb-audio`）互操作、>9 s 稳态与更长期
 ring/缓冲复用、0 miss、16 ms/段、时钟同步/反馈、A23 10 s 连续、旧超时根因。
 
 ## 文件角色

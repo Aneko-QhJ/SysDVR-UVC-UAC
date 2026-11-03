@@ -1161,3 +1161,27 @@ pipe timing waits=502 timeouts=73 span_ms=8984 max_gap_ms=87 max_react_ms=40
   赶在 halt 已自行释放之后。
 - 产品数字最终按 **~90% 占空、~90 ms 空洞、0.6–0.8 次/s** 记；48 kHz 连续
   仍不成立，缺口在宿主 EHCI/VM 的漏服务，设备侧没有可再调的形状。
+
+### 2026-11-03 23:4x macOS 裸机：标准宿主的开流路径是 alt1，不是 SET_CUR
+
+同一 v30e 镜像插在 Mac 上（VM 挂起，`AppleUSBAudio` 绑定，系统识别
+2ch/48000），`ffmpeg -f avfoundation -i ":2" -t 10` 返回 0，但 WAV
+8.8267 s / 423680 帧全零。设备日志给出了原因：
+
+```text
+UAC u2 patch result=0 record=45 last-rc=0x0
+UAC setup[3] type=01 req=0b val=0000 idx=0003 len=0 action=4 rate=48000
+UAC setup[3] type=01 req=0b val=0001 idx=0003 len=0 action=3 rate=48000   (x13)
+```
+
+- **没有任何 class SET_CUR**（type 0x21/0x22），所以 `_postUacBurst()` 一次
+  都没被调用：日志里没有 `train begin`、`pipe end`、`pipe miss`。
+- macOS 只是反复 `SET_INTERFACE(alt0) → SET_INTERFACE(alt1)`（13 次）——
+  这是宿主“开了流但收不到数据”时的重试。
+- Linux probe 之所以能跑，是因为它**显式**发 3 字节 SET_CUR（
+  `type=22 req=01 idx=0084`），恰好命中触发；标准宿主不需要发 SET_CUR
+  （默认速率已经是 48000），只切 alt1。
+
+**结论：U2 的 arm 条件必须同时接受 `SET_INTERFACE(alt=1)` on AS 接口**
+（幂等，只在未 arm 时启动）。这是产品路径缺陷，不是数据路径问题；
+payload/cave 不用动，app-only 改动即可（v30f）。
