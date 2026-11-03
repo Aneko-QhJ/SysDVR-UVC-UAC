@@ -289,7 +289,24 @@ class RearmRaceDiagTests(unittest.TestCase):
         self.assertIn('!strcmp(tag, "post")', text)
 
 
+class RearmKeepMailboxTests(unittest.TestCase):
+    """v29o: stop the re-arm memset before the mailboxes/cursor."""
+
+    def test_edit_stops_memset_at_mailbox(self):
+        import build_uac_u2_producer as builder
+        address, before, after, reason = builder.REARM_EDITS[0]
+        self.assertEqual(address, 0x2FF14)
+        self.assertEqual(before, bytes.fromhex("02008252"))  # mov w2, #0x1000
+        self.assertEqual(after, bytes.fromhex("02e08152"))   # mov w2, #0xf00
+        word = int.from_bytes(after, "little")
+        self.assertEqual(word, 0x5281E002)
+        self.assertEqual((word >> 5) & 0xFFFF, 0xF00)
+        self.assertEqual(word & 0x1F, 2)
+
+
 if __name__ == "__main__":
+    unittest.main()
+
     unittest.main()
 
     unittest.main()

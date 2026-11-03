@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 15:4x，Asia/Shanghai）
+# 当前状态（2026-11-03 15:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -30,9 +30,12 @@
 - 机制：ring 在投递瞬间被排空，cave 走空 ring rearm（`0x2feb0` 的
   0x1000 memset + commit），把刚发出那套的 pending completion 一起
   wipe，控制器回 `status=5`——不是驱动 `0x30ff4`。
-- 下一步：做 **rearm 修复候选**，避免在排空竞态里 wipe pending
-  completion（方向：跳过/缩小 `0x2feb0` 的 memset，或只在驱动复位后
-  才 rearm）；先离线，再按纪律跑。
+- **修复候选 v29o 已离线构建**：NSP `855e7d41…`（92959 B），47 条 edits
+  = v29n 46 + `0x2ff14` 的 `mov w2,#0x1000 → #0xf00`；只缩短 `0x2feb0`
+  的 memset，保留 mailbox/cursor，TD 区与 link 仍清；`0x30ff4` 自己的
+  0x1000 memset 不动。待一次 boot。
+- 下一步：部署 v29o 跑一次；rearm-race 行可能仍在，但 miss 应下降；若
+  仍有 miss+race，说明新 set 复用了同一 mailbox，或 completion 丢在别处。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
@@ -59,7 +62,6 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29f | miss 只释放槽并补投，stall 才 cancel | 187392 B | 61×`3072/3`、3 miss | 数据好；收尾仍崩 |
 | v29g | alt0 STOP 先 cancel + 收 report | 193536 B | 63×`3072/3`、1 miss | 数据最好；崩溃仍在 |
 | v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | 收尾不崩 |
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
@@ -69,6 +71,7 @@
 | v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 首跑；后被证明是方差 |
 | v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
 | v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
+| v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | —（0 实机） | —（0 实机） | 离线 `855e7d41…`（92959 B），待 boot |
 
 ## 当前最佳配置（v29m）
 

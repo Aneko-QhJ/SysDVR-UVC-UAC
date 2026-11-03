@@ -800,6 +800,25 @@ rearm 与驱动 `0x30ff4` 复位，所以 v29n 只在 app 加一行观测：
 - 判定：下一轮修 `0x2feb0` 的 memset——跳过或缩小到 `0xf00`，保留
   mailbox/cursor；保持 v29m 数据路径，一次只改这一处。
 
+### 2026-11-03 15:5x v29o re-arm keeps the mailbox（离线）
+
+v29n 的 4/4 对齐说明 miss 来自 cave 空 ring rearm 的 wipe。0x2feb0 的
+memset 在 0x2ff18（长度在 0x2ff14 的 `mov w2,#0x1000`），清掉整个
+0x1000，包括四个 mailbox（+0xf00..+0xfc0）和 cursor（+0xfb8），把仍
+pending 的 completion 一起抹掉。
+
+- v29o 只改 `0x2ff14`：`mov w2,#0x1000` → `#0xf00`（`02008252` →
+  `02e08152`），TD 区与 link（+0xc00）仍被清，mailbox/cursor 保留；
+- `0x30ff4` 的错误路径有自己独立的一份 0x1000 memset（0x3109c），
+  不改；
+- 调用面：0x2feb0 的两个调用者是安装路径 0x2fd50 和 cave 的
+  `rearm_endpoint`；cave 在每次 post 都会用自己的 magic/零重写 mailbox，
+  stale done 不会挡住新 set；
+- 构建：NSP `855e7d41…`（92959 B）、NSO `afaac6f2…`；47 条 edits；工作
+  目录 `private/analysis/UAC-u2-v29o-rearm-keep-mailbox-20261103`；
+- 判定：rearm-race 行可能仍出现，但 `status=5` 应下降；若仍有
+  miss+race，说明新 set 复用了同一 mailbox，或 completion 丢在别处。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

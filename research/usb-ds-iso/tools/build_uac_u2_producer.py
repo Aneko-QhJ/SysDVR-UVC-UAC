@@ -111,6 +111,18 @@ MAP_SOFT2_EDITS = (
      "DMA-map range failure returns an error instead of panicking"),
 )
 MAP_SOFT2_EDIT_COUNT = len(MAP_SOFT2_EDITS)
+
+# v29o: when the cave re-arms an empty ring it calls 0x2feb0, which memsets the
+# whole 0x1000 ring including the four mailboxes (+0xf00..+0xfc0) and the frame
+# cursor (+0xfb8).  A completion that is still pending at that moment is wiped,
+# and the just-issued set completes as status=5 (v29n: 4/4 misses align with a
+# re-arm race).  Stop the memset at 0xf00: the TD area and the link are still
+# cleared, but the mailboxes and cursor survive the re-arm.
+REARM_EDITS = (
+    (0x2FF14, bytes.fromhex("02008252"), bytes.fromhex("02e08152"),
+     "re-arm memset stops at 0xf00 so mailbox/cursor survive a drain"),
+)
+REARM_EDIT_COUNT = len(REARM_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -147,6 +159,8 @@ def payload_ready(work):
         allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
     if doc.get("driver_map_soft2"):
         allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
+    if doc.get("driver_rearm_keep_mailbox"):
+        allowed = tuple(value + REARM_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
@@ -191,7 +205,8 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 
 def build_edits(nso, code, symbols, breaker=False, report=True,
                 driver_queue=False, driver_link=False, link_slot=0xC00,
-                driver_map_soft=False, driver_map_soft2=False):
+                driver_map_soft=False, driver_map_soft2=False,
+                driver_rearm_keep_mailbox=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -262,11 +277,15 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
     if driver_map_soft2:
         for address, before, after, reason in MAP_SOFT2_EDITS:
             edit(address, before, after, reason)
+    if driver_rearm_keep_mailbox:
+        for address, before, after, reason in REARM_EDITS:
+            edit(address, before, after, reason)
     expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
                 + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0)
                 + (LINK_EDIT_COUNT if driver_link else 0)
                 + (MAP_SOFT_EDIT_COUNT if driver_map_soft else 0)
-                + (MAP_SOFT2_EDIT_COUNT if driver_map_soft2 else 0))
+                + (MAP_SOFT2_EDIT_COUNT if driver_map_soft2 else 0)
+                + (REARM_EDIT_COUNT if driver_rearm_keep_mailbox else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -301,7 +320,8 @@ def render(edits):
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
              segments=1, frames=None, driver_queue=False, driver_link=False,
-             link_slot=0xC00, driver_map_soft=False, driver_map_soft2=False):
+             link_slot=0xC00, driver_map_soft=False, driver_map_soft2=False,
+             driver_rearm_keep_mailbox=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -329,6 +349,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "driver_link": bool(driver_link),
         "driver_map_soft": bool(driver_map_soft),
         "driver_map_soft2": bool(driver_map_soft2),
+        "driver_rearm_keep_mailbox": bool(driver_rearm_keep_mailbox),
         "link_slot": hex(link_slot) if driver_link else None,
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
@@ -368,6 +389,8 @@ def check(nso, work):
         allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
     if doc.get("driver_map_soft2"):
         allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
+    if doc.get("driver_rearm_keep_mailbox"):
+        allowed = tuple(value + REARM_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -443,6 +466,9 @@ def main():
     parser.add_argument("--driver-map-soft2", action="store_true",
                         help="v29l: return the 0x4a20 range failure at 0x3dac as "
                              "an error instead of the 0x40cc panic")
+    parser.add_argument("--driver-rearm-keep-mailbox", action="store_true",
+                        help="v29o: stop the 0x2feb0 re-arm memset at 0xf00 so "
+                             "mailbox/cursor survive a drain re-arm")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -468,7 +494,8 @@ def main():
                         driver_queue=args.driver_queue, driver_link=args.driver_link,
                         link_slot=args.link_slot,
                         driver_map_soft=args.driver_map_soft,
-                        driver_map_soft2=args.driver_map_soft2)
+                        driver_map_soft2=args.driver_map_soft2,
+                        driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
@@ -477,7 +504,8 @@ def main():
                    driver_queue=args.driver_queue, driver_link=args.driver_link,
                    link_slot=args.link_slot,
                    driver_map_soft=args.driver_map_soft,
-                   driver_map_soft2=args.driver_map_soft2)
+                   driver_map_soft2=args.driver_map_soft2,
+                   driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -490,6 +518,7 @@ def main():
         + (", driver-link" if doc["driver_link"] else "")
         + (", driver-map-soft" if doc["driver_map_soft"] else "")
         + (", driver-map-soft2" if doc["driver_map_soft2"] else "")
+        + (", driver-rearm-keep-mailbox" if doc["driver_rearm_keep_mailbox"] else "")
     )
 
 
