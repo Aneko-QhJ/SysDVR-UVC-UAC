@@ -913,6 +913,28 @@ v29q（离线构建 NSP `8e81d119…`，92350 B）：
   接近 192 B/ms、misses→0，则空档来自 app 测量；若 `span_ms` 仍 ~2.6 s、
   `max_react_ms` 仍 ~17 ms，则延迟在驱动/宿主路径，需要下一个杠杆。
 
+### 2026-11-03 18:4x v29q 实机：节奏修好，只剩一次 miss 的恢复
+
+- 设备：`posted=64 completed=64 bytes=181248 misses=2 recoveries=1`；
+  `pipe timing waits=61 timeouts=20 **span_ms=1201** max_gap_ms=181
+  max_react_ms=129`；日志里只有两条 `pipe miss buf=4/5 status=5` 与一次
+  `pipe stall recover cancelled=3`；无 crash/fatal/erpt。
+- host：`rc=0`；312 transfers、`valid=1017 bad=3975 bytes=180672`，数据
+  **t=33–1185 ms**（活跃窗 1152 ms），其中 **~176 ms 完全无数据**
+  （urb 56–66 全 bad，端点被 halt）。
+- 覆盖：180672 / (1152 ms × 192 B/ms) = **81.7%**（v29p 35.3%）；设备侧
+  59 段 = 944 ms 音频 / 1201 ms = 78.6%。
+- **节奏**：1201 − 181 = 1020 ms ≈ 64 × 16 ms——把那次空档扣掉后每套正好
+  16.0 ms，`MFI+32` 与 cursor 不再打架。v29p 的 40.2 帧均值/35% 覆盖
+  完全由 app 的 SD 日志 + dmnt dump 造成，**假设成立**。
+- 剩下的损失全在那一次 miss 事件：2 个 `status=5` 让驱动 `0x30ff4`
+  memset ring 并置 halt（`prod=cons=base`、`trb0=0` 的收尾状态可证），
+  app 的 100 ms stall 阈值 + cancel + 下一套 32 ms lead，合计 ~176 ms
+  无数据，丢 5 套（2 miss + 3 被 cancel）。
+- 下一版只动 app：把 stall 阈值 100 ms 降到 32 ms（v29r），看 host 空档
+  能否压到 ~70 ms；若 `max_gap_ms` 不降，说明驱动 `0x30ff4` 自己的
+  `regs+0x78` 轮询（最多 100 ms）才是那段时间的占据者。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

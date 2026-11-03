@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 16:5x）
+## 当前边界（2026-11-03 19:0x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -46,13 +46,17 @@
   rearm race（1:1）；丢的是 rearm 本身与刚发出的 set 的竞争，不是 mailbox。
 - **v29p 是退步**：57 段 / 4 miss / 1 stall；跳过非 base 的 rearm 后
   控制器停住（cons 冻结）。base 门判据不成立，回退 v29m（63/1，最好）。
-- **v29q 分析（离线）**：drain 复位是驱动 `0x30ff4` 的 error-code 路径；
-  空档来自 app 自己的逐 post 诊断（SD 日志 + dmnt dump）。v29p 的 cursor
-  帧差均值 40.2（一套 = 16），host 覆盖 35.3%——62/63 段与 35% 是**带
-  诊断的上界**。
-- **候选 v29q 已建**：NSP `8e81d119…`（92350 B），payload 与 v29m 逐字节
-  相同，只去掉逐 post 日志/dmnt，留 RAM 计数 + 一行 summary。待一次 boot；
-  读 `span_ms`（目标 ≈1024 ms）、`max_react_ms`（目标 0–2）与 host 覆盖。
+- **v29q 实机：测量开销就是空档来源**。payload 与 v29m 逐字节相同，只去掉
+  逐 post 日志与 dmnt dump：span **1201 ms**（v29p 2609）、host 覆盖
+  **81.7%**（v29p 35.3%）、59 段、misses=2、recoveries=1、无 crash/fatal。
+  扣掉唯一一次 181 ms 空档后，64 post / 1024 ms = **16.0 ms/套**，节奏已对。
+- **当前最佳配置 = v29q**（NSP `8e81d119…`，92350 B；payload 同 v29m，
+  app 加 `-DUAC_U2_QUIET_PIPE`，不要再用 `CURSOR_DIAG` 做节奏实验）。
+- **下一个杠杆**：那一次 miss 的恢复（驱动 `0x30ff4` 置 halt → app 100 ms
+  阈值才发现 → cancel → +32 ms lead，共 ~176 ms 无数据）。
+- **候选 v29r 已建**：NSP `00c516cb…`（92339 B），payload 同 v29q，
+  `-DUAC_U2_STALL_MS=32`（默认 100，范围 16..1000）。看 `max_gap_ms`
+  能否从 181 降到 ~70–90；若不变，时间是驱动 `regs+0x78` 轮询占的。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 

@@ -96,5 +96,35 @@ class UacU2QuietPipeTests(unittest.TestCase):
             self.assertNotIn("UAC_U2_QUIET_PIPE", (ROOT / tool).read_text(), tool)
 
 
+class UacU2StallLimitTests(unittest.TestCase):
+    """v29r: the stall limit is a build define, default 100 ms.
+
+    v29q showed the one miss cost 181 ms of silence: the app only cancels
+    after 100 ms without progress and the next TD set starts 32 ms later.
+    Waiting 100 ms to repair a 16 ms set is six times the damage.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.text = SOURCE.read_text()
+
+    def test_default_and_range(self):
+        self.assertIn("#ifndef UAC_U2_STALL_MS", self.text)
+        self.assertIn("#define UAC_U2_STALL_MS 100", self.text)
+        self.assertIn('#error "UAC_U2_STALL_MS must be 16..1000"', self.text)
+
+    def test_loop_uses_the_define_not_a_literal(self):
+        self.assertIn("(u64)UAC_U2_STALL_MS * 19200", self.text)
+        self.assertNotIn("> 100ULL * 19200", self.text)
+
+    def test_recovery_lines_name_the_limit(self):
+        self.assertIn("pipe stall recover cancelled=%u rc=0x%x limit_ms=%u",
+                      self.text)
+        self.assertIn("pipe stall posted=%u completed=%u limit_ms=%u",
+                      self.text)
+
+
 if __name__ == "__main__":
     unittest.main()

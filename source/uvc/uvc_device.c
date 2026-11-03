@@ -114,6 +114,18 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #if defined(UAC_U2_PIPELINE) && UAC_U2_FRAMES > 16
 #error "a pipeline build keeps two transfers in flight; v28 uses one multi-frame transfer"
 #endif
+/* v29r: how long the pipeline waits for any progress (a post or a
+   completion) before it cancels the in-flight requests and reposts.  After a
+   status=5 the driver's 0x30ff4 error path halts the endpoint, so the wait
+   is pure silence: v29q measured 181 ms (100 ms threshold + cancel + the
+   32 ms TD lead).  A miss costs one 16 ms set, so waiting 100 ms for a
+   recovery is six times the damage it repairs. */
+#ifndef UAC_U2_STALL_MS
+#define UAC_U2_STALL_MS 100
+#endif
+#if UAC_U2_STALL_MS < 16 || UAC_U2_STALL_MS > 1000
+#error "UAC_U2_STALL_MS must be 16..1000"
+#endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES];
 #endif
 
@@ -2687,7 +2699,8 @@ static void _postUacBurst(void)
                                 16E+6);
         if (R_FAILED(wait)) {
             ++timeouts;
-            if ((svcGetSystemTick() - last_progress) > 100ULL * 19200) {
+            if ((svcGetSystemTick() - last_progress) >
+                (u64)UAC_U2_STALL_MS * 19200) {
                 if (recoveries < 8 && posted < stream_posts) {
                     /* v29f: a miss leaves the endpoint idle; cancel what is
                        still queued and let the next post take the empty
@@ -2702,13 +2715,13 @@ static void _postUacBurst(void)
                         ++freed;
                     }
                     ++recoveries;
-                    LOG("UAC U2 pipe stall recover cancelled=%u rc=0x%x\n",
-                        freed, cancel);
+                    LOG("UAC U2 pipe stall recover cancelled=%u rc=0x%x limit_ms=%u\n",
+                        freed, cancel, UAC_U2_STALL_MS);
                     last_progress = svcGetSystemTick();
                     continue;
                 }
-                LOG("UAC U2 pipe stall posted=%u completed=%u\n",
-                    posted, completed);
+                LOG("UAC U2 pipe stall posted=%u completed=%u limit_ms=%u\n",
+                    posted, completed, UAC_U2_STALL_MS);
                 break;
             }
             continue;

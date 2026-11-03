@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 16:5x，Asia/Shanghai）
+# 当前状态（2026-11-03 19:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -51,13 +51,18 @@
   `0x30ff4` 接的是 3/4/5/9/10/14/15/31/0xDB/0xDE）→ 复位 → 丢一套。
   62/63 段与 35% 是**带诊断的上界**，不是数据路径上限；58 vs 63 的
   “方差”也由此而来。
-- **候选 v29q 已离线构建**：NSP `8e81d119…`（92350 B），payload 与 v29m
-  逐字节相同（cave 680/684 B、46 条 edits），只把 app 的逐 post/completion
-  日志与 dmnt cursor dump 换成 RAM 计数 + 一行
-  `pipe timing waits/ timeouts/ span_ms/ max_gap_ms/ max_react_ms`；miss
-  仍单独记一行。待一次 boot。
+- **v29q 实机证实了这一点**（payload 与 v29m 逐字节相同，只去掉 app 的
+  逐 post 日志与 dmnt cursor dump）：**span_ms=1201**（v29p 2609，快
+  2.17×），host 活跃窗 33–1185 ms、**覆盖 81.7%**（v29p 35.3%），
+  **59 段**（181248 B，v29p 57），misses=2、recoveries=1，
+  `max_gap_ms=181`、`max_react_ms=129`；无 crash/fatal/erpt。
+- 扣掉那次 181 ms 空档后，64 次 post / 1024 ms = **每条 16.0 ms**，正好
+  等于一套 TD：**节奏本身已经修好**。剩下的损失全在那一次 miss 事件：
+  2 个 `status=5` → 驱动 `0x30ff4` 置 halt → app 等 100 ms 才 cancel、
+  再 32 ms lead 才出数据，host 侧看到 **~176 ms 无数据**，丢 5 套
+  （2 miss + 3 被 cancel）。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；v29p 日志已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（18:5x）；v29q 日志已归档。
 
 ## 阶段进度
 
@@ -92,20 +97,21 @@
 | v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
 | v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | 190464 B | 62×`3072/3`、2 miss、2 race | memset 缩短未消除 miss；rearm 本身是竞态源 |
 | v29p | v29o 门改：仅 base 才 rearm | 177024 B | 57×`3072/3`、4 miss、1 stall | **退步**：跳过 rearm 会停流；门判据不成立 |
-| v29q | v29m payload + app 静默流水线 | —（0 实机） | —（0 实机） | 离线 `8e81d119…`（92350 B），待 boot；检验空档是否来自 app 测量 |
+| v29q | v29m payload + app 静默流水线 | 180672 B（58.8 套） | **59×`3072`、2 miss、1 recover、span 1201 ms** | **成立**：覆盖 81.7%（v29p 35.3%）；损失集中在那一次 miss → halt |
 
-## 当前最佳配置（v29m）
+## 当前最佳配置（v29q = v29m payload + 静默 app）
 
 | 项 | 值 |
 | --- | --- |
-| NSP / NSO | v29m `a1318cf0…`（92676 B）/ `7bd8bf08…` |
+| NSP / NSO | v29q `8e81d119…`（92350 B）/ `5be0a7ef…` |
 | cave | `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B，lead 32） |
 | ring | link `+0xc00`（六套对齐）；mailbox `+0xf00/+0xf40/+0xf80/+0xfc0`，`set=(offset>>9)&3`；游标 `+0xfb8` |
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；100 ms stall 才 cancel + 重投；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
-| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_CURSOR_DIAG` |
+| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE`（**不要**再加 `CURSOR_DIAG`） |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | 最好：63×3072（193536 B）、host==device、misses=1、recoveries=0、无 crash/fatal；同一 NSP 另一轮 58 段（方差） |
+| 结果 | 59×3072（181248 B）、host 180672、span **1201 ms**、host 覆盖 **81.7%**、misses=2、recoveries=1、无 crash/fatal |
+| 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
 ## 构件与关键事实
 
@@ -128,19 +134,23 @@
 
 ## 下一步
 
-1. **跑 v29q**（`8e81d119…`，payload = v29m）：一次 boot，同一 host 命令。
-   读法：`span_ms` 应接近 64×16 = 1024 ms、`max_react_ms` ≈ 0–2、host
-   覆盖接近 192 B/ms、misses→0；若 `span_ms` 仍 ~2.6 s、`max_react_ms`
-   仍 ~17 ms，延迟在驱动/宿主路径，下一个杠杆是驱动完成后的事件延迟或
-   completion→post 的接管方式。
-2. **若 v29q 成立**：用 v29q 作为新的测量基线，重新看 lead（32/24/16）与
-   在飞深度（3→4）——此前这些比较都建立在带 17 ms 日志空档的节奏上。
-3. 0 miss 仍按 v29q 的结果重新定义：若空档消失后仍有 missed service，
-   才是真正的控制器/宿主节奏问题。
-4. 不要再用 `-DUAC_U2_CURSOR_DIAG` 做流水线节奏实验；需要帧号时用
-   `-DUAC_U2_QUIET_PIPE` 的 RAM 计数，或在结尾一次性 dump。
+1. **v29r 已离线构建**（app 只改 stall 阈值）：NSP `00c516cb…`
+   （92339 B），payload 同 v29q/v29m，`-DUAC_U2_STALL_MS=32`。v29q 的
+   181 ms 空档 = app 100 ms 阈值 + cancel + 32 ms lead；阈值降到 32 ms
+   应把空档压到 ~70–90 ms。注意：驱动 `0x30ff4` 自己还会 poll
+   `regs+0x78`（最多 100 ms/事件），若 `max_gap_ms` 仍是 ~181，说明那段
+   时间被驱动占着，阈值不是杠杆。
+2. **错误码诊断**（下一轮）：cave 的 `ISO_ENTRY` 仍是 0x270（DCI-7），
+   所有 DCI-9 事件都被 `event_original` 处理，cave 从没看到 error code。
+   要判断 miss 是 host 漏服务还是 ring 排水，需要把常量改成 `0x300`，
+   并只在 cave 里**记录** `[event+8]>>24` 到 ring+0xc10 的 scratch（先
+   透传给 `event_original`，不改行为），结尾一次性 dump。
+3. 在飞深度 3 现在够用（节奏 16.0 ms/套）；先不要动 3→4，除非第 1 步后
+   `max_react_ms` 仍 >16 ms。
+4. 0 miss 仍不是当前目标：先做到“单次 miss 的恢复 < 一个 TD 集”。
 
-判定：v29q 先看 `span_ms` 与 host 覆盖，再看 misses；不倒退（≥62 段）。
+判定：v29r 看 `max_gap_ms` 与 host 空档（目标 < 100 ms），段数不倒退
+（≥59）。
 
 ## 边界与纪律
 
