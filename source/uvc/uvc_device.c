@@ -2402,6 +2402,49 @@ static void _uacLogCursor(const char *tag, u32 seq)
 }
 #endif
 
+#if defined(UAC_U2_EVENT_LOG)
+/* v29s: the cave records DCI-9 error events as {event word, ring offset}
+   into the ring scratch (count at ring+0xc10, 16 entries at ring+0xc20) after
+   it has called event_original, because the driver's 0x30ff4 error path
+   memsets the ring before it completes the URB.  Read it on a miss and once
+   at the end; the helper opens its own dmnt session, so it never runs in the
+   steady-state loop. */
+static void _uacLogEventScratch(const char *tag)
+{
+    if (!g_uacUsbPid) return;
+    Handle h = INVALID_HANDLE;
+    if (R_FAILED(svcDebugActiveProcess(&h, g_uacUsbPid))) return;
+    u8 st[0x48] = {0};
+    Result rc = svcReadDebugProcessMemory(st, h,
+        g_uacUsbBase + UAC_U2_EP_OBJ, sizeof(st));
+    u64 ring = 0;
+    if (R_SUCCEEDED(rc)) memcpy(&ring, st + 0x10, sizeof(ring));
+    if (R_FAILED(rc) || !ring) {
+        LOG("UAC U2 evlog %s ring rc=0x%x\n", tag, rc);
+        svcCloseHandle(h);
+        return;
+    }
+    u32 count = 0;
+    rc = svcReadDebugProcessMemory(&count, h, ring + 0xC10, sizeof(count));
+    u8 entries[16 * 8] = {0};
+    if (R_SUCCEEDED(rc) && count)
+        rc = svcReadDebugProcessMemory(entries, h, ring + 0xC20,
+                                       sizeof(entries));
+    LOG("UAC U2 evlog %s count=%u rc=0x%x\n", tag, count, rc);
+    if (R_SUCCEEDED(rc)) {
+        const u32 n = count < 16 ? count : 16;
+        for (u32 i = 0; i < n; ++i) {
+            u32 word = 0, off = 0;
+            memcpy(&word, entries + i * 8, sizeof(word));
+            memcpy(&off, entries + i * 8 + 4, sizeof(off));
+            LOG("UAC U2 evlog %s [%u] code=%u len=%u off=0x%x\n", tag, i,
+                word >> 24, word & 0xffffffu, off);
+        }
+    }
+    svcCloseHandle(h);
+}
+#endif /* UAC_U2_EVENT_LOG */
+
 #if !defined(UAC_U2_PIPELINE)
 /* v26A pipeline builds do not use the per-burst submit-state dump; the ring
    and install dumps after the train still serve as evidence. */
@@ -2769,6 +2812,9 @@ static void _postUacBurst(void)
                        without paying a per-post SD write. */
                     LOG("UAC U2 pipe miss buf=%u status=%u\n",
                         b, report.report[i].urb_status);
+#if defined(UAC_U2_EVENT_LOG)
+                    _uacLogEventScratch("miss");
+#endif
                 }
                 break;
             }
@@ -2799,6 +2845,9 @@ static void _postUacBurst(void)
             (unsigned long long)(max_react_tick / 19200));
     }
     _uacLogInstallState();
+#if defined(UAC_U2_EVENT_LOG)
+    _uacLogEventScratch("end");
+#endif
     _uacLogRingState();
 #else
     u32 posted = 0, completed = 0;

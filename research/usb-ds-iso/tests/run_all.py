@@ -45,6 +45,7 @@ QUICK = [
     "test_uac_wav.py",
     "test_uac_burst_wav.py",
     "test_uac_u2_quiet_pipe.py",
+    "test_uac_u2_event_log.py",
 ]
 
 

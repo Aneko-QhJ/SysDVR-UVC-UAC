@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 18:5x，Asia/Shanghai）
+# 当前状态（2026-11-03 19:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -68,7 +68,14 @@
   （recoveries 上限）后第 9 次 stall 退出循环：posted=27、completed=24
   （全是 cancel 记账）、**bytes=0**，host 只在 18–354 ms 漏出 4032 B。
   → **100 ms 不是随手定的下限**，阈值必须 > lead + 一套（≈48 ms）。
-- 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
+- **候选 v29s 已离线构建（错误码诊断）**：NSP `795f6ec6…`（92837 B），
+  cave 换成 `pipe_quad_log.S`（548/684 B）——**`ISO_ENTRY` 0x270→0x300**
+  （DCI-9 对象），`iso_event` 变成只记录：DCI-9 且 `[event+8]>>24 != 1`
+  时**先** `bl event_original`，**再**把 `{event word, ring offset}` 追加到
+  ring+0xc20（计数 ring+0xc10，16 项）。顺序是必须的：`0x30ff4` 会先
+  memset 整个 ring 再完成 URB。enter 路径与 46 条 edits 与 v29q 完全相同。
+  app 端 `-DUAC_U2_EVENT_LOG`：miss 时与结尾各读一次 scratch（dmnt，稀有）。
+- 未隔离：8 个 descriptor-parser NOP；`ISO_ENTRY` 的正确性要靠 v29s 实测。
 - 卡：安全 `52069a44…` 已恢复并弹出（18:5x）；v29q/v29r 日志均已归档。
 
 ## 阶段进度
@@ -106,6 +113,7 @@
 | v29p | v29o 门改：仅 base 才 rearm | 177024 B | 57×`3072/3`、4 miss、1 stall | **退步**：跳过 rearm 会停流；门判据不成立 |
 | v29q | v29m payload + app 静默流水线 | 180672 B（58.8 套） | **59×`3072`、2 miss、1 recover、span 1201 ms** | **成立**：覆盖 81.7%（v29p 35.3%）；损失集中在那一次 miss → halt |
 | v29r | v29q + `STALL_MS=32` | **4032 B** | posted=27、completed=24、**bytes=0**、8 recover | **负结果**：阈值 < lead+一套（≈48 ms）→ cancel 风暴 |
+| v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | —（0 实机） | —（0 实机） | 离线 `795f6ec6…`（92837 B），待 boot；要拿到 error code |
 
 ## 当前最佳配置（v29q = v29m payload + 静默 app）
 
@@ -142,21 +150,22 @@
 
 ## 下一步
 
-1. **错误码诊断（下一轮，v29s）**：cave 的 `ISO_ENTRY` 仍是 0x270（DCI-7），
-   所有 DCI-9 事件都由 `event_original` 处理，cave 从没看到过 error code。
-   做法：常量改 `0x300`，并把 cave 的 `iso_event` 换成**只记录**的版本——
-   DCI 9 且 `[event+8]>>24 != 1` 时把 code 追加到 ring+`0xc10` 的 16 项
-   scratch，然后**照常** `b event_original`；app 结尾一次性 dump。行为不变，
-   只补上“到底是哪个码”这一格。
-2. **判断 181 ms 的占用者**：v29q 的 `max_gap_ms=181`。若错误码是 5
-   （missed service）且驱动 `0x30ff4` 的 `regs+0x78` 轮询（最多 100 ms/事件）
-   真的占满，那 app 侧阈值再怎么调都没用——下一步是让 cave 在 error 事件上
-   只做 ack + 重新 commit（不清 ring、不 halt），这需要先有第 1 步的码。
-3. 不要再用 `STALL_MS` 做实验；50–100 ms 区间没有信息量。
-4. 在飞深度 3 现在够用（节奏 16.0 ms/套）；3→4 留到 miss 消除之后。
+1. **跑 v29s**（`795f6ec6…`）：一次 boot、同一 host 命令。成功标准是数据
+   路径不倒退（≥59 段、覆盖 ~82%），并且日志出现
+   `UAC U2 evlog miss count=N` / `evlog end count=N` 与逐条
+   `code=.. len=.. off=0x..`：
+   - `count=0` → ISO_ENTRY 修错了（DCI-9 对象不是 0x300）或事件没走 hook，
+     停，回去核对对象偏移；
+   - `code=5`（missed service）→ 空档是 host/控制器漏服务；
+     `code=3`（transaction error）/其他 → 另一条线；
+   - `off` 会告诉我们是哪一套 TD（`(off>>9)&3` 的 mailbox 归属）。
+2. **拿到码之后**：在 cave 的 error 分支里做“ack 门铃 + 重新 commit（清
+   halt）但不 memset ring”，让端点不 halt、其余在飞套继续——这是把
+   181 ms 空档去掉的正路。先不要动 lead（32 已经对）与在飞深度（3 够）。
+3. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
+4. 0 miss 仍不是当前目标：先做到“单次 miss 的恢复 < 一个 TD 集”。
 
-判定：v29s 只看 scratch 里的 error code 与事件数；不改数据路径，段数
-不倒退（≥59）。
+判定：v29s 只读诊断，段数不倒退（≥59），并且必须拿到至少一个 error code。
 
 ## 边界与纪律
 

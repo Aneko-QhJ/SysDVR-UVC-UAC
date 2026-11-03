@@ -951,6 +951,36 @@ v29q（离线构建 NSP `8e81d119…`，92350 B）：
   这条路线关闭。181 ms 空档的下一格仍是“error code 是几号、驱动
   `0x30ff4` 的 `regs+0x78` 轮询是否占满”，需要 v29s 的记录型 cave。
 
+### 2026-11-03 19:0x v29s 错误码诊断（离线）
+
+- **前情**：v29q 唯一的损失是一次 miss 事件（2 个 `status=5` → 驱动
+  `0x30ff4` memset + 置 halt → app 100 ms 阈值 + cancel + 32 ms lead，
+  共 181 ms 无数据）。这一路的所有推断都缺一格：**到底是哪个 completion
+  code 把端点停住的**。`0x30ff4` 接的码集是 3/4/5/9/10/14/15/31/
+  `0xDB`/`0xDE`，实机一个都没观测到。
+- **为什么一直没看到**：所有 UAC cave 的 `ISO_ENTRY` 都是 `0x270`——那是
+  DCI-7（A23 EP `0x83`）的对象；UAC 配置没有 DCI 7，`[obj+0x10]` 为 0，
+  `iso_event` 在 `cbz x5` 就 `b event_original`。**自 v14 起 cave 的事件
+  分支从未执行过**。
+- v29s 的 cave（`patches/iso_burst_uac84_dci9_pipe_quad_log.S`，548/684 B）：
+  - `ISO_ENTRY = 0x300`（manager+0x22300，DCI-9 对象）；
+  - `iso_event` 只做一件事：DCI 9 且 `[event+8]>>24 != 1` 时，**先**
+    `bl event_original`（保存 `x0/x1/x30`），**再**把 `{event word, ring
+    offset}` 追加到 `ring+0xc20`（计数 `ring+0xc10`，16 项）；
+  - `{event word}` 里含 code（bit31..24）与长度；offset 用 `[event]` 的
+    TRB 指针按 `[obj+0x38]`（物理基址）换算，`(off>>9)&3` 给 mailbox 归属；
+  - enter 路径与 v29q **逐字节相同**，46 条 payload edits 不变——只换了
+    cave 文件；
+  - 顺序为什么必须“先原函数、后记录”：`0x30ff4` 在完成 URB **之前**会
+    memset 整个 0x1000 ring，先写就会被自己描述的那个事件擦掉。
+- app（`-DUAC_U2_EVENT_LOG`）：`_uacLogEventScratch()` 在 **miss 时**与
+  **结尾**各读一次（独立 dmnt 会话，不进热循环），输出
+  `UAC U2 evlog miss count=N` 与逐条 `code/len/off`。
+- 构建：NSP `795f6ec6…`（92837 B），NSO `5d3de8cd…`；`iso_enter=0x68d54`、
+  `iso_event=0x68ef8`、`iso_end=0x68f78`。
+- 判定：数据路径不倒退（≥59 段、覆盖 ~82%），且 `count ≥ 1`。
+  `count=0` 说明对象偏移或 hook 不对，先停。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

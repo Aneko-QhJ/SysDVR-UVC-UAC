@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 18:5x）
+## 当前边界（2026-11-03 19:0x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -57,9 +57,11 @@
 - **v29r 是负结果**：`STALL_MS=32` 短于“lead 32 + 一套 16 帧”的首个
   completion（≈48 ms），app 在它之前就 cancel 自己，8 次 recover 用完后
   退出：posted=27、bytes=0、host 4032 B。**阈值必须 > 48 ms，保持 100**。
-- **下一步 v29s**：只做错误码诊断——`ISO_ENTRY` 0x270→0x300，cave 的
-  `iso_event` 换成“记录 code 后照常 `b event_original`”，code 写
-  ring+`0xc10` scratch，app 结尾 dump。看那片空白里到底是几号码。
+- **候选 v29s 已建（错误码诊断）**：NSP `795f6ec6…`（92837 B），cave
+  `pipe_quad_log.S` 548/684 B，`ISO_ENTRY` 0x270→**0x300**，`iso_event`
+  只记录（先 `bl event_original` 再写 ring+0xc20，因为 `0x30ff4` 会
+  memset）；enter 路径与 46 条 edits 同 v29q。app `-DUAC_U2_EVENT_LOG`
+  在 miss 与结尾各 dump 一次。**目标是拿到 error code**，不指望它提升段数。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 
