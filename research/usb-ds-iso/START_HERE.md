@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 20:2x）
+## 当前边界（2026-11-03 20:5x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -81,10 +81,12 @@
   漏的槽位不总在套尾（11/12、**5/6**、11/12）——之前的“尾部规律”是小样本。
 - **设备侧收口**：~1.5 s 一次两帧漏服务是宿主/VM 侧现象；产品结论按
   “88–90% 占空 + 80 ms 空洞”写。
-- **下一步是宿主侧 item (b)**：在 guest 里开 `xhci-hcd` tracepoint 跑
-  同一条 probe，用 [UAC_U2_HOST_TRACE.md](docs/UAC_U2_HOST_TRACE.md) 的
-  步骤采集、`tools/analyze_xhci_iso_trace.py` 解码，看 ISOC URB 是否出现
-  与 code 23 同节律的 384 B 缺口。
+- **宿主侧 item (b)：设备在 EHCI 不在 xHCI**。v29w 开 xhci tracepoint 采到
+  空 trace；`lsusb -t` 显示设备在 **Bus 001 / `ehci-pci`**，内核没有 ehci
+  tracepoint。改用 **usbmon**（`/sys/kernel/debug/usb/usbmon/1u`，完成行的
+  `<status>:<未传输包数>` 直接给出丢了几帧）；工具：`--format usbmon
+  --bus 1 --ep Ii:1:004`。步骤见 [UAC_U2_HOST_TRACE.md](docs/UAC_U2_HOST_TRACE.md)。
+- v29w 的 probe 本身成功（host 768576 B / 250 套），设备日志待插卡读取。
 - `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。

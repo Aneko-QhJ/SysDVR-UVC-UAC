@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 20:2x，Asia/Shanghai）
+# 当前状态（2026-11-03 20:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -195,19 +195,19 @@
 
 ## 下一步
 
-1. **宿主侧 item (b)：xhci trace（v29w）**。设备侧已收口；下一步是到 guest
-   内核里看那两帧为什么没被服务。工具与分析计划已就绪：
-   [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md)、
-   `tools/analyze_xhci_iso_trace.py`（读 `xhci_urb_enqueue/giveback` +
-   `xhci_handle_transfer`，报告 ISOC URB 的 short 数与缺口）。
-   一次实机：部署 v29v（`b8cf0807…`）→ 开机 → 在 guest 里开 tracepoint、
-   跑同一条 probe → 取回 trace 与 host 日志 → 本机解码。
-   判定：出现与 code 23 同节律的 384 B short URB → 漏服务在宿主 URB 层；
-   全部 3072 → 在控制器取指层，不在 URB 层。
-2. **宿主侧 item (a)**（在 (b) 之后）：非 VM 宿主或用 `usbfs` 直接提交对照，
-   看 code 23 频率是否变化。
-3. 设备侧不再改这个形状（lead/在飞/门/memset/预排均有负结果）；
-   8 个 descriptor-parser NOP 仍未隔离。
+1. **宿主侧 item (b) 的采集工具改对了**：v29w 第一次采集开了 `xhci-hcd`
+   的 tracepoint，结果是空的——`lsusb -t` 显示设备在 **Bus 001 / `ehci-pci`**
+   （xhci 是 Bus 002/003 的键盘鼠标），而内核没有 ehci 的 tracepoint。
+   改用 **usbmon**：`modprobe usbmon` 后 `/sys/kernel/debug/usb/usbmon/1u`
+   给出每个 URB 的 submit/complete（ISO 也含），完成行的 `<status>:<未传输
+   包数>` 直接给出“少了几帧”。工具已支持 `--format usbmon --bus 1
+   --ep Ii:1:004`，采集步骤见 [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md)。
+2. **待读卡**：v29w 那次 probe 本身是成功的（host **768576 B / 250 套**），
+   设备日志还在卡上，需要插卡读出来归档（`run.json` 等）。
+3. **下一轮实机**：同 v29v 镜像 + usbmon 采集一次（一次 boot 一次 probe），
+   判定：出现与 code 23 同节律的 384 B 缺口 → 宿主 URB 层；全 3072 →
+   控制器取指层。
+4. item (a)（非 VM 宿主 / `usbfs` 对照）排在 (b) 之后。
 
 判定：宿主侧只做证据采集与对照，不改设备镜像。
 

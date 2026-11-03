@@ -38,6 +38,21 @@ def iso_line(i, actual, length=3072, t=None):
             f"length {actual}/{length} sgs 0/0 stream 0 flags 00110200")
 
 
+# real usbmon text lines captured in the guest (bus 1, EHCI)
+USBMON_LINES = """\
+ffff000003565300 1085935229 S Ci:1:001:0 s a3 00 0000 0001 0004 4 <
+ffff000003565300 1085935273 C Ci:1:001:0 0 4 = 07050000
+ffff0000744e8cc0 1085935422 S Ii:1:001:1 -115:2048 4 <
+"""
+
+
+def usbmon_iso(i, actual, iso_err=0, status=-71):
+    t = 1085935000 + i * 16700
+    return (f"ffff0000744e8cc{i:02x} {t} S Ii:1:004:4 -115:3072 4 <\n"
+            f"ffff0000744e8cc{i:02x} {t + 16000} C Ii:1:004:4 "
+            f"{status}:{iso_err} {actual} 4")
+
+
 class XhciIsoTraceTests(unittest.TestCase):
     def _write(self, text):
         tmp = TemporaryDirectory()
@@ -78,6 +93,25 @@ class XhciIsoTraceTests(unittest.TestCase):
         report = analyzer.summarize(urbs, transfers, "isoc")
         self.assertEqual(report["urb_givebacks"], 3)
         self.assertEqual(report["urb_short"], 0)
+
+    def test_usbmon_parser_keeps_isoc_dev4(self):
+        lines = [usbmon_iso(i, 3072) for i in range(3)]
+        path = self._write("\n".join(lines) + "\n")
+        urbs, _ = analyzer.parse_usbmon(path, bus=1)
+        self.assertEqual(len(urbs), 6)  # 3 submits + 3 completions
+        self.assertEqual(urbs[1]["ep"], "Ii:1:004:4")
+        self.assertEqual(urbs[1]["event"], "xhci_urb_giveback")
+        self.assertEqual(urbs[1]["actual"], 3072)
+
+    def test_usbmon_reports_short_urbs(self):
+        lines = [usbmon_iso(i, 3072) for i in range(5)]
+        lines[2] = usbmon_iso(2, 3072 - 2 * 192, iso_err=2)
+        path = self._write("\n".join(lines) + "\n")
+        urbs, _ = analyzer.parse_usbmon(path, bus=1)
+        report = analyzer.summarize(urbs, [], "Ii:1:004")
+        self.assertEqual(report["urb_givebacks"], 5)
+        self.assertEqual(report["urb_short"], 1)
+        self.assertEqual(report["worst_shortfall"], 384)
 
     def test_cli_prints_json(self):
         path = self._write("\n".join(iso_line(i, 3072) for i in range(4)) + "\n")

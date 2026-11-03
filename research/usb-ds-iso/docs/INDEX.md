@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | [CURRENT.md](CURRENT.md) | 2026-11-03 | 18K | 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。 |
 | [UAC_PCM_GAP.md](UAC_PCM_GAP.md) | 2026-11-03 | 3K | 一次 burst = 16 帧 × 192 B = **3072 B = 16 ms** PCM 数据（48kHz/2ch/16bit）； |
-| [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md) | 2026-11-03 | 3K | 设备的 code 23 是控制器报的“这一帧的 TD 没被及时服务”；从宿主看， |
+| [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md) | 2026-11-03 | 2K | 第一次采集（v29w）开了 `xhci-hcd` 的三个 tracepoint，跑完 trace 是空的。 |
 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) | 2026-11-03 | 66K | v24（lead 32、light log）一次 burst 的时间线： |
 | [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-11-02 | 30K | U2 六次实机的结果见 [README_HISTORY.md](../README_HISTORY.md)（2026-10-30 条目）。 |
 | [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 42K | **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
@@ -308,7 +308,7 @@
 | [UAC_U2_BURST.md](UAC_U2_BURST.md) | 2026-11-01 | 42K | UAC U2：alt1 端点安装与一次 ISO burst（离线准备） — **30 条 runtime payload**（`-DUAC_U2_PATCH`，在 `usbDsEnable()` 前应用，失败即拒绝启用）： |
 | [UAC_U2_CONTINUOUS.md](UAC_U2_CONTINUOUS.md) | 2026-11-01 | 21K | UAC U2 连续 producer（v15 失败；v16 r2 排除 cave 门） — **问题**：v14 的 16 ms one-shot 已 2/2 收到完整 3072B；设备能否**顺序** |
 | [UAC_U2_ENDPOINT_CONTEXT.md](UAC_U2_ENDPOINT_CONTEXT.md) | 2026-11-01 | 14K | UAC U2：端点上下文、安装器与缺失的 commit（v23 离线） — 安装器 `0x295d0` 只是描述符遍历器，不碰控制器；真正把端点挂上控制器的是 |
-| [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md) | 2026-11-03 | 3K | UAC U2 宿主侧 xHCI 追踪计划（v29w，2026-11-03） — 设备的 code 23 是控制器报的“这一帧的 TD 没被及时服务”；从宿主看， |
+| [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md) | 2026-11-03 | 2K | UAC U2 宿主侧 xHCI 追踪计划（v29w，2026-11-03） — 第一次采集（v29w）开了 `xhci-hcd` 的三个 tracepoint，跑完 trace 是空的。 |
 | [UAC_U2_PIPELINE.md](UAC_U2_PIPELINE.md) | 2026-11-03 | 66K | UAC U2：连续 ring / 双 buffer 流水线（v26 设计，离线） — v24（lead 32、light log）一次 burst 的时间线： |
 | [UAC_U2_QUEUE_COMPAT_DESIGN.md](UAC_U2_QUEUE_COMPAT_DESIGN.md) | 2026-11-02 | 30K | UAC U2 队列兼容的 ISO 提交设计（2026-10-30） — U2 六次实机的结果见 [README_HISTORY.md](../README_HISTORY.md)（2026-10-30 条目）。 |
 | [UAC_U2_RAW_SUCCESS.md](UAC_U2_RAW_SUCCESS.md) | 2026-11-01 | 1K | U2 raw ISO success（2026-11-01 00:25） — 第一次在 Linux raw host 上收到完整 UAC ISO 数据： |
