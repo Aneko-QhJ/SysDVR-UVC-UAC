@@ -981,6 +981,40 @@ v29q（离线构建 NSP `8e81d119…`，92350 B）：
 - 判定：数据路径不倒退（≥59 段、覆盖 ~82%），且 `count ≥ 1`。
   `count=0` 说明对象偏移或 hook 不对，先停。
 
+### 2026-11-03 19:1x v29s 实机：错误码是 23（Missed Service）
+
+- 设备：`posted=64 completed=64 bytes=181248 misses=2 recoveries=1`；
+  `pipe timing waits=61 timeouts=14 span_ms=1250 **max_gap_ms=194
+  max_react_ms=147**`；host 183744 B、数据窗 34–1250 ms、覆盖 78.7%。
+- 日志（关键四行）：
+
+```text
+UAC U2 pipe miss buf=5 status=5
+UAC U2 evlog miss count=2 rc=0x0
+UAC U2 evlog miss [0] code=23 len=192 off=0xba0
+UAC U2 evlog miss [1] code=23 len=192 off=0xbc0
+UAC U2 pipe miss buf=6 status=5      ← 第二次读到同样的两条
+UAC U2 pipe stall recover cancelled=3 rc=0x0 limit_ms=100
+```
+
+- **code 23 = Missed Service**（与 xHCI 1.1 编号一致：13 = Short Packet、
+  26 = Stopped、14 = Ring Underrun 也都对得上驱动自己的分支）。len=192
+  说明是正常长度的 ED；offset 0xba0/0xbc0 是第 6 套（0xa00..0xbff）的
+  最后两个槽——**控制器没能在那一帧及时服务**。两次 miss 读到的记录相同：
+  同一次事件，两个 URB 各报一次 `status=5`。
+- 驱动的 code-23 分支 `0x31274`：置 `regs+0x50` 的 dci 位、轮询并 ack
+  `regs+0x5c`，然后 `b 0x31118` 用 `w2=0x3228c` 调 `complete_original`
+  ——app 因此看到 `status=5`。**它不复位 ring、不重载上下文**。
+- 所以：halt 之后 prod/cons 不变 → 下一次 post 在 `prod` 直接写（不 rearm）
+  → halt 永不清除 → 没有任何 completion → 100 ms 后 app 的 stall 定时器
+  cancel（`0x30470` 把 ring 复位到 base）→ 下一次 post 走 `0x2feb0`
+  （commit + 清 halt）→ 首套还要 32 ms lead。**194 ms 就是这么来的**。
+- 收尾那条 `code=14 len=0 off=0x7ffdd000`（Ring Underrun、TRB 指针为空）
+  走 `0x30ff4` 做了最后一次 ring wipe，与结束时 `prod=cons=base`、
+  `trb0=0` 一致。
+- 判定：**miss 是 host/控制器漏服务，不是 cave 竞态**；可动的只有“halt
+  之后多快恢复”。v29t：`status=5` 一到就 cancel + 重投，不等 100 ms。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

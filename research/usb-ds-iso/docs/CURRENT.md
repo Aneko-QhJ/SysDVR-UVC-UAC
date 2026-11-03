@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 19:0x，Asia/Shanghai）
+# 当前状态（2026-11-03 19:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -58,9 +58,9 @@
   `max_gap_ms=181`、`max_react_ms=129`；无 crash/fatal/erpt。
 - 扣掉那次 181 ms 空档后，64 次 post / 1024 ms = **每条 16.0 ms**，正好
   等于一套 TD：**节奏本身已经修好**。剩下的损失全在那一次 miss 事件：
-  2 个 `status=5` → 驱动 `0x30ff4` 置 halt → app 等 100 ms 才 cancel、
-  再 32 ms lead 才出数据，host 侧看到 **~176 ms 无数据**，丢 5 套
-  （2 miss + 3 被 cancel）。
+  2 个 `status=5`（v29s 后来证明是 code 23 = Missed Service，驱动只置
+  halt、不复位 ring）→ app 等 100 ms 才 cancel、再 32 ms lead 才出数据，
+  host 侧看到 **~176 ms 无数据**，丢 5 套（2 miss + 3 被 cancel）。
 - **v29r（stall 阈值 32 ms）是负结果，且原因干净**：一条 TD 集要
   `MFI+32` 才被取指、再 16 帧才完成，**首个 completion 约需 48 ms**；
   32 ms 阈值在它之前就触发，app 把自己刚投的 3 套 cancel 掉再重投，形成
@@ -68,15 +68,25 @@
   （recoveries 上限）后第 9 次 stall 退出循环：posted=27、completed=24
   （全是 cancel 记账）、**bytes=0**，host 只在 18–354 ms 漏出 4032 B。
   → **100 ms 不是随手定的下限**，阈值必须 > lead + 一套（≈48 ms）。
-- **候选 v29s 已离线构建（错误码诊断）**：NSP `795f6ec6…`（92837 B），
-  cave 换成 `pipe_quad_log.S`（548/684 B）——**`ISO_ENTRY` 0x270→0x300**
-  （DCI-9 对象），`iso_event` 变成只记录：DCI-9 且 `[event+8]>>24 != 1`
-  时**先** `bl event_original`，**再**把 `{event word, ring offset}` 追加到
-  ring+0xc20（计数 ring+0xc10，16 项）。顺序是必须的：`0x30ff4` 会先
-  memset 整个 ring 再完成 URB。enter 路径与 46 条 edits 与 v29q 完全相同。
-  app 端 `-DUAC_U2_EVENT_LOG`：miss 时与结尾各读一次 scratch（dmnt，稀有）。
-- 未隔离：8 个 descriptor-parser NOP；`ISO_ENTRY` 的正确性要靠 v29s 实测。
-- 卡：安全 `52069a44…` 已恢复并弹出（18:5x）；v29q/v29r 日志均已归档。
+- **v29s 拿到了错误码：23 = Missed Service**。设备日志：
+  `evlog miss count=2` → `[0] code=23 len=192 off=0xba0`、
+  `[1] code=23 len=192 off=0xbc0`——**第 6 套（0xa00..0xbff）的最后两个 ED
+  槽**；两次 miss 读到的条目相同（同一次事件、两个 URB 各报 status=5）。
+- **驱动对 code 23 只置 halt，不复位 ring**：`0x31274` 置 `regs+0x50` 的
+  dci 位、轮询并 ack `regs+0x5c`，然后走 `0x31118` 用 `w2=0x3228c`
+  完成 URB（app 看到的 status=5）。**prod/cons 不变**，所以 cave 的下一次
+  post 在 `prod` 直接写、不 rearm，halt 永远不清 → 没有 completion →
+  app 的 100 ms stall 定时器才 cancel（`0x30470` 把 ring 复位到 base）→
+  下一次 post 走 `0x2feb0`（commit + 清 halt）→ 首套还要 32 ms lead。
+  **194 ms 空档就是这么来的**（`max_gap_ms=194`）。
+- 对照 xHCI 1.1 编号：13 = Short Packet、23 = Missed Service、26 = Stopped
+  ——与驱动自己的三个特殊分支完全吻合。训练结束后那个
+  `code=14 len=0`（Ring Underrun，TRB 指针为空）走了 `0x30ff4`，是收尾的
+  ring wipe。
+- **结论：miss 是 host/控制器漏服务（两帧没被服务），不是 cave 竞态**；
+  真正可动的是“halt 之后的恢复”。`ISO_ENTRY` **已由实测确认**，未隔离项
+  只剩 8 个 descriptor-parser NOP。
+- 卡：安全 `52069a44…` 已恢复并弹出（19:1x）；v29q/v29r/v29s 日志均已归档。
 
 ## 阶段进度
 
@@ -113,7 +123,7 @@
 | v29p | v29o 门改：仅 base 才 rearm | 177024 B | 57×`3072/3`、4 miss、1 stall | **退步**：跳过 rearm 会停流；门判据不成立 |
 | v29q | v29m payload + app 静默流水线 | 180672 B（58.8 套） | **59×`3072`、2 miss、1 recover、span 1201 ms** | **成立**：覆盖 81.7%（v29p 35.3%）；损失集中在那一次 miss → halt |
 | v29r | v29q + `STALL_MS=32` | **4032 B** | posted=27、completed=24、**bytes=0**、8 recover | **负结果**：阈值 < lead+一套（≈48 ms）→ cancel 风暴 |
-| v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | —（0 实机） | —（0 实机） | 离线 `795f6ec6…`（92837 B），待 boot；要拿到 error code |
+| v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | 183744 B（59.8 套） | 59×`3072`、2 miss、1 recover、span 1250 ms | **诊断命中**：code=23（Missed Service）@0xba0/0xbc0；驱动只置 halt |
 
 ## 当前最佳配置（v29q = v29m payload + 静默 app）
 
@@ -126,7 +136,8 @@
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE`（**不要**再加 `CURSOR_DIAG`） |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | 59×3072（181248 B）、host 180672、span **1201 ms**、host 覆盖 **81.7%**、misses=2、recoveries=1、无 crash/fatal |
+| 结果 | 59×3072（181248 B）、host 180672–183744、span **1201–1250 ms**、host 覆盖 **78.7–81.7%**、misses=2、recoveries=1、无 crash/fatal |
+| 诊断 cave | 同一 payload 换成 `pipe_quad_log.S`（548/684 B，`ISO_ENTRY=0x300`）即可看到 error code；日常数据路径仍是 `pipe_quad.S` |
 | 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
 ## 构件与关键事实
@@ -150,22 +161,20 @@
 
 ## 下一步
 
-1. **跑 v29s**（`795f6ec6…`）：一次 boot、同一 host 命令。成功标准是数据
-   路径不倒退（≥59 段、覆盖 ~82%），并且日志出现
-   `UAC U2 evlog miss count=N` / `evlog end count=N` 与逐条
-   `code=.. len=.. off=0x..`：
-   - `count=0` → ISO_ENTRY 修错了（DCI-9 对象不是 0x300）或事件没走 hook，
-     停，回去核对对象偏移；
-   - `code=5`（missed service）→ 空档是 host/控制器漏服务；
-     `code=3`（transaction error）/其他 → 另一条线；
-   - `off` 会告诉我们是哪一套 TD（`(off>>9)&3` 的 mailbox 归属）。
-2. **拿到码之后**：在 cave 的 error 分支里做“ack 门铃 + 重新 commit（清
-   halt）但不 memset ring”，让端点不 halt、其余在飞套继续——这是把
-   181 ms 空档去掉的正路。先不要动 lead（32 已经对）与在飞深度（3 够）。
-3. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
-4. 0 miss 仍不是当前目标：先做到“单次 miss 的恢复 < 一个 TD 集”。
+1. **v29t（app-only）：miss 立即恢复**。既然 code 23 已把端点 halt、驱动又
+   不复位 ring，就不该再等 100 ms：`urb_status == 5` 的报告一到，立刻
+   `usbDsEndpoint_Cancel`（把 ring 复位到 base、释放 3 个在飞槽）并重投，
+   下一次 post 的 `0x2feb0` 就会 commit + 清 halt。预期 `max_gap_ms` 从
+   194 降到 **~50–60 ms**（cancel + 32 ms lead + 16 ms），并且每次恢复少丢
+   2 套（3 套 vs 现在的 5 套）。
+2. **不要改 cave 的 lead（32）与在飞深度（3）**，也不要再动 stall 阈值
+   （100 ms，v29r 已证下限 ≈48 ms）。
+3. 若 v29t 把空档压到 ~50 ms 后仍是“每 1.2 s 一次”，下一步就是 host 侧：
+   code 23 = 控制器没被及时服务，8 个 16 包 URB 的提交节奏/VM 的 ISO
+   调度是嫌疑；device 侧只能决定恢复多快，不能决定漏不漏。
+4. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
 
-判定：v29s 只读诊断，段数不倒退（≥59），并且必须拿到至少一个 error code。
+判定：v29t 看 `max_gap_ms`（目标 < 100）与 host 空档，段数不倒退（≥59）。
 
 ## 边界与纪律
 

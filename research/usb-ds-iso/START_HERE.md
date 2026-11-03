@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 19:0x）
+## 当前边界（2026-11-03 19:3x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -57,11 +57,15 @@
 - **v29r 是负结果**：`STALL_MS=32` 短于“lead 32 + 一套 16 帧”的首个
   completion（≈48 ms），app 在它之前就 cancel 自己，8 次 recover 用完后
   退出：posted=27、bytes=0、host 4032 B。**阈值必须 > 48 ms，保持 100**。
-- **候选 v29s 已建（错误码诊断）**：NSP `795f6ec6…`（92837 B），cave
-  `pipe_quad_log.S` 548/684 B，`ISO_ENTRY` 0x270→**0x300**，`iso_event`
-  只记录（先 `bl event_original` 再写 ring+0xc20，因为 `0x30ff4` 会
-  memset）；enter 路径与 46 条 edits 同 v29q。app `-DUAC_U2_EVENT_LOG`
-  在 miss 与结尾各 dump 一次。**目标是拿到 error code**，不指望它提升段数。
+- **v29s 拿到错误码：23 = Missed Service**（xHCI 1.1 编号），两次都在
+  ring+0xba0/0xbc0（第 6 套最后两个 ED）。驱动 `0x31274` 对 code 23
+  **只置 halt（`regs+0x50`）并 ack `regs+0x5c`，不复位 ring**，所以
+  prod/cons 不变 → cave 无法 rearm → 100 ms stall 定时器 cancel → ring
+  复位 → 下一次 post 的 `0x2feb0` 才 commit + 清 halt → 194 ms 空档。
+  **miss 是 host/控制器漏服务，不是 cave 竞态。**
+- **下一版 v29t（app-only）**：`urb_status == 5` 一出现就 cancel + 重投，
+  不等 100 ms；预期 `max_gap_ms` ~50–60，每次恢复少丢 2 套。
+- `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 
