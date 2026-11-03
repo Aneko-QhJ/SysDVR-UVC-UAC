@@ -2604,6 +2604,18 @@ static void _postUacBurst(void)
        completion, so the driver never holds two ISO requests at once (the
        v11 crash).  The 1 kHz phase continues across buffers, which lets the
        host check continuity instead of four separate 16 ms bursts. */
+#if defined(UAC_U2_QUIET_PIPE)
+    /* v29q: the per-post SD log line and the dmnt cursor dump each cost
+       milliseconds.  A 16 ms TD set on a 32 ms lead has no slack once the
+       three-deep pipeline is loaded, so any delay between a completion and
+       the next post pushes the cave's MFI baseline past its frame cursor and
+       leaves a hole the controller reports as missed service.  The quiet
+       build keeps counters in RAM and writes one summary line at the end. */
+    #define UAC_U2_PIPE_LOG(...) do { } while (0)
+#else
+    #define UAC_U2_PIPE_LOG(...) LOG(__VA_ARGS__)
+#endif
+
 #if defined(UAC_U2_PIPELINE)
     /* v26A: 16 ms timer pipeline.  v29j is back to three requests in flight on
        the six-set ring and only changes the cave's frame lead (32 -> 16 ms).
@@ -2613,6 +2625,9 @@ static void _postUacBurst(void)
        continues across buffers. */
     u32 next = 0, posted = 0, completed = 0, xfer_total = 0;
     u32 misses = 0, recoveries = 0;
+    u32 waits = 0, timeouts = 0;
+    u64 first_post_tick = 0, last_done_tick = 0;
+    u64 max_gap_tick = 0, max_react_tick = 0;
     bool pipe_failed = false;
     u8 free_slot[8];
     u32 urb_ids[8] = {0};
@@ -2638,10 +2653,17 @@ static void _postUacBurst(void)
 #if defined(UAC_U2_CURSOR_DIAG)
             _uacLogCursor("pre", posted + 1);
 #endif
+            if (last_done_tick) {
+                /* v29q: completion -> next post reaction, in ticks.  The
+                   cave's MFI baseline is 32 ms ahead of the post, so this
+                   delay is the hole it leaves in the frame schedule. */
+                const u64 react = svcGetSystemTick() - last_done_tick;
+                if (react > max_react_tick) max_react_tick = react;
+            }
             u32 urb = 0;
             Result rc = usbDsEndpoint_PostBufferAsync(
                 g_uacCtx.audioEndpointIn, buf, UAC_U2_BURST_BYTES, &urb);
-            LOG("UAC U2 pipe post buf=%u urb=%u rc=0x%x seq=%u\n",
+            UAC_U2_PIPE_LOG("UAC U2 pipe post buf=%u urb=%u rc=0x%x seq=%u\n",
                 next, urb, rc, posted + 1);
 #if defined(UAC_U2_CURSOR_DIAG)
             _uacLogCursor("post", posted + 1);
@@ -2653,6 +2675,7 @@ static void _postUacBurst(void)
             urb_ids[next] = urb;
             free_slot[next] = 0;
             ++posted;
+            if (posted == 1) first_post_tick = svcGetSystemTick();
             if (++next >= UAC_U2_TRAIN_POSTS) next = 0;
             last_progress = svcGetSystemTick();
         }
@@ -2663,6 +2686,7 @@ static void _postUacBurst(void)
         Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
                                 16E+6);
         if (R_FAILED(wait)) {
+            ++timeouts;
             if ((svcGetSystemTick() - last_progress) > 100ULL * 19200) {
                 if (recoveries < 8 && posted < stream_posts) {
                     /* v29f: a miss leaves the endpoint idle; cancel what is
@@ -2689,6 +2713,7 @@ static void _postUacBurst(void)
             }
             continue;
         }
+        ++waits;
         eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
         UsbDsReportData report;
         if (R_FAILED(usbDsEndpoint_GetReportData(
@@ -2709,7 +2734,13 @@ static void _postUacBurst(void)
                 free_slot[b] = 1;
                 ++completed;
                 xfer_total += report.report[i].transferredSize;
-                LOG("UAC U2 pipe done buf=%u urb=%u xfer=%u status=%u\n",
+                const u64 done_tick = svcGetSystemTick();
+                if (last_done_tick) {
+                    const u64 gap = done_tick - last_done_tick;
+                    if (gap > max_gap_tick) max_gap_tick = gap;
+                }
+                last_done_tick = done_tick;
+                UAC_U2_PIPE_LOG("UAC U2 pipe done buf=%u urb=%u xfer=%u status=%u\n",
                     b, id, report.report[i].transferredSize,
                     report.report[i].urb_status);
 #if defined(UAC_U2_CURSOR_DIAG)
@@ -2721,6 +2752,8 @@ static void _postUacBurst(void)
                        post a replacement; a real halt is caught by the
                        100 ms stall path above. */
                     ++misses;
+                    /* a miss is rare, so keep it: it names the lost set
+                       without paying a per-post SD write. */
                     LOG("UAC U2 pipe miss buf=%u status=%u\n",
                         b, report.report[i].urb_status);
                 }
@@ -2740,6 +2773,18 @@ static void _postUacBurst(void)
 #endif
     LOG("UAC U2 pipe end posted=%u completed=%u bytes=%u misses=%u recoveries=%u\n",
         posted, completed, xfer_total, misses, recoveries);
+    {
+        /* v29q: the pipeline cadence in RAM, one line at the end.  span_ms
+           is the wall time of the whole train (64 sets x 16 ms of audio is
+           1024 ms), max_react_ms is the worst completion -> post delay and
+           max_gap_ms the worst completion -> completion gap. */
+        const u64 span = (last_done_tick > first_post_tick)
+                             ? last_done_tick - first_post_tick : 0;
+        LOG("UAC U2 pipe timing waits=%u timeouts=%u span_ms=%llu max_gap_ms=%llu max_react_ms=%llu\n",
+            waits, timeouts, (unsigned long long)(span / 19200),
+            (unsigned long long)(max_gap_tick / 19200),
+            (unsigned long long)(max_react_tick / 19200));
+    }
     _uacLogInstallState();
     _uacLogRingState();
 #else

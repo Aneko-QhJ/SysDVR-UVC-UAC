@@ -868,6 +868,51 @@ clear）与刚发出的 set 竞争。v29p 改 cave 的空 ring 门：
 - 判定：v29p 退步（57/4/1 vs v29m 63/1/0）；回退 v29m；下一个杠杆是
   驱动的 drain reset 路径，不是 cave 的空 ring 门。
 
+### 2026-11-03 16:4x 离线：流水线的空档是测量本身造成的（v29q 静默流水线）
+
+v29p 的 cursor 行（`_uacLogCursor`）记录了每次 post 的帧游标，把 64 次
+post 的帧差列出来就能看出流水线并没有按“一套 16 帧”的节奏走：
+
+| 指标 | 值 |
+| --- | --- |
+| post 次数 / 可用帧差 | 64 / 59（2 次 memset 清零、3 次 wrap） |
+| 帧差总和 | **2374**（64 套理论值 1024） |
+| 均值 / 中位数 | 40.2 / 33 |
+| 帧差 ≥ 24（空档 ≥ 8 帧） | 44 / 59 |
+| 帧差 ≥ 32（空档 ≥ 16 帧） | 36 / 59 |
+| host 数据 / 时间 | 177024 B / 2609 ms = **35.3%** 的 192 B/ms |
+
+- cave 的帧号是 `max(MFI/8 + 32, cursor)`：只要“上一次 completion → 本次
+  post”的延迟 D > 1 ms，`MFI+32` 就会盖过 cursor，并在上一套结束后留出
+  D 帧空档。3 在飞的深度正好只够填满 cursor 路径，没有余量。
+- 而这个延迟就在循环里：每次 post 写一行 SD 日志 + 两次 dmnt cursor dump
+  （`svcDebugActiveProcess` + `svcReadDebugProcessMemory` + close）；每次
+  completion 再写一行 SD 日志 + 一次 dmnt dump。SD 行是 open + get-size +
+  write(+flush) + close。v29p 的中位帧差 33 = 16（一套）+ 17（延迟），与
+  “一次 completion 周期的日志开销 17 ms”一致。
+- 机制链：空档 → 控制器在空档里的帧漏服务（xHCI 语义是 missed service；
+  **实机未观测到具体码**，`0x30ff4` 接的码集是 3/4/5/9/10/14/15/31/
+  `0xDB`/`0xDE`）→ 驱动 `0x30ff4` memset ring、复位指针、置 halt → 正在
+  写的那套被丢弃 →
+  `status=5` miss → 下个 post 走 `0x2feb0` replay 恢复（v29m 的 1 miss
+  就是这么来的）。
+- 所以 v29h/v29m 的 62/63 段与 35% 占空比是**带诊断的上界**，不是数据路径
+  的上限；rearm 门、memset 长度、lead 扫描都在这个被污染的节奏上比较，
+  这也解释了同一 NSP 58 段 vs 63 段的“方差”。
+
+v29q（离线构建 NSP `8e81d119…`，92350 B）：
+
+- payload 与 v29m **逐字节相同**（cave 680/684 B、46 条 edits）；只改 app：
+  去掉 `-DUAC_U2_CURSOR_DIAG`，把 pipeline 的逐 post/completion 行改成
+  `UAC_U2_PIPE_LOG`（`-DUAC_U2_QUIET_PIPE` 时展开为空）；
+- 计数留在 RAM，末尾一行：
+  `UAC U2 pipe timing waits=.. timeouts=.. span_ms=.. max_gap_ms=.. max_react_ms=..`；
+- miss 是稀有事件，仍保留 `UAC U2 pipe miss buf=.. status=..` 一行，保证
+  丢的那一套可归因；
+- 判定：`span_ms` 接近 64×16=1024 ms、`max_react_ms` ≈ 0–2、host 覆盖
+  接近 192 B/ms、misses→0，则空档来自 app 测量；若 `span_ms` 仍 ~2.6 s、
+  `max_react_ms` 仍 ~17 ms，则延迟在驱动/宿主路径，需要下一个杠杆。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

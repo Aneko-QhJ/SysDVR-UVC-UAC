@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 16:2x，Asia/Shanghai）
+# 当前状态（2026-11-03 16:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -42,11 +42,22 @@
 - 剩下的 2 条 rearm race 显示：drain 时**驱动自己**会把 ring 复位到
   base（pre 非 base、post base），所以 cave 仍走 rearm——竞态源在驱动
   的 drain reset，不在 cave 的空 ring 门。
-- 下一步：回退 v29m（63 段 / 1 miss，最好）；不要再改 cave 门；下一个
-  杠杆是驱动在 drain 时重写 ring 的复位（`0x30ff4` 类路径），或者接受
-  1 miss 先转向占空比。
+- **离线更正（v29q 分析）**：那次复位是 `0x30ff4`，触发条件是控制器的
+  **error code 事件**（码集 3/4/5/9/10/14/15/31/0xdb/0xde），而空档来自
+  **app 自己的逐 post 诊断**——每次 post 一行 SD 日志 + 两次 dmnt dump。
+  v29p 的 cursor 帧差均值 **40.2**、中位 33（一套 = 16），host 覆盖
+  177024 B / 2609 ms = **35.3%**：延迟 D 让 `MFI+32` 盖过 cursor，空档
+  里的帧必然在控制器上漏服务（**具体 error code 未观测**，只知
+  `0x30ff4` 接的是 3/4/5/9/10/14/15/31/0xDB/0xDE）→ 复位 → 丢一套。
+  62/63 段与 35% 是**带诊断的上界**，不是数据路径上限；58 vs 63 的
+  “方差”也由此而来。
+- **候选 v29q 已离线构建**：NSP `8e81d119…`（92350 B），payload 与 v29m
+  逐字节相同（cave 680/684 B、46 条 edits），只把 app 的逐 post/completion
+  日志与 dmnt cursor dump 换成 RAM 计数 + 一行
+  `pipe timing waits/ timeouts/ span_ms/ max_gap_ms/ max_react_ms`；miss
+  仍单独记一行。待一次 boot。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；v29p 日志已归档。
 
 ## 阶段进度
 
@@ -81,6 +92,7 @@
 | v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
 | v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | 190464 B | 62×`3072/3`、2 miss、2 race | memset 缩短未消除 miss；rearm 本身是竞态源 |
 | v29p | v29o 门改：仅 base 才 rearm | 177024 B | 57×`3072/3`、4 miss、1 stall | **退步**：跳过 rearm 会停流；门判据不成立 |
+| v29q | v29m payload + app 静默流水线 | —（0 实机） | —（0 实机） | 离线 `8e81d119…`（92350 B），待 boot；检验空档是否来自 app 测量 |
 
 ## 当前最佳配置（v29m）
 
@@ -116,17 +128,19 @@
 
 ## 下一步
 
-1. **回退 v29m**（`a1318cf0…`，63 段 / 1 miss，仍然最好）作为后续基线；
-   v29p 的 cave 门改动不再使用；
-2. **驱动 drain reset**：日志显示 drain 时驱动把 ring 复位到 base
-   （pre 非 base、post base），cave 只是跟着 rearm。下一个候选应查
-   `0x30ff4` 类复位在正常 drain 时为何运行，能否只跳过 ring/memset 而
-   保留 commit/halt clear；
-3. 若复位路径风险太大，接受 1 miss，转占空比与 48 kHz 连续评估；
-4. 0 miss 仍是最终目标，但不再是唯一前进条件。
+1. **跑 v29q**（`8e81d119…`，payload = v29m）：一次 boot，同一 host 命令。
+   读法：`span_ms` 应接近 64×16 = 1024 ms、`max_react_ms` ≈ 0–2、host
+   覆盖接近 192 B/ms、misses→0；若 `span_ms` 仍 ~2.6 s、`max_react_ms`
+   仍 ~17 ms，延迟在驱动/宿主路径，下一个杠杆是驱动完成后的事件延迟或
+   completion→post 的接管方式。
+2. **若 v29q 成立**：用 v29q 作为新的测量基线，重新看 lead（32/24/16）与
+   在飞深度（3→4）——此前这些比较都建立在带 17 ms 日志空档的节奏上。
+3. 0 miss 仍按 v29q 的结果重新定义：若空档消失后仍有 missed service，
+   才是真正的控制器/宿主节奏问题。
+4. 不要再用 `-DUAC_U2_CURSOR_DIAG` 做流水线节奏实验；需要帧号时用
+   `-DUAC_U2_QUIET_PIPE` 的 RAM 计数，或在结尾一次性 dump。
 
-判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
-（196608）。
+判定：v29q 先看 `span_ms` 与 host 覆盖，再看 misses；不倒退（≥62 段）。
 
 ## 边界与纪律
 
