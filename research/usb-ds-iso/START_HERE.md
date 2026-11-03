@@ -25,71 +25,36 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 20:5x）
+## 当前边界（2026-11-03 22:3x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
-  开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
-  `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
-  UAC 回合的授权状态。
-- **当前最佳 v29m 重复轮**：64/64 posts、**63×3072（193536 B）**、
-  host==device、**misses=1 / recoveries=0**、无 crash/fatal。
-- **方差**：同一 NSP 首跑 58 段 / 3 miss / 1 recover，重复轮 63 / 1 / 0；
-  单轮结果要至少两次重复才能下结论。
-- 最近否定：v29i（4 在飞/4 套环）miss 2→3；v29j（lead 16）54 段；v29k
-  （开机纪律违规）0 数据；v29l（lead 40）58 段。
-- 收尾安全：v29m 两轮枚举 5 次 alt0 都无 `svcBreak`、无新 crash/fatal；
-  v29l 的 `2162-0004` 未复现。
-- **v29n 确认了 rearm race**：4 条 `UAC U2 rearm race` 与 4 次 miss
-  一一对应（60 段、184320 B、host==device）；是 cave 空 ring rearm 的
-  `0x2feb0` memset wipe 了 pending completion，不是 `0x30ff4`。
-- **v29o 未消除 miss**：memset 缩到 0xf00 后仍是 62 段 / 2 miss / 2 条
-  rearm race（1:1）；丢的是 rearm 本身与刚发出的 set 的竞争，不是 mailbox。
-- **v29p 是退步**：57 段 / 4 miss / 1 stall；跳过非 base 的 rearm 后
-  控制器停住（cons 冻结）。base 门判据不成立，回退 v29m（63/1，最好）。
-- **v29q 实机：测量开销就是空档来源**。payload 与 v29m 逐字节相同，只去掉
-  逐 post 日志与 dmnt dump：span **1201 ms**（v29p 2609）、host 覆盖
-  **81.7%**（v29p 35.3%）、59 段、misses=2、recoveries=1、无 crash/fatal。
-  扣掉唯一一次 181 ms 空档后，64 post / 1024 ms = **16.0 ms/套**，节奏已对。
-- **当前最佳配置 = v29q**（NSP `8e81d119…`，92350 B；payload 同 v29m，
-  app 加 `-DUAC_U2_QUIET_PIPE`，不要再用 `CURSOR_DIAG` 做节奏实验）。
-- **下一个杠杆**：那一次 miss 的恢复（驱动 `0x30ff4` 置 halt → app 100 ms
-  阈值才发现 → cancel → +32 ms lead，共 ~176 ms 无数据）。
-- **v29r 是负结果**：`STALL_MS=32` 短于“lead 32 + 一套 16 帧”的首个
-  completion（≈48 ms），app 在它之前就 cancel 自己，8 次 recover 用完后
-  退出：posted=27、bytes=0、host 4032 B。**阈值必须 > 48 ms，保持 100**。
-- **v29s 拿到错误码：23 = Missed Service**（xHCI 1.1 编号），两次都在
-  ring+0xba0/0xbc0（第 6 套最后两个 ED）。驱动 `0x31274` 对 code 23
-  **只置 halt（`regs+0x50`）并 ack `regs+0x5c`，不复位 ring**，所以
-  prod/cons 不变 → cave 无法 rearm → 100 ms stall 定时器 cancel → ring
-  复位 → 下一次 post 的 `0x2feb0` 才 commit + 清 halt → 194 ms 空档。
-  **miss 是 host/控制器漏服务，不是 cave 竞态。**
-- **v29t 成立，新最好**：miss 一到就 cancel + 重投——`max_gap_ms`
-  194→**77**、`max_react_ms` 147→31、恢复只丢 **1** 套（v29s 3 套）；
-  **61 段 / 187392 B / span 1146 ms / host 覆盖 88.9%**。miss 本身仍是
-  code 23（漏服务，第 2 套槽 12/13）。
-- **host 预排已排除**：16 URB（256 帧）与 8 URB 结果相同（61 段、一条
-  code 23、`max_gap_ms=88`）。漏帧位置永远是某套的 **Isoch 槽 11–14**，
-  即控制器“TD 材料用尽”处。
-- **v29u（4 在飞）也是负结果**：code 23 仍在（第 5 套槽 13/14，0xba0/0xbc0），
-  `max_gap_ms=95`、60 段、恢复要 cancel 2 套 → **v29t 仍最佳**。
-- **设备侧 miss 排查结束**：lead/在飞/门/memset/host 预排全部否掉；
-  漏帧永远在 IsoSet 槽 11–14。
-- **v29v 长跑稳态（4.45 s）**：256 posts → **247 段（758784 B）**、
-  3 次 code-23（每次连丢 **两帧**）、3 次恢复（每次 cancel 1 套）、
-  `span_ms=4449`、`max_gap_ms=80`、覆盖 **88.8%（host 90.3%）**；
-  环走了 **~43 次 wrap**、游标两次回卷，**长期复用正常**。
-  漏的槽位不总在套尾（11/12、**5/6**、11/12）——之前的“尾部规律”是小样本。
-- **设备侧收口**：~1.5 s 一次两帧漏服务是宿主/VM 侧现象；产品结论按
-  “88–90% 占空 + 80 ms 空洞”写。
-- **宿主侧 item (b)：设备在 EHCI 不在 xHCI**。v29w 开 xhci tracepoint 采到
-  空 trace；`lsusb -t` 显示设备在 **Bus 001 / `ehci-pci`**，内核没有 ehci
-  tracepoint。改用 **usbmon**（`/sys/kernel/debug/usb/usbmon/1u`，完成行的
-  `<status>:<未传输包数>` 直接给出丢了几帧）；工具：`--format usbmon
-  --bus 1 --ep Ii:1:004`。步骤见 [UAC_U2_HOST_TRACE.md](docs/UAC_U2_HOST_TRACE.md)。
-- v29w 的 probe 本身成功（host 768576 B / 250 套），设备日志待插卡读取。
-- `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
-- 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
-- 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
+  开机即可”（一次 boot、失败即停、不重试）。
+- **当前最佳配置**：
+  - 设备镜像 **v29v `b8cf0807…`**（93050 B）：cave `pipe_quad_log.S`
+    548/684 B、`ISO_ENTRY=0x300`、3 在飞、miss 立即 cancel + 重投、
+    `STREAM_POSTS=256`、`MAX_RECOVERIES=64`、quiet + evlog。
+  - host：`uac-raw-probe3 --trigger-first --delay-ms 30 --packets 16
+    --transfers 32 --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`。
+- **最好一轮（v30a，32 在飞）**：256 posts → **253 段 / 777216 B**、host
+  777792 B、覆盖 **94.1%**、1 次 code-23、`span_ms=4351`、`max_gap_ms=78`、
+  无 crash/fatal。**同配置复跑（v30d）**：247 段 / 3 次 / 89.4% / 86 ms →
+  固定深度轮次方差 **≈6 段、2 次事件**，单轮不能排序 16/32/64。
+- **已定论**：
+  - miss = 控制器的 **code 23（Missed Service）**；驱动 `0x31274` 对 23
+    只置 halt、**不复位 ring**，所以 cave 无法 rearm，只能靠 app 收到
+    `status=5` 立刻 cancel + 重投 → ~80 ms 内恢复、丢 1 套。
+  - 设备侧其它假设全部否掉：lead 16/24/40、在飞 4、空 ring 门、memset
+    长度、host 预排 8/16。
+  - **8 深明显更差**（host 可见 `p0` 单包丢包、4 次事件）；16/32/64 在噪声内。
+- **宿主侧事实**：设备在 **Bus 001 / `ehci-pci`**（不是 xHCI），内核没有
+  ehci tracepoint；可用 **usbmon bus 1** 或 probe 的 per-packet detail
+  （`urb[N] detail p<idx>=<status>/<len>`）。
+- **下一步**：8–10 s 长跑（app-only：`STREAM_POSTS=512/640`、
+  `MAX_RECOVERIES=128`；host `--max-urbs 1024 --timeout-ms 15000`），用长
+  样本定稳态占空比与事件率，再谈产品结论（当前区间 88–94% 占空 + ~80 ms 空洞）。
+- **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
+  8 个 descriptor-parser NOP 仍未隔离。
+- 卡：安全 `52069a44…` 已恢复并弹出（21:0x）；VM 挂起；v30d 证据已归档。
 
 ## 文件角色
 
