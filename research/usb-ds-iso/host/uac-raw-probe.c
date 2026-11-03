@@ -20,7 +20,11 @@
 #define AS_ENDPOINT 0x84
 #define PACKET 192
 #define PACKETS 16
-#define MAX_XFERS 32
+/* v30a: the in-flight depth is the lever on this VM host (8 -> 16 -> 32 cut
+   the device-side missed-service events 4 -> 2 -> 1 and raised delivery
+   246 -> 251 -> 253 sets), so the ceiling moves to 64 URBs (64 x 3072 B of
+   buffers) to test the next step. */
+#define MAX_XFERS 64
 #define MAX_URBS_TOTAL 1024
 
 struct xfer_state {
