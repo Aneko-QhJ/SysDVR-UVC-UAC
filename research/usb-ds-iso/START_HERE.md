@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 19:3x）
+## 当前边界（2026-11-03 19:4x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -63,9 +63,12 @@
   prod/cons 不变 → cave 无法 rearm → 100 ms stall 定时器 cancel → ring
   复位 → 下一次 post 的 `0x2feb0` 才 commit + 清 halt → 194 ms 空档。
   **miss 是 host/控制器漏服务，不是 cave 竞态。**
-- **候选 v29t 已建（app-only）**：NSP `cac6ed88…`（93059 B），cave/payload
-  同 v29s；`urb_status == 5` 一出现就 cancel + 重投，不等 100 ms。预期
-  `max_gap_ms` 194→~50–60，每次恢复少丢 2 套；若不动说明 cancel 自身阻塞。
+- **v29t 成立，新最好**：miss 一到就 cancel + 重投——`max_gap_ms`
+  194→**77**、`max_react_ms` 147→31、恢复只丢 **1** 套（v29s 3 套）；
+  **61 段 / 187392 B / span 1146 ms / host 覆盖 88.9%**。miss 本身仍是
+  code 23（漏服务，第 2 套槽 12/13）。
+- **下一步（不用重建）**：同一 v29t 镜像，host 改 `--transfers 16`
+  （256 帧预排），看 code 23 是否消失、misses 是否到 0。
 - `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。

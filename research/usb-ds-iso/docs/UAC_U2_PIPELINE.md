@@ -1015,6 +1015,32 @@ UAC U2 pipe stall recover cancelled=3 rc=0x0 limit_ms=100
 - 判定：**miss 是 host/控制器漏服务，不是 cave 竞态**；可动的只有“halt
   之后多快恢复”。v29t：`status=5` 一到就 cancel + 重投，不等 100 ms。
 
+### 2026-11-03 19:2x v29t 实机：立即恢复把 194 ms 压到 77 ms
+
+- 设备：`posted=64 completed=64 **bytes=187392** misses=2 **recoveries=1**`；
+  `pipe miss recover cancelled=1 rc=0x0`；
+  `pipe timing waits=63 timeouts=16 span_ms=1146 **max_gap_ms=77
+  max_react_ms=31**`。host 188544 B、数据窗 34–1138 ms、覆盖 **88.9%**、
+  45 个满 3072 的 URB。
+- miss 仍是同一种：`evlog count=2` → `code=23 len=192 off=0x580`、
+  `off=0x5a0`（第 2 套槽 12/13），与 v29s/0xba0-0xbc0 同型；收尾还有一条
+  `code=14`（Ring Underrun）。
+- 差别只在 app：`status=5` 报告一到就 `usbDsEndpoint_Cancel` + 重投，
+  不再等 100 ms。结果：
+  | 指标 | v29s | v29t |
+  | --- | --- | --- |
+  | recoveries | 1（stall 路径） | 1（miss 路径） |
+  | 恢复时被 cancel 的套数 | 3 | **1** |
+  | `max_gap_ms` | 194 | **77** |
+  | `max_react_ms` | 147 | **31** |
+  | 段数 / span | 59 / 1250 ms | **61 / 1146 ms** |
+  | host 覆盖 | 78.7% | **88.9%** |
+- 解读：剩下的 77 ms = cancel + 32 ms lead + 16 ms 一组，已经接近理论下限
+  （≈50 ms + 抖动）。**miss 本身才是下一个目标**：code 23 表示控制器在这
+  两帧上没被服务，属于宿主提交节奏，不是设备能决定的。
+- 下一步不需要重建：同一镜像把 probe 的 `--transfers` 从 8 加到 16
+  （256 帧预排），看 code 23 是否消失。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 19:3x，Asia/Shanghai）
+# 当前状态（2026-11-03 19:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -86,7 +86,13 @@
 - **结论：miss 是 host/控制器漏服务（两帧没被服务），不是 cave 竞态**；
   真正可动的是“halt 之后的恢复”。`ISO_ENTRY` **已由实测确认**，未隔离项
   只剩 8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…` 已恢复并弹出（19:1x）；v29q/v29r/v29s 日志均已归档。
+- **v29t（miss 立即 cancel/重投）成立，新最好**：同一次 code-23 miss
+  （第 2 套槽 12/13，off=0x580/0x5a0），但 `status=5` 一到就 cancel：
+  `recoveries=1`、`cancelled=1`（v29s 是 3），**`max_gap_ms=77`**
+  （v29s 194）、`max_react_ms=31`（147）；**61 段 / 187392 B**、span
+  1146 ms，host 188544 B、覆盖 **88.9%**（v29s 78.7%）。
+- 卡：安全 `52069a44…` 已恢复并弹出（19:2x）；v29q/v29r/v29s/v29t
+  日志均已归档。
 
 ## 阶段进度
 
@@ -124,21 +130,21 @@
 | v29q | v29m payload + app 静默流水线 | 180672 B（58.8 套） | **59×`3072`、2 miss、1 recover、span 1201 ms** | **成立**：覆盖 81.7%（v29p 35.3%）；损失集中在那一次 miss → halt |
 | v29r | v29q + `STALL_MS=32` | **4032 B** | posted=27、completed=24、**bytes=0**、8 recover | **负结果**：阈值 < lead+一套（≈48 ms）→ cancel 风暴 |
 | v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | 183744 B（59.8 套） | 59×`3072`、2 miss、1 recover、span 1250 ms | **诊断命中**：code=23（Missed Service）@0xba0/0xbc0；驱动只置 halt |
-| v29t | v29s + miss 立即 cancel/重投（app-only） | —（0 实机） | —（0 实机） | 离线 `cac6ed88…`（93059 B），待 boot；目标 `max_gap_ms` < 100 |
+| v29t | v29s + miss 立即 cancel/重投（app-only） | **188544 B（61.4 套）** | **61×`3072`、2 miss、1 recover/cancelled=1、span 1146 ms** | **成立，新最好**：`max_gap_ms` 194→**77**、覆盖 **88.9%** |
 
-## 当前最佳配置（v29q = v29m payload + 静默 app）
+## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
 
 | 项 | 值 |
 | --- | --- |
-| NSP / NSO | v29q `8e81d119…`（92350 B）/ `5be0a7ef…` |
-| cave | `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B，lead 32） |
+| NSP / NSO | v29t `cac6ed88…`（93059 B）/ `cb22dd47…` |
+| cave | `patches/iso_burst_uac84_dci9_pipe_quad_log.S`（548/684 B，lead 32，`ISO_ENTRY=0x300`） |
 | ring | link `+0xc00`（六套对齐）；mailbox `+0xf00/+0xf40/+0xf80/+0xfc0`，`set=(offset>>9)&3`；游标 `+0xfb8` |
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；**100 ms** stall 才 cancel + 重投（**不要降到 48 ms 以下**，v29r 已证）；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
-| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE`（**不要**再加 `CURSOR_DIAG`） |
+| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | 59×3072（181248 B）、host 180672–183744、span **1201–1250 ms**、host 覆盖 **78.7–81.7%**、misses=2、recoveries=1、无 crash/fatal |
-| 诊断 cave | 同一 payload 换成 `pipe_quad_log.S`（548/684 B，`ISO_ENTRY=0x300`）即可看到 error code；日常数据路径仍是 `pipe_quad.S` |
+| 结果 | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
+| 对照 | v29q 59 段 / 1201 ms / 81.7%；v29s 59 段 / 1250 ms / 78.7%；v29m 带诊断 63 段但 2609 ms / 35% |
 | 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
 ## 构件与关键事实
@@ -162,19 +168,19 @@
 
 ## 下一步
 
-1. **跑 v29t**（`cac6ed88…`，93059 B，cave/payload 同 v29s，app-only）：
-   `urb_status == 5` 的报告一到就 cancel + 重投，不再等 100 ms stall。
-   预期 `max_gap_ms` 从 194 降到 **~50–60 ms**，每次恢复少丢 2 套
-   （3 套 vs 5 套）；`evlog` 应仍是 `code=23`。若 `max_gap_ms` 不动，
-   说明 cancel 自身会阻塞 100 ms（驱动事件线程），要换 cave 侧方案。
-2. **不要改 cave 的 lead（32）与在飞深度（3）**，也不要再动 stall 阈值
-   （100 ms，v29r 已证下限 ≈48 ms）。
-3. 若 v29t 把空档压到 ~50 ms 后仍是“每 1.2 s 一次”，下一步就是 host 侧：
-   code 23 = 控制器没被及时服务，8 个 16 包 URB 的提交节奏/VM 的 ISO
-   调度是嫌疑；device 侧只能决定恢复多快，不能决定漏不漏。
-4. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
+1. **同一 v29t 镜像，只改 host：`--transfers 16`**（16 个 URB × 16 帧 =
+   256 帧 ≈ 256 ms 预排）。code 23 是“控制器没被及时服务”，最像是宿主
+   URB 补投的抖动；8 个 URB 只有 128 ms 余量，补投晚一点都不行。这一轮
+   不需要重新构建，只换 probe 参数。
+   - 判定：`evlog` 里不再出 `code=23`、`misses=0`、`max_gap_ms` 归零或
+     只剩最初的启动空档 → **0 miss 达成**，测 8 s/10 s 连续；
+   - 若仍有 code 23 且时间点分散 → host/VM 的 ISO 调度上限，转去宿主
+     侧（非设备侧）继续。
+2. **不要在 miss 还在的时候动 cave**：v29t 已经把单次 miss 的代价压到
+   ~77 ms + 1 套，先看能不能把 miss 本身去掉。
+3. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
 
-判定：v29t 看 `max_gap_ms`（目标 < 100）与 host 空档，段数不倒退（≥59）。
+判定：先看 `evlog` 有没有 code 23 与 `misses`，再看覆盖；不倒退（≥61 段）。
 
 ## 边界与纪律
 
