@@ -2608,6 +2608,10 @@ static void _uacLogRingState(void)
     svcCloseHandle(h);
 }
 
+static Thread g_uacArmThread;
+static u8 alignas(0x1000) g_uacArmStack[0x4000];
+static bool g_uacArmStarted;
+
 static void _postUacBurst(void)
 {
     /* The host may trigger many times while chasing an alt1 window; log every
@@ -3016,6 +3020,31 @@ static void _postUacBurst(void)
     _uacLogRingState();
 #endif
 }
+
+/* v30g: a standard host starts reading only after the SET_INTERFACE(alt=1)
+   status stage completes.  Running the ~9 s train on the EP0 handler blocks
+   that stage, so the host never queues an ISO read and the train starves on
+   its own 100 ms stall timer.  Arm it from a worker thread instead; the
+   20 ms delay lets the status stage land and the host post its first reads. */
+static void _uacArmThreadFunc(void *arg)
+{
+    (void)arg;
+    svcSleepThread(20E+6);
+    _postUacBurst();
+}
+
+static void _armUacBurstAsync(void)
+{
+    if (g_uacArmStarted) return;
+    g_uacArmStarted = true;
+    Result rc = threadCreate(&g_uacArmThread, _uacArmThreadFunc, NULL,
+                             g_uacArmStack, sizeof(g_uacArmStack), 0x2C, -2);
+    LOG("UAC U2 arm thread create rc=0x%x\n", rc);
+    if (R_FAILED(rc)) return;
+    rc = threadStart(&g_uacArmThread);
+    LOG("UAC U2 arm thread start rc=0x%x\n", rc);
+    if (R_FAILED(rc)) threadClose(&g_uacArmThread);
+}
 #endif
 
 // UAC1 standard/class control requests.  SET_CUR sampling frequency carries a
@@ -3114,16 +3143,16 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         g_uacCtx.streaming = true;
         _ctrlAck(iface);
 #ifdef UAC_U2_PATCH
-        /* v30f: a standard host (macOS AppleUSBAudio) arms the stream by
+        /* v30f/v30g: a standard host (macOS AppleUSBAudio) arms the stream by
            selecting alt 1 on the AS interface and never sends the 3-byte
            SET_CUR rate request the Linux probe uses (the default rate is
            already 48000), so the bounded train has to start here as well.
-           The status stage is ACKed above, so the train cannot delay it;
-           _postUacBurst is idempotent and refuses anything but alt 1. */
+           It runs on a worker thread: running it inline blocks the status
+           stage, and a host only queues ISO reads after that stage. */
         if (packet.bmRequestType == 0x01 &&
             packet.bRequest == 0x0B /* SET_INTERFACE */ &&
             packet.wIndex == g_uacStd.as_interface) {
-            _postUacBurst();
+            _armUacBurstAsync();
         }
 #endif
         break;

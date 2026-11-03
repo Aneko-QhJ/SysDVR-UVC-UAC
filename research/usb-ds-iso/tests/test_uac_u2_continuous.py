@@ -601,11 +601,13 @@ class UacRawProbeRearmTests(unittest.TestCase):
 
 
 class UacU2Alt1TriggerTests(unittest.TestCase):
-    """v30f: a standard host arms the train with SET_INTERFACE(alt=1).
+    """v30f/v30g: a standard host arms the train with SET_INTERFACE(alt=1).
 
     macOS AppleUSBAudio selects alt 1 and never sends the 3-byte SET_CUR the
-    Linux probe uses, so the alt-1 START action must also call the bounded
-    train, after the status stage ACK and only for the AS interface.
+    Linux probe uses, so the alt-1 START action must also arm the bounded
+    train, only for the AS interface.  The train runs on a worker thread:
+    running it inline blocks the SET_INTERFACE status stage, and the host only
+    queues ISO reads after that stage, so the train would starve.
     """
 
     @classmethod
@@ -619,9 +621,20 @@ class UacU2Alt1TriggerTests(unittest.TestCase):
         block = self.source[start:self.source.index("case UAC_ACT_STOP:", start)]
         self.assertIn("packet.bRequest == 0x0B", block)
         self.assertIn("packet.wIndex == g_uacStd.as_interface", block)
-        self.assertIn("_postUacBurst();", block)
+        self.assertIn("_armUacBurstAsync();", block)
         self.assertLess(block.index("_ctrlAck(iface);"),
-                        block.index("_postUacBurst();"))
+                        block.index("_armUacBurstAsync();"))
+
+    def test_arm_helper_runs_the_train_on_a_worker_thread(self):
+        start = self.source.index("static void _uacArmThreadFunc(void *arg)")
+        block = self.source[start:self.source.index("static void _armUacBurstAsync", start)]
+        self.assertIn("svcSleepThread(20E+6);", block)
+        self.assertIn("_postUacBurst();", block)
+        helper = self.source[self.source.index("static void _armUacBurstAsync"):
+                             self.source.index("\n}\n", self.source.index("static void _armUacBurstAsync"))]
+        self.assertIn("threadCreate(&g_uacArmThread", helper)
+        self.assertIn("threadStart(&g_uacArmThread)", helper)
+        self.assertIn("if (g_uacArmStarted) return;", helper)
 
 
 if __name__ == "__main__":
