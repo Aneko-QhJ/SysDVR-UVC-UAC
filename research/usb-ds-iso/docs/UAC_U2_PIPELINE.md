@@ -1075,6 +1075,34 @@ UAC U2 pipe stall recover cancelled=3 rc=0x0 limit_ms=100
   （v29o）、lead 16/24/40（v29j/v29l）、host 预排（h16）、在飞 4（v29u）。
 - 下一步：长跑（v29v，256 posts）测稳态，而不是继续压单次 miss。
 
+### 2026-11-03 20:1x v29v 长跑：4.45 s 稳态与长期 ring 复用
+
+- 256 posts、`MAX_RECOVERIES=64`，host `--max-urbs 512 --timeout-ms 10000`。
+- 设备：`posted=256 completed=256 **bytes=758784 misses=6 recoveries=3`；
+  `pipe timing waits=253 timeouts=42 **span_ms=4449 max_gap_ms=80
+  max_react_ms=34**`。host 762816 B、数据窗 33–4434 ms、覆盖 **90.3%**、
+  185 个满 3072 的 URB。
+- 三次事件，每次两条 code-23（一帧一条），各自 `recover cancelled=1`：
+
+```text
+miss [0] code=23 len=192 off=0x160   set 0 Isoch slot 11
+miss [1] code=23 len=192 off=0x180   set 0 Isoch slot 12
+miss [0] code=23 len=192 off=0x4a0   set 2 Isoch slot  5   ← 不在套尾
+miss [1] code=23 len=192 off=0x4c0   set 2 Isoch slot  6
+miss [0] code=23 len=192 off=0xb60   set 5 Isoch slot 11
+miss [1] code=23 len=192 off=0xb80   set 5 Isoch slot 12
+```
+
+- 数字核对：256 posts × 16 ms = 4096 ms 下限；实际 4449 ms，差 353 ms
+  ≈ 3 × (~80 ms 恢复 + 抖动) + 每套 ~0.9 ms 的漂移。交付 247 段
+  （256 − 6 漏 − 3 cancel），247/256 = **88.8%**。
+- **长期复用**：4.45 s 内环走 ~43 次六套 wrap、游标两次 2048 帧回卷，
+  指针/cycle 没有卡死。这是项目第一次拿到 >4 s 的连续数据与环复用证据。
+- **修正**：v29s/v29t/h16 的“漏帧总在套尾”是小样本错觉；长跑里第 2 套的
+  槽 5/6 也漏。v29u 正是基于那个错觉做的 4 在飞实验，结果阴性，与此一致。
+- 结论：设备侧形状稳定，剩下的 ~10% 缺口来自宿主每 ~1.5 s 一次的**两帧**
+  漏服务；继续压它需要宿主侧证据，不是环形状。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 20:0x，Asia/Shanghai）
+# 当前状态（2026-11-03 20:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -105,9 +105,16 @@
 - **设备侧 miss 排查到此为止**：host 预排（8/16）、在飞深度（3/4）、cave
   空 ring 门、memset 长度、lead 扫描（16/32/40）都没有改变 code 23；
   漏帧永远落在某套的 Isoch 槽 11–14。**v29t 仍是最佳配置**。
-- **候选 v29v 已离线构建（长跑）**：NSP `b8cf0807…`（93050 B），payload
-  同 v29t，`-DUAC_U2_STREAM_POSTS=256 -DUAC_U2_MAX_RECOVERIES=64`——
-  一次跑 4–5 s，回答稳态问题（miss 率、覆盖、环多次 wrap）。
+- **v29v 长跑给出稳态数字（4.45 s）**：256 posts、**247 段（758784 B）**、
+  **3 次 code-23 事件**（每次恰好连丢 **两帧**）、3 次恢复（每次 cancel 1 套）、
+  **`span_ms=4449`**（理论下限 4096，差值 ≈ 3×80 ms）、`max_gap_ms=80`、
+  `max_react_ms=34`；设备侧覆盖 **88.8%**、host 窗 **90.3%**。
+  漏的槽位这次是 0xb60/0xb80（第 5 套 11/12）、0x4a0/0x4c0（第 2 套 **5/6**）、
+  0x160/0x180（第 0 套 11/12）——**并不总在套尾**，此前的“尾部规律”是
+  小样本错觉（v29u 的 4 在飞负结果正好与之相符）。
+- **长期 ring 复用首次得到证据**：4.45 s 里环走了 **~43 次六套 wrap**、
+  游标两次 2048 帧回卷，没有卡死或漂移。
+- 卡：安全 `52069a44…` 已恢复并弹出（20:1x）；v29q…v29v 日志均已归档。
 - 卡：安全 `52069a44…` 已恢复并弹出（19:3x）；v29q…v29t-h16 日志均已归档。
 
 ## 阶段进度
@@ -149,7 +156,7 @@
 | v29t | v29s + miss 立即 cancel/重投（app-only） | **188544 B（61.4 套）** | **61×`3072`、2 miss、1 recover/cancelled=1、span 1146 ms** | **成立，新最好**：`max_gap_ms` 194→**77**、覆盖 **88.9%** |
 | v29t-h16 | 同一镜像 + host `--transfers 16` | 188928 B（61.5 套） | 61×`3072`、2 miss、1 recover、`max_gap_ms=88` | **负结果**：host 预排不是杠杆；漏帧仍在槽 11–14 |
 | v29u | v29t + `IN_FLIGHT=4` | 186816 B（60.8 套） | 60×`3072`、2 miss、1 recover（cancel 2）、`max_gap_ms=95` | **负结果**：4 在飞不改 code 23；恢复更贵，回 v29t |
-| v29v | v29t 配置 + 256 posts / 恢复上限 64 | —（0 实机） | —（0 实机） | 离线 `b8cf0807…`（93050 B），待 boot；测 4–5 s 稳态 |
+| v29v | v29t 配置 + 256 posts / 恢复上限 64 | 762816 B（248.3 套） | **247×`3072`、6 miss/3 事件、3 recover、span 4449 ms** | **稳态成立**：覆盖 88.8%（host 90.3%）、`max_gap_ms=80`、环 43 次 wrap 正常 |
 
 ## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
 
@@ -162,7 +169,8 @@
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
+| 结果（短跑 64） | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
+| 结果（长跑 256） | **247×3072（758784 B）**、host 762816、span **4449 ms**、覆盖 **88.8% / host 90.3%**、6 miss（3 事件）、3 recoveries、`max_gap_ms=80` |
 | 对照 | v29q 59 段 / 1201 ms / 81.7%；v29s 59 段 / 1250 ms / 78.7%；v29m 带诊断 63 段但 2609 ms / 35% |
 | 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
@@ -187,19 +195,19 @@
 
 ## 下一步
 
-1. **跑 v29v（长跑，4–5 s）**：`b8cf0807…`，host 用
-   `--max-urbs 512 --timeout-ms 10000`。要读：
-   - `posted=256 completed=256`、`span_ms ~4400`、段数 ~250；
-   - `misses` 与 `recoveries`：按 v29t 的 1 miss/1.1 s 推算应 ~4–6；
-   - `evlog end count=N`：code 23 的条数与位置是否仍是槽 11–14；
-   - host 覆盖是否仍 ~88%。
-   若 miss 超线性增长或环在 wrap 后卡住，长跑会把问题暴露出来。
-2. **设备侧这个形状已经到头**（lead/在飞/门/memset/预排全部否掉）。
-   长跑之后若 miss 率稳定在 ~1/s，产品结论应按“88% 占空 + 每次 ~80 ms
-   空洞”来写，而不是“接近连续”。
-3. **不要再改 cave 与 stall 阈值**；8 个 descriptor-parser NOP 仍未隔离。
+1. **设备侧收口**。稳态已经量出来：88–90% 占空、每 ~1.5 s 一次 **两帧**
+   漏服务（code 23）、每次代价 ~80 ms + 1 套、环 wrap 正常。继续压 miss
+   需要宿主/VM 侧证据（guest xHCI 的 ISO 调度、URB 补投时序），不是设备
+   侧能再切的。
+2. **产品结论按实测写**：标准 48 kHz UAC 仍不连续（88–90% 占空 + 80 ms
+   空洞 → 必然 xrun），但设备侧不再随时间退化；把
+   [UAC_PCM_GAP.md](UAC_PCM_GAP.md) 的旧 16% 模型更新为实测 88–90%。
+3. **可选（宿主侧）**：a) 换非 VM 宿主或用 `usbfs` 直接跑 probe，比较
+   code 23 的频率；b) 在 guest 里记录 xHCI 的 ISO TRB 时序，看那两帧为什么
+   没被服务。
+4. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
 
-判定：先看段数与覆盖是否维持，再看 miss 率；不倒退（≥88% 覆盖）。
+判定：设备侧不再做“消除 miss”的尝试，除非宿主侧给出具体机制。
 
 ## 边界与纪律
 
