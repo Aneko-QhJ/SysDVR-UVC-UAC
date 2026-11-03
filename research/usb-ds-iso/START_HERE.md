@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 19:0x）
+## 当前边界（2026-11-03 18:5x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -54,9 +54,12 @@
   app 加 `-DUAC_U2_QUIET_PIPE`，不要再用 `CURSOR_DIAG` 做节奏实验）。
 - **下一个杠杆**：那一次 miss 的恢复（驱动 `0x30ff4` 置 halt → app 100 ms
   阈值才发现 → cancel → +32 ms lead，共 ~176 ms 无数据）。
-- **候选 v29r 已建**：NSP `00c516cb…`（92339 B），payload 同 v29q，
-  `-DUAC_U2_STALL_MS=32`（默认 100，范围 16..1000）。看 `max_gap_ms`
-  能否从 181 降到 ~70–90；若不变，时间是驱动 `regs+0x78` 轮询占的。
+- **v29r 是负结果**：`STALL_MS=32` 短于“lead 32 + 一套 16 帧”的首个
+  completion（≈48 ms），app 在它之前就 cancel 自己，8 次 recover 用完后
+  退出：posted=27、bytes=0、host 4032 B。**阈值必须 > 48 ms，保持 100**。
+- **下一步 v29s**：只做错误码诊断——`ISO_ENTRY` 0x270→0x300，cave 的
+  `iso_event` 换成“记录 code 后照常 `b event_original`”，code 写
+  ring+`0xc10` scratch，app 结尾 dump。看那片空白里到底是几号码。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 

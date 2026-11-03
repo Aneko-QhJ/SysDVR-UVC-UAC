@@ -935,6 +935,22 @@ v29q（离线构建 NSP `8e81d119…`，92350 B）：
   能否压到 ~70 ms；若 `max_gap_ms` 不降，说明驱动 `0x30ff4` 自己的
   `regs+0x78` 轮询（最多 100 ms）才是那段时间的占据者。
 
+### 2026-11-03 18:5x v29r 实机：stall 阈值 32 ms 是负结果
+
+- 设备：**posted=27、completed=24、bytes=0、misses=0、recoveries=8**；
+  日志正好 8 条 `pipe stall recover cancelled=3 rc=0x0 limit_ms=32`，
+  第 9 次 stall 直接 `pipe stall posted=27 completed=24 limit_ms=32`
+  退出循环；`pipe timing waits=8 timeouts=18 span_ms=0 max_gap_ms=0
+  max_react_ms=0`。
+- host：`valid=4992 bad=0 bytes=4032`，数据只在 t=18–354 ms 漏出。
+- 机制：一套 TD 要等 `MFI+32` 才被取指，再 16 帧才完成，**首个
+  completion 约 48 ms**。阈值 32 ms 在它之前触发 → app cancel 掉刚投的
+  3 套（计入 completed）→ 重投 → 再看 32 ms 没 completion → 再 cancel，
+  形成 cancel 风暴；recoveries 上限 8 用完后 train 退出。
+- 结论：**stall 阈值必须大于 lead + 一套（≈48 ms）**；100 ms 是合理值，
+  这条路线关闭。181 ms 空档的下一格仍是“error code 是几号、驱动
+  `0x30ff4` 的 `regs+0x78` 轮询是否占满”，需要 v29s 的记录型 cave。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
