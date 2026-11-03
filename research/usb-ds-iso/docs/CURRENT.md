@@ -207,24 +207,19 @@
 
 ## 下一步
 
-1. **宿主侧 item (b) 的采集工具改对了**：v29w 第一次采集开了 `xhci-hcd`
-   的 tracepoint，结果是空的——`lsusb -t` 显示设备在 **Bus 001 / `ehci-pci`**
-   （xhci 是 Bus 002/003 的键盘鼠标），而内核没有 ehci 的 tracepoint。
-   改用 **usbmon**：`modprobe usbmon` 后 `/sys/kernel/debug/usb/usbmon/1u`
-   给出每个 URB 的 submit/complete（ISO 也含），完成行的 `<status>:<未传输
-   包数>` 直接给出“少了几帧”。工具已支持 `--format usbmon --bus 1
-   --ep Ii:1:004`，采集步骤见 [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md)。
-2. **待读卡**：v29w 那次 probe 本身是成功的（host **768576 B / 250 套**），
-   设备日志还在卡上，需要插卡读出来归档（`run.json` 等）。
-3. **usbmon 文本 API 已被证明不够**（v29x 实测）：每个 URB 只打印前 5 个
-   ISO packet 描述符、且不打印实际 URB 长度；512 个 URB 总体 status 全 0，
-   设备的丢失帧（槽 5–14）看不到。→ **改在 probe 里观测**：
-   `host/uac-raw-probe.c` 新增 `packet_detail()`，对“丢 1–4 包”的 URB 打印
-   `p<idx>=<status>/<len>`（最多 48 行）。下一轮在 guest 里重编译 probe
-   再跑同一镜像。
-4. item (a)（非 VM 宿主 / `usbfs` 对照）排在 (b) 之后。
+1. **v29y 拿到第一个宿主侧签名**：probe 的 per-packet detail 显示两个 URB
+   各丢**一个包、都在 index 0**（`p0=1/0`，status ERROR、0 字节），时间
+   1938 / 3282 ms（相隔 1344 ms）；而设备这次报了 **4 次 code-23**（8 个
+   miss、245 段、span 4559 ms、`max_gap 93`）。→ 宿主确实在**新 URB 的第一
+   帧**漏服务，但只覆盖了设备事件的一部分（其余在宿主侧是“完成但 0 字节”）。
+2. **下一轮（同镜像 + 同一 instrumented probe，只把 `--transfers` 8→16）**：
+   - `p0` 错误消失 → 宿主补投节奏是原因，宿主侧加深在飞即可修；
+   - `p0` 错误仍在 → emulated 控制器在 URB 起始帧上的行为，只有非 VM 宿主
+     或 SS/xHCI 才可能改。
+3. 设备侧不动（四次长跑稳态 245–250 段、2–4 事件、`max_gap 80–93 ms`）。
+4. 8 个 descriptor-parser NOP 仍未隔离。
 
-判定：宿主侧只做证据采集与对照，不改设备镜像。
+判定：宿主侧只做对照实验，不改设备镜像。
 
 ## 边界与纪律
 
