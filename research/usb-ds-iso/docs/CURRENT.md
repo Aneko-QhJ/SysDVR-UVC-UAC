@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 16:1x，Asia/Shanghai）
+# 当前状态（2026-11-03 16:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -36,13 +36,15 @@
 - 解释：丢的不是 mailbox 里的 pending completion，而是 **rearm 本身**
   （`0x2feb0` 的 context reset + commit + halt clear）与刚发出的 set
   竞争——自然排空时不需要 rearm。
-- **候选 v29p 已离线构建**：NSP `a9858913…`（93189 B），cave
-  `iso_burst_uac84_dci9_pipe_quad_gate.S` **652/684 B**，46 条 edits
-  （v29n 驱动集，不含 memset 改动）。空 ring 门改为
-  `prod==cons==ring base` 才 rearm；自然排空直接写 `prod`。rearm 后
-  的死 link copy 已删。待一次 boot。
-- 风险：若自然排空后控制器其实需要 replay，写到 `prod` 会不被取指——
-  表现为停流而不是 miss；实机先看 ≥62 段与 race 行是否消失。
+- **v29p 实机是退步**：57 段（175104 B）、**misses=4、recoveries=1**；
+  跳过非 base 的 rearm 后控制器停住（`cons` 冻在 `+0xd380`、`prod`
+  继续前进），多出 miss 和一次 100 ms stall；**base 门判据不成立**。
+- 剩下的 2 条 rearm race 显示：drain 时**驱动自己**会把 ring 复位到
+  base（pre 非 base、post base），所以 cave 仍走 rearm——竞态源在驱动
+  的 drain reset，不在 cave 的空 ring 门。
+- 下一步：回退 v29m（63 段 / 1 miss，最好）；不要再改 cave 门；下一个
+  杠杆是驱动在 drain 时重写 ring 的复位（`0x30ff4` 类路径），或者接受
+  1 miss 先转向占空比。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
@@ -78,7 +80,7 @@
 | v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
 | v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
 | v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | 190464 B | 62×`3072/3`、2 miss、2 race | memset 缩短未消除 miss；rearm 本身是竞态源 |
-| v29p | v29o 门改：仅 base 才 rearm | —（0 实机） | —（0 实机） | 离线 `a9858913…`（93189 B，cave 652 B），待 boot |
+| v29p | v29o 门改：仅 base 才 rearm | 177024 B | 57×`3072/3`、4 miss、1 stall | **退步**：跳过 rearm 会停流；门判据不成立 |
 
 ## 当前最佳配置（v29m）
 
@@ -114,15 +116,16 @@
 
 ## 下一步
 
-1. **部署 v29p（一次 boot）**：cave 空 ring 门只在 `prod==cons==ring
-   base` 时 rearm，自然排空直接写 `prod`；观察 `UAC U2 rearm race` 行
-   是否消失、miss 是否到 0；
-2. 若停流（没有 completion）：说明自然排空后控制器仍需 replay，base
-   判据不成立，回退 v29m 并改查 halt/context 状态；
-3. 若 race 行仍在 base 场景出现：只剩驱动 `0x30ff4` 复位路径；
-4. 0 miss 之后再评估占空比与 48 kHz 连续。
+1. **回退 v29m**（`a1318cf0…`，63 段 / 1 miss，仍然最好）作为后续基线；
+   v29p 的 cave 门改动不再使用；
+2. **驱动 drain reset**：日志显示 drain 时驱动把 ring 复位到 base
+   （pre 非 base、post base），cave 只是跟着 rearm。下一个候选应查
+   `0x30ff4` 类复位在正常 drain 时为何运行，能否只跳过 ring/memset 而
+   保留 commit/halt clear；
+3. 若复位路径风险太大，接受 1 miss，转占空比与 48 kHz 连续评估；
+4. 0 miss 仍是最终目标，但不再是唯一前进条件。
 
-判定：不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
+判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。
 
 ## 边界与纪律

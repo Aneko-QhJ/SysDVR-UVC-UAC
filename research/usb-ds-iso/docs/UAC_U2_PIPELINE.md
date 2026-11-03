@@ -853,6 +853,21 @@ clear）与刚发出的 set 竞争。v29p 改 cave 的空 ring 门：
 - 判定：自然排空的 rearm-race 行应消失，miss 应降到 0 或只剩 base
   场景；若停流，说明自然排空后控制器仍需要 replay，base 判据不成立。
 
+### 2026-11-03 16:2x v29p 实机：base 门退步
+
+- host：`rc=0`；312 transfers、`valid=2057 bad=2935 **bytes=177024**`，
+  数据 t=18–2609 ms。
+- 设备：**posted=64 completed=64 bytes=175104 misses=4 recoveries=1**——
+  57 个 `3072/3`、4 次 `status=5`、1 次 100 ms stall；host 比设备多 1920 B。
+- 第一条 race（seq 5）后：`cons` 冻在 `+0xd380`，`prod` 从 `+0xd800`
+  继续前进到 wrap，app 连投 3 套都没有 completion，直到 100 ms stall
+  cancel——**跳过非 base 的 rearm 会让控制器停住**。
+- 同时 seq 5/33 仍有 rearm race：pre 时 prod 非 base，post 却是
+  `prod=cons=base`，说明 drain 时**驱动自己**把 ring 复位到 base，
+  cave 只是跟着 rearm。base 门不能把两者分开。
+- 判定：v29p 退步（57/4/1 vs v29m 63/1/0）；回退 v29m；下一个杠杆是
+  驱动的 drain reset 路径，不是 cave 的空 ring 门。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
