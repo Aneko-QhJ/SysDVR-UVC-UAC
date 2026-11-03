@@ -655,6 +655,30 @@ miss 容忍、stall 恢复、alt0 cancel、map-soft），只把 TD 帧 lead 从 
 - 判定：≥62 段、0 `status=5`、host==device（196608），alt0 不崩；若 40 更差，
   说明 lead 不是杠杆，转 ring 复位诊断。
 
+### 2026-11-03 12:0x v29k 实机：开机枚举 alt0 崩溃（无数据）
+
+- 部署 `f05f72a1…` 后第一次开机；VM（Parallels Debian 13）未 suspend 就保持
+  attach，Switch 开机时 guest 立即枚举 `1209:ca57`（12:06:50），uvcvideo
+  probe 控制超时（-110），设备 12:07:34 断开。
+- 设备日志（766 B）：`UAC u2 patch result=0 record=44 last-rc=0x0`（45 条
+  edits 全部写入）、4 次 `SET_INTERFACE(0)`（2 次 app 因 wIndex mismatch
+  忽略、1 次 ignored、1 次 action=4 rate=48000）、
+  `UAC U2 teardown cancel rc=0x0 wait=0xea01`；**没有任何 `UAC U2 post`**，
+  probe 未运行。
+- 崩溃：usb sysmodule fatal `2162-0002`，PC `+0x1927c`、LR `+0x9668`，栈与
+  v29f/v29g 相同（`0x40d0←0x3ce0`）。`0x40d0` 是 stub `0x40cc` 中
+  `bl 0x9540` 的返回地址，即 `0x3dac: cbz w0, 0x40cc`（`bl 0x4a20` 返回
+  0）的 panic；map-soft 的 `0x3fe0`（返回地址会是 `0x40d4`）不是本次入口。
+- 判定：**run 无效**（0 probe、0 数据），v29k 未验证；直接原因是开机时 VM
+  仍 attach，同时暴露第二个 panic 入口 `0x3dac→0x40cc`，map-soft 没有关闭
+  alt0 崩溃。
+- 恢复：安全 `52069a44…` 已恢复，日志与 crash `01793678846` / fatal
+  `01793678845` 已归档并删除，12:08 弹出。证据
+  `private/runs/UAC-u2-v29k-lead40-20261103`、
+  `private/card-cycles/20261103-u2-v29k-lead40`。
+- 下一步：v29l = lead 40 + `0x3dac → 0x409c`（map-soft-2）；实机前 Switch
+  关机、VM suspend/detach，主界面后再 attach。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

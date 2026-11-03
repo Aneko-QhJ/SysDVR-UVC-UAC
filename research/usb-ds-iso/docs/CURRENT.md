@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 08:5x，Asia/Shanghai）
+# 当前状态（2026-11-03 12:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -11,19 +11,22 @@
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
 - **数据路径最好一轮（v29h）**：64/64 posts、**62 个完整 3072 B 片段
   （190464 B）**、host 与设备字节相等、2 次单套 miss、收尾不崩。
-- **收尾崩溃已关闭**：`SET_INTERFACE(0)` 重装端点时的 IOVA 节点耗尽不再
-  `svcBreak`，而是返回错误码（v29h map-soft）；从 v16 起的老问题结束。
+- **收尾崩溃没有彻底关闭**：v29h 的 map-soft（`0x3fe0`→`0x409c`）只覆盖
+  IOVA 节点分配失败；v29k 开机枚举在另一入口 `0x3dac`→`0x40cc` 命中同一
+  栈（`0x40d0←0x3ce0`），仍 `svcBreak`。需要 map-soft-2。
 - **已否掉的路线**：单次请求 >16 帧（17–19 帧处挂死）、两 buffer 流水线
   （驱动单 transfer）、4 在飞/4 套环（v29i，miss 2→3）、lead 4（v25）与
   lead 16（v29j，miss 2→4）。
-- **新候选 v29k（lead 40）已离线构建**：NSP `f05f72a1…`（92589 B），
-  cave 680/684 B、45 条 edits；只把 TD 帧 lead 32→40，其余与 v29h 相同，待一次 boot。
+- **v29k（lead 40）实机无效**：12:06 部署后第一次开机，VM 未 suspend 就
+  attach，host 在枚举阶段反复 `SET_INTERFACE(0)`，probe 之前 usb sysmodule
+  崩溃（PC `+0x1927c`、同 v29f/g 栈）；**0 数据，lead 40 仍未验证**。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：先跑 v29k（lead 40）；若 40 不改善，试 48 或给驱动 ring 复位加诊断；
-  目标 0 miss。
+- 下一步：先做 **map-soft-2**（`0x3dac`→`0x409c`）离线候选，并按严格 VM
+  纪律重跑 lead 40；lead 48 与 ring 复位诊断排在其后。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…`，已弹出；实机按 START_HERE 的常设授权执行。
+- 卡：安全 `52069a44…` 已恢复并弹出（12:08）；崩溃日志与 2 份新报告已
+  归档并从卡删除。
 
 ## 阶段进度
 
@@ -57,7 +60,7 @@
 | v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | **收尾不崩；当前最佳** |
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
-| v29k | v29h + lead 32→40 | —（0 实机） | —（0 实机） | 离线构建 `f05f72a1…`，待一次 boot |
+| v29k | v29h + lead 32→40 | —（崩溃，无数据） | —（开机枚举 alt0 崩溃） | 0 数据；第二入口 `0x3dac` 崩溃，v29k 未测 |
 
 ## 当前最佳配置（v29h）
 
@@ -92,12 +95,12 @@
 
 ## 下一步
 
-1. **v29k lead 40**（已离线构建，NSP `f05f72a1…`）：一次 boot 确认 40 是否
-   降 miss；底线是不倒退（≥62 段）、不产生 crash/fatal；
-2. 若 40 不变或变差：试 **lead 48**，或直接做 **ring 复位诊断**——miss 前都
-   出现 `prod=cons=cur=0` 的复位，需要在 cave/app 记录触发者（driver 的
-   `0x30ff4` 还是 cave 的空 ring rearm），再决定阻止或绕开；
-3. 0 miss 之后再做占空比与 48 kHz 连续评估。
+1. **map-soft-2（v29l）**：`0x3dac` 的 `cbz w0, 0x40cc` → `cbz w0, 0x409c`，
+   让 `0x4a20` 失败走 0x409c 错误收尾；保留 lead 40，离线构建并加单测，
+   先于下一次实机；
+2. **重跑纪律**：Switch 开机前 suspend/detach VM，主界面后再 attach，确认
+   guest 只在 attach 后看到 `1209:ca57`；一次 boot、失败即停，不自动重试；
+3. lead 40 拿到数据后，再决定 lead 48、ring 复位诊断或占空比。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。
@@ -107,8 +110,9 @@
 - 实机授权：2026-11-01 16:19 起常设授权——部署/测试不再逐轮申请，插卡与开机前
   通知用户即可；一次 boot、失败即停、不重试。
 - “部署”只等于把文件拷到卡上；插卡、开机、关机由用户执行。
-- VM 纪律：开机前 suspend；主界面后 resume + attach；必要时一次 VM
-  suspend/resume 让 guest 枚举；probe 一次。
+- VM 纪律：**Switch 开机前必须 suspend/detach**；主界面后再 resume + attach；
+  确认 guest 只在 attach 后看到 `1209:ca57`（这是 11-03 崩溃的直接原因）；
+  必要时一次 VM suspend/resume 让 guest 枚举；probe 一次。
 - 收尾：恢复安全卡 `52069a44…`、删日志/新报告、安全弹出；设备现场状态不推定。
 - `private/` 是原始证据，只读；不覆盖、不移动、不清理。
 
