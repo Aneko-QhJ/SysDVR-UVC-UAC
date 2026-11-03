@@ -304,7 +304,41 @@ class RearmKeepMailboxTests(unittest.TestCase):
         self.assertEqual(word & 0x1F, 2)
 
 
+QUAD_GATE = ROOT / "patches/iso_burst_uac84_dci9_pipe_quad_gate.S"
+
+
+class EmptyGateTests(unittest.TestCase):
+    """v29p: re-arm only when the ring was reset to its base."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = QUAD_GATE.read_text()
+
+    def test_rearm_is_gated_on_the_ring_base(self):
+        self.assertIn("ldr x10, [x1, #0x10]", self.text)
+        self.assertIn("cmp x8, x10", self.text)
+        # one for prod != cons, one for a drained ring away from base
+        self.assertEqual(self.text.count("b.ne pipe_nonempty"), 2)
+
+    def test_dead_link_copy_is_gone(self):
+        self.assertNotIn("ldr q0, [x9]", self.text)
+        self.assertNotIn("str x13, [x1, #0x28]", self.text)
+
+    def test_size_shrinks_and_still_fits(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            code, symbols = assemble(TOOLCHAIN, Path(tmp), QUAD_GATE,
+                                     require_report=False)
+        self.assertEqual(len(code), 652)
+        self.assertLessEqual(len(code), 0x69000 - 0x68D54)
+        self.assertEqual(symbols["iso_enter"], 0x68D54)
+        self.assertLess(symbols["iso_event"], 0x69000)
+
+
 if __name__ == "__main__":
+    unittest.main()
+
     unittest.main()
 
     unittest.main()

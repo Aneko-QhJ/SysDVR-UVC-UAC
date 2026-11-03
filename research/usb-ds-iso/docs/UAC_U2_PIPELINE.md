@@ -835,6 +835,24 @@ pending 的 completion 一起抹掉。
   排空直接在 `prod` 写，只有 halt/base 才 rearm；空间从 rearm 后的
   死 link copy 腾出。
 
+### 2026-11-03 16:1x v29p empty-gate（离线）
+
+v29o 证明 memset 缩短不够：rearm 本身（context reset + commit + halt
+clear）与刚发出的 set 竞争。v29p 改 cave 的空 ring 门：
+
+- 先判 `prod == cons`；若不等，正常写；
+- 若相等，再读 ring base：`prod != base` 说明只是自然排空，控制器还在
+  跑，直接落到 `pipe_nonempty`，在 `prod` 写下一套，不 rearm；
+- 只有 `prod == cons == base`（驱动 `0x30ff4` 复位后的状态，或首次
+  burst）才调 `0x2feb0` replay；
+- rearm 后那段 link copy 删除：驱动 link 已在 `0x2ff40` 补到 `0xc00`，
+  `[x1,#0x28]` 必等于 link slot，copy 是死代码；cave 从 680 降到
+  **652/684 B**（32 B 空闲），`iso_event` 移到 `0x68edc`；
+- 构建：NSP `a9858913…`（93189 B）、NSO `cfa7e451…`；46 条 edits
+  （v29n 驱动集，不含 `0x2ff14` 的 memset 改动）；
+- 判定：自然排空的 rearm-race 行应消失，miss 应降到 0 或只剩 base
+  场景；若停流，说明自然排空后控制器仍需要 replay，base 判据不成立。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

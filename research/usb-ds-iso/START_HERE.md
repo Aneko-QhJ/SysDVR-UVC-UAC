@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 16:0x）
+## 当前边界（2026-11-03 16:1x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -44,8 +44,10 @@
   `0x2feb0` memset wipe 了 pending completion，不是 `0x30ff4`。
 - **v29o 未消除 miss**：memset 缩到 0xf00 后仍是 62 段 / 2 miss / 2 条
   rearm race（1:1）；丢的是 rearm 本身与刚发出的 set 的竞争，不是 mailbox。
-- 下一步：改 cave 空 ring 门——只在驱动复位（halt/base）时 rearm，自然
-  排空直接写 `prod`；用 rearm 后的死代码腾空间，先离线设计 + 单测。
+- **候选 v29p 已离线构建**：NSP `a9858913…`（93189 B），cave 652/684 B；
+  只有 `prod==cons==ring base` 才 rearm，自然排空直接写 `prod`，死 link
+  copy 已删。待 boot；若停流说明自然排空仍需 replay。
+- 下一步：部署 v29p 跑一次，看 `rearm race` 行是否消失、miss 是否到 0。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 
