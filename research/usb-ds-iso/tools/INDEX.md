@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 439 个 Python 工具。
+共 440 个 Python 工具。
 
 ## 当前使用
 
@@ -26,7 +26,7 @@
 | `audit` | 137 |
 | `a23_*` | 110 |
 | `build` | 65 |
-| `analyze` | 59 |
+| `analyze` | 60 |
 | `collect` | 18 |
 | `prepare` | 10 |
 | `context65` | 7 |
@@ -165,7 +165,7 @@
 | [a23_versioned_driver_model.py](a23_versioned_driver_model.py) | Isolated versioned driver derivation; original production sources stay pinned. |
 | [a23_worker_failure_materials.py](a23_worker_failure_materials.py) | Pure byte admission for the specified offline worker fixtures, not provenance. |
 
-## analyze（59）
+## analyze（60）
 
 | 工具 | 说明 |
 | --- | --- |
@@ -228,6 +228,7 @@
 | [analyze_native_serial_run.py](analyze_native_serial_run.py) | Independently check saved serial native/raw/device evidence; never access USB. |
 | [analyze_no_td_window.py](analyze_no_td_window.py) | Classify saved no-TD evidence without writing inputs or accessing USB. |
 | [analyze_serial_clock.py](analyze_serial_clock.py) | Read-only bounded serial clock audit; frame estimates retain 1 ms uncertainty. |
+| [analyze_xhci_iso_trace.py](analyze_xhci_iso_trace.py) | Decode a guest xhci-hcd ftrace capture around an isochronous IN run. |
 
 ## audit（137）
 
