@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 13:1x，Asia/Shanghai）
+# 当前状态（2026-11-03 15:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -23,15 +23,16 @@
   （v29i）、lead 4/16/40。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- **诊断候选 v29n 已离线构建**：NSP `5421884e…`（92960 B），payload 与
-  v29m 完全相同（46 条），只在 app 的 cursor 诊断里加
-  `UAC U2 rearm race ...` 行：pre 非空、post 出现 rearm wipe
-  （`prod=cons=ring`、`cur=0`）时记录，用来区分 cave 空 ring rearm 与
-  驱动 `0x30ff4` 复位；待一次 boot。
-- 离线分类（已归档日志）：v29h 2 次 rearm-during-post / 2 miss、v29i
-  3/3、v29f 3/3、v29m-r2 1/1；v29l 另有多次普通 empty rearm 后的 miss。
-- 下一步：部署 v29n 跑一次，检查 rearm-race 行是否与 miss 一一对应；若是，
-  下一轮修 cave 的 rearm 竞态；若不是，查驱动 `0x30ff4`。
+- **v29n 实机：rearm race 确认**：NSP `5421884e…`（92960 B，v29m
+  payload + app rearm-race 日志）。设备 60 段 / **misses=4**，日志里
+  **4 条 `UAC U2 rearm race` 与 4 次 miss 一一对应**（seq 4/16/45/63，
+  buf 3/7/4/6）；host==device（184320）。
+- 机制：ring 在投递瞬间被排空，cave 走空 ring rearm（`0x2feb0` 的
+  0x1000 memset + commit），把刚发出那套的 pending completion 一起
+  wipe，控制器回 `status=5`——不是驱动 `0x30ff4`。
+- 下一步：做 **rearm 修复候选**，避免在排空竞态里 wipe pending
+  completion（方向：跳过/缩小 `0x2feb0` 的 memset，或只在驱动复位后
+  才 rearm）；先离线，再按纪律跑。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
@@ -67,7 +68,7 @@
 | v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | 179712 B | 58×`3072/3`、3 miss、1 recover | lead 40 负结果；host 比设备多 1536 |
 | v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 首跑；后被证明是方差 |
 | v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
-| v29n | v29m + app rearm-race 日志 | —（0 实机） | —（0 实机） | 离线 `5421884e…`（92960 B），诊断候选待 boot |
+| v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
 
 ## 当前最佳配置（v29m）
 
@@ -103,11 +104,13 @@
 
 ## 下一步
 
-1. **部署 v29n（一次 boot）**：同一 v29m 数据路径 + rearm-race 日志；
-   开机纪律不变；检查设备日志里 `UAC U2 rearm race` 行是否与 miss 对齐；
-2. 若 rearm race 与 miss 一一对应：下一轮修 cave 的 rearm 竞态（例如
-   在 ring 仍有在飞 TD 时避免 memset，或延后 rearm），先离线设计；
-3. 若没有 rearm race 却仍 miss：转查驱动 `0x30ff4` 的复位路径；
+1. **rearm 修复候选**：跳过或缩小 `0x2feb0` 里的 0x1000 memset（例如把
+   `0x2ff14` 的 `mov w2,#0x1000` 改成 `#0xf00`，保留 mailbox/cursor；
+   或 NOP `0x2ff18` 的 memset 调用），让排空时 pending completion 不被
+   wipe；离线构建 + 单测，再按纪律跑；
+2. 先保持 v29m 数据路径（lead 32、3 在飞、双 map-soft），一次只改
+   memset 这一处；判定 ≥62 段、0 miss；
+3. 若 memset 修复仍丢套，转查驱动 `0x30ff4` 的复位路径；
 4. 0 miss 之后再评估占空比与 48 kHz 连续。
 
 判定：不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes

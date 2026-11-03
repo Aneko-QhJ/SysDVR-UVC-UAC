@@ -777,6 +777,29 @@ rearm 与驱动 `0x30ff4` 复位，所以 v29n 只在 app 加一行观测：
 - 判定：数据路径应与 v29m 相同（63 段最好，方差 58–63）；rearm-race 行
   与 miss 对齐 → 修 cave rearm 竞态；不对齐 → 查 `0x30ff4`。
 
+### 2026-11-03 15:4x v29n 实机：rearm race 与 miss 一一对应
+
+- host：`rc=0`；312 transfers、`valid=2169 bad=2823 **bytes=184320**`，
+  数据 t=18–2802 ms。
+- 设备：**posted=64 completed=64 bytes=184320 misses=4 recoveries=0**——
+  60 个 `3072/3`、4 次 `status=5`、无 stall；host==device。
+- 新日志把每一次 miss 都标了出来，且**4 条 `UAC U2 rearm race` 与 4 次
+  miss 完全对齐**：
+
+  | seq | buf | pre_prod | pre_cons | 结果 |
+  | --- | --- | --- | --- | --- |
+  | 4 | 3 | `+0xd600` | `+0xd480` | status=5 |
+  | 16 | 7 | `+0xd400` | `+0xd220` | status=5 |
+  | 45 | 4 | `+0xd600` | `+0xd560` | status=5 |
+  | 63 | 6 | `+0xd400` | `+0xd260` | status=5 |
+
+- 机制确认：post 前 ring 还剩少量 TD，但 cave 的 gate 看到
+  `prod == cons`，走空 ring rearm；`0x2feb0` 先对 ring 做 0x1000 的
+  memset（连同 mailbox/cursor），把刚发出那套的 pending completion
+  wipe 掉，控制器对那套回 `status=5`。不是驱动 `0x30ff4`。
+- 判定：下一轮修 `0x2feb0` 的 memset——跳过或缩小到 `0xf00`，保留
+  mailbox/cursor；保持 v29m 数据路径，一次只改这一处。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
