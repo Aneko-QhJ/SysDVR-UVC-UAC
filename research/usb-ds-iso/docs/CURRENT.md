@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 22:1x，Asia/Shanghai）
+# 当前状态（2026-11-03 22:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -114,7 +114,13 @@
   小样本错觉（v29u 的 4 在飞负结果正好与之相符）。
 - **长期 ring 复用首次得到证据**：4.45 s 里环走了 **~43 次六套 wrap**、
   游标两次 2048 帧回卷，没有卡死或漂移。
-- **v30a：host 32 在飞 → 又新最好，且趋势未饱和**。depth 8→16→32：
+- **v30b（64 在飞）是退步，深度曲线在 32 见顶**：host 250.5 套 / 覆盖
+  91.4%（32 深是 253.2 / 94.1%）、设备 **2 次 code-23**（32 深 1 次）、
+  `max_gap_ms=90`（32 深 78），并且重现 1 次 `p0` 单包丢失；64 个 URB
+  全部提交成功，说明不是资源上限，而是队列更长反而推迟了队首补投。
+  **深度曲线：8→16→32→64 = 246.4/251.5/**253.2**/250.5 套、
+  89/91.4/**94.1**/91.4%、事件 4/2/**1**/2。**
+- **v30a：host 32 在飞 → 当前最好**。depth 8→16→32：
   host 交付 **246.4 → 251.5 → 253.2 套**、覆盖 **89% → 91.4% → 94.1%**、
   host 可见丢包 **2 → 0 → 0**、设备 code-23 事件 **4 → 2 → 1**。32 深这次
   设备 **253 段（777216 B）**、`span_ms=4351`、`max_gap_ms=78`、
@@ -183,6 +189,7 @@
 | v29y | 同镜像 + per-packet probe（8 在飞） | 756864 B（246.4 套） | 245×`3072`、8 miss/4 事件、4 recover、span 4559 ms | 宿主 `p0=1/0` ×2（相隔 1344 ms）：**宿主在 URB 第 0 帧漏服务** |
 | v29z | 同镜像 + per-packet probe，**16 在飞** | **772608 B（251.5 套）** | **251×`3072`、4 miss/2 事件、2 recover、span 4444 ms** | **新最好**：`detail` 0 条、覆盖 **91.4%**、`max_gap_ms=87` |
 | v30a | 同镜像 + per-packet probe，**32 在飞** | **777792 B（253.2 套）** | **253×`3072`、2 miss/1 事件、1 recover、span 4351 ms** | **新最好**：`detail` 0、覆盖 **94.1%**、`max_gap_ms=78` |
+| v30b | 同镜像 + per-packet probe，64 在飞 | 769536 B（250.5 套） | 250×`3072`、4 miss/2 事件、2 recover、span 4432 ms | **退步**：事件回到 2、`p0` 重现；深度曲线在 32 见顶 |
 
 ## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
 
@@ -194,7 +201,7 @@
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；**100 ms** stall 才 cancel + 重投（**不要降到 48 ms 以下**，v29r 已证）；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
-| host | 长跑：`uac-raw-probe3 --trigger-first --delay-ms 30 --packets 16 **--transfers 32** --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`（probe 上限已提到 64；短跑 64 用 `--transfers 8 --timeout-ms 5000`） |
+| host | 长跑（最佳）：`uac-raw-probe3 --trigger-first --delay-ms 30 --packets 16 **--transfers 32** --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`（**不要用 64**，v30b 已证更差；短跑 64 用 `--transfers 8 --timeout-ms 5000`） |
 | 结果（短跑 64） | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
 | 结果（长跑 256，**32 在飞**） | **253×3072（777216 B）**、host **777792**、span **4351 ms**、覆盖 **94.1%**、2 miss（1 事件）、1 recovery、`max_gap_ms=78` |
 | 对照 | v29q 59 段 / 1201 ms / 81.7%；v29s 59 段 / 1250 ms / 78.7%；v29m 带诊断 63 段但 2609 ms / 35% |
@@ -221,17 +228,16 @@
 
 ## 下一步
 
-1. **宿主在飞深度是清晰单调的杠杆**（8→16→32：事件 4→2→1、交付
-   246→251→**253** 段、覆盖 89%→91.4%→**94.1%**）。**当前最佳配置 =
-   v29v 镜像 + `--transfers 32`**。
-2. **趋势未饱和**：probe 的 `MAX_XFERS` 已从 32 提到 **64**（guest 里已
-   预编译 `uac-raw-probe3`，BUILD_OK）。下一轮跑 `--transfers 64`：
-   - 最后 1 次事件也消失 → **256/256 段、0 miss**，然后测 8–10 s 连续；
-   - 仍是 1 次 → 饱和了，剩下的需要二进制 usbmon/换宿主。
-3. 设备侧不动（6 次长跑 245–253 段、1–4 事件、`max_gap 78–93 ms`）。
-4. 8 个 descriptor-parser NOP 仍未隔离。
+1. **当前最佳配置 = v29v 镜像 + host `--transfers 32`**：253/256 段、覆盖
+   94.1%、1 次 code-23、`max_gap 78 ms`。64 已证更差，不要再用。
+2. **再跑一次 32 深**（同镜像、同命令）分辨方差与趋势：若这次 0–1 次
+   事件、253–256 段 → 32 就是稳态最优，可以进入 8–10 s 连续测试；
+   若波动到 3–4 次 → 单次结果不可作结论，需要多次取中位数。
+3. 8–10 s 连续测试要改设备侧 app（`STREAM_POSTS=512/640`），见
+   [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md) 之外的常规构建流程。
+4. 设备侧不再动；8 个 descriptor-parser NOP 仍未隔离。
 
-判定：宿主侧只做深度对照，不改设备镜像。
+判定：先复跑 32 深确认方差，再谈长跑。
 
 ## 边界与纪律
 
