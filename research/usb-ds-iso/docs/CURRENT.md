@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 21:0x，Asia/Shanghai）
+# 当前状态（2026-11-03 21:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -114,6 +114,13 @@
   小样本错觉（v29u 的 4 在飞负结果正好与之相符）。
 - **长期 ring 复用首次得到证据**：4.45 s 里环走了 **~43 次六套 wrap**、
   游标两次 2048 帧回卷，没有卡死或漂移。
+- **v29z：host 16 在飞 → 新最好**。同一 v29v 镜像、同一 instrumented
+  probe，只把 `--transfers` 8→16：**`detail` 行 0 条、单包丢失 0**
+  （v29y 的 8 深是 2 个、都在 `p0`），host **772608 B / 251.5 套**、
+  **192 个满 3072 的 URB**、覆盖 **91.4%**（均最好）；设备 **251 段**
+  （771072 B）、**2 次 code-23**（v29y 4 次）、`span_ms=4444`、
+  `max_gap_ms=87`。→ **host 侧 p0 漏帧是补投节奏**，加深在飞即消除；
+  剩 2 次设备事件在 libusb per-packet 里看不到（另一路）。
 - **v29x 第三次长跑复现**：250 段（768000 B）、2 次 code-23（第 3 套槽
   14/15、第 4 套槽 **2/3**）、`span_ms=4426`、`max_gap_ms=90` → 稳态在
   247/250/250 段、2–3 事件、4419–4449 ms、80–90 ms 之间稳定。
@@ -125,8 +132,7 @@
 - **宿主侧采集修正**：那次开的 `xhci-hcd` tracepoint 采到空 trace——
   设备在 **Bus 001 / `ehci-pci`**，xhci 是 Bus 002/003 的键盘鼠标，内核
   没有 ehci tracepoint。改用 **usbmon bus 1**（工具 `--format usbmon`）。
-- 卡：安全 `52069a44…` 已恢复并弹出（21:0x）；v29q…v29w 日志均已归档。
-- 卡：安全 `52069a44…` 已恢复并弹出（19:3x）；v29q…v29t-h16 日志均已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（21:5x）；v29q…v29z 日志均已归档。
 
 ## 阶段进度
 
@@ -169,6 +175,8 @@
 | v29u | v29t + `IN_FLIGHT=4` | 186816 B（60.8 套） | 60×`3072`、2 miss、1 recover（cancel 2）、`max_gap_ms=95` | **负结果**：4 在飞不改 code 23；恢复更贵，回 v29t |
 | v29v | v29t 配置 + 256 posts / 恢复上限 64 | 762816 B（248.3 套） | **247×`3072`、6 miss/3 事件、3 recover、span 4449 ms** | **稳态成立**：覆盖 88.8%（host 90.3%）、`max_gap_ms=80`、环 43 次 wrap 正常 |
 | v29w | 同 v29v + xhci trace 尝试 | 768576 B（250.2 套） | 250×`3072`、4 miss/2 事件、2 recover、span 4419 ms | **复现**：`max_gap_ms=84`；trace 空（设备在 EHCI，非 xHCI） |
+| v29y | 同镜像 + per-packet probe（8 在飞） | 756864 B（246.4 套） | 245×`3072`、8 miss/4 事件、4 recover、span 4559 ms | 宿主 `p0=1/0` ×2（相隔 1344 ms）：**宿主在 URB 第 0 帧漏服务** |
+| v29z | 同镜像 + per-packet probe，**16 在飞** | **772608 B（251.5 套）** | **251×`3072`、4 miss/2 事件、2 recover、span 4444 ms** | **新最好**：`detail` 0 条、覆盖 **91.4%**、`max_gap_ms=87` |
 
 ## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
 
@@ -180,9 +188,9 @@
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；**100 ms** stall 才 cancel + 重投（**不要降到 48 ms 以下**，v29r 已证）；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
-| host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
+| host | 长跑：`uac-raw-probe2 --trigger-first --delay-ms 30 --packets 16 **--transfers 16** --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`（短跑 64 用 `--transfers 8 --timeout-ms 5000` 亦可） |
 | 结果（短跑 64） | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
-| 结果（长跑 256） | **247×3072（758784 B）**、host 762816、span **4449 ms**、覆盖 **88.8% / host 90.3%**、6 miss（3 事件）、3 recoveries、`max_gap_ms=80` |
+| 结果（长跑 256，**16 在飞**） | **251×3072（771072 B）**、host **772608**、span **4444 ms**、覆盖 **91.4%**、4 miss（2 事件）、2 recoveries、`max_gap_ms=87` |
 | 对照 | v29q 59 段 / 1201 ms / 81.7%；v29s 59 段 / 1250 ms / 78.7%；v29m 带诊断 63 段但 2609 ms / 35% |
 | 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
@@ -207,19 +215,18 @@
 
 ## 下一步
 
-1. **v29y 拿到第一个宿主侧签名**：probe 的 per-packet detail 显示两个 URB
-   各丢**一个包、都在 index 0**（`p0=1/0`，status ERROR、0 字节），时间
-   1938 / 3282 ms（相隔 1344 ms）；而设备这次报了 **4 次 code-23**（8 个
-   miss、245 段、span 4559 ms、`max_gap 93`）。→ 宿主确实在**新 URB 的第一
-   帧**漏服务，但只覆盖了设备事件的一部分（其余在宿主侧是“完成但 0 字节”）。
-2. **下一轮（同镜像 + 同一 instrumented probe，只把 `--transfers` 8→16）**：
-   - `p0` 错误消失 → 宿主补投节奏是原因，宿主侧加深在飞即可修；
-   - `p0` 错误仍在 → emulated 控制器在 URB 起始帧上的行为，只有非 VM 宿主
-     或 SS/xHCI 才可能改。
-3. 设备侧不动（四次长跑稳态 245–250 段、2–4 事件、`max_gap 80–93 ms`）。
+1. **宿主深度是有效杠杆**：8 → 16 在飞把“每个 URB 第 0 帧漏一次”完全消除
+   （`detail` 0 条），交付 245 → **251 段**、覆盖 91.4%——**新的最佳配置**
+   （设备镜像不变，只改 host `--transfers 16`）。
+2. **还剩 2 次设备侧 code-23，宿主侧看不到**（libusb 的 per-packet 全 0 错误）。
+   下一轮最便宜的判别：`--transfers 32`（probe 上限）——
+   - 事件继续下降 → 深度还没到位，继续加或改补投策略；
+   - 停在 2 次 → 这是 emulated 控制器/设备的另一路，需要 usbmon 二进制 API
+     或换宿主，不再是深度问题。
+3. 设备侧不动（5 次长跑：245–251 段、2–4 事件、`max_gap 80–93 ms`）。
 4. 8 个 descriptor-parser NOP 仍未隔离。
 
-判定：宿主侧只做对照实验，不改设备镜像。
+判定：宿主侧只做深度/节奏对照，不改设备镜像。
 
 ## 边界与纪律
 
