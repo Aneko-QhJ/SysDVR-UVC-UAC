@@ -1058,6 +1058,23 @@ UAC U2 pipe stall recover cancelled=3 rc=0x0 limit_ms=100
   0x800 仍然 `prod != cons`，空 ring 的 rearm 门不会误触；控制器手里多
   一整套 TD。
 
+### 2026-11-03 19:4x v29u 实机：4 在飞也不改漏帧
+
+- 设备：`posted=64 completed=64 bytes=184320 misses=2 recoveries=1`；
+  `pipe miss recover cancelled=2`；`span_ms=1114 **max_gap_ms=95**
+  max_react_ms=34`；`evlog` 仍是一条 `code=23 len=192 off=0xba0/0xbc0`
+  （第 5 套 Isoch 槽 13/14，与 v29s 完全相同的位置）。
+- host 186816 B、覆盖 87.7%、满 3072 的 URB 58 个（比 3 在飞时的 45 多，
+  数据更整）。
+- 解读：**多一整套 TD 预取不放缓漏帧**。加上 host 预排 8/16 等价，
+  可以判定漏服务既不是“控制器缺 TD 材料”，也不是“宿主排队不足”。
+  剩下的解释只有宿主/VM 的周期调度本身，或设备侧这个形状的固有边界。
+- 代价：4 在飞让恢复时 cancel 2 套（3 在飞是 1 套），所以段数 60 < 61、
+  覆盖 87.7% < 88.9%——**v29t 仍是最佳配置**。
+- 设备侧排查清单（全部负结果）：cave 空 ring 门（v29p）、memset 长度
+  （v29o）、lead 16/24/40（v29j/v29l）、host 预排（h16）、在飞 4（v29u）。
+- 下一步：长跑（v29v，256 posts）测稳态，而不是继续压单次 miss。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
