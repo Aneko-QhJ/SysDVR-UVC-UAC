@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 22:2x，Asia/Shanghai）
+# 当前状态（2026-11-03 22:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -9,6 +9,11 @@
 ## 一分钟
 
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
+- **8.9 s 长跑（v30e，稳态成立）**：512/512 posts → **498 个完整套（97.3%）**、
+  `span_ms=8885`、设备 **89.7%** / host **90.4%**、**5 次 code-23**（0.56/s）、
+  `max_gap_ms=92`、`max_react_ms=44`、无 crash/fatal/erpt。5 次事件在
+  353/2209/4049/5905/7745 ms，**间隔 1856/1840/1856/1840 ms（~1.85 s 周期）
+  —— 本轮新线索**；4.5 s 轮次事件太少，看不出间隔。
 - **数据路径最好一轮（v29m 重复轮）**：64/64 posts、**63 个完整 3072 B
   片段（193536 B）**、host 与设备字节相等、**1 次单套 miss、0 恢复**、
   无 crash/fatal/erpt；alt0 不崩。
@@ -204,20 +209,22 @@
 | v30a | 同镜像 + per-packet probe，**32 在飞** | **777792 B（253.2 套）** | **253×`3072`、2 miss/1 事件、1 recover、span 4351 ms** | **新最好**：`detail` 0、覆盖 **94.1%**、`max_gap_ms=78` |
 | v30b | 同镜像 + per-packet probe，64 在飞 | 769536 B（250.5 套） | 250×`3072`、4 miss/2 事件、2 recover、span 4432 ms | **退步**：事件回到 2、`p0` 重现；深度曲线在 32 见顶 |
 | v30d | 同镜像 + per-packet probe，32 在飞（复跑） | 764160 B（248.8 套） | 247×`3072`、6 miss/3 事件、3 recover、span 4495 ms | **方差**：同参数比 v30a 少 6 套、多 2 次事件；单轮不能排序 16/32/64 |
+| v30e | 同 v29v 镜像 + 512 posts / 恢复上限 128，host probe4（URB 上限 4096）32 在飞 | **1533696 B（499.25 套）** | **512/512 posts、498×`3072`、10 miss/5 事件、5 recover、span 8885 ms** | **稳态成立**：覆盖 89.7%（host 90.4%）、`max_gap 92`、事件间隔 ~1.85 s |
 
-## 当前最佳配置（v29t = v29s payload + 立即恢复 app）
+## 当前最佳配置（v29s payload + 立即恢复 app；短跑 v29t / 长跑 v30e）
 
 | 项 | 值 |
 | --- | --- |
-| NSP / NSO | v29t `cac6ed88…`（93059 B）/ `cb22dd47…` |
+| NSP / NSO | 短跑 v29t `cac6ed88…`（93059 B）/ `cb22dd47…`；长跑 v30e `1737eb35…`（93050 B）/ `b0c0060d…` |
 | cave | `patches/iso_burst_uac84_dci9_pipe_quad_log.S`（548/684 B，lead 32，`ISO_ENTRY=0x300`） |
 | ring | link `+0xc00`（六套对齐）；mailbox `+0xf00/+0xf40/+0xf80/+0xfc0`，`set=(offset>>9)&3`；游标 `+0xfb8` |
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；**100 ms** stall 才 cancel + 重投（**不要降到 48 ms 以下**，v29r 已证）；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
-| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
-| host | 长跑（最佳）：`uac-raw-probe3 --trigger-first --delay-ms 30 --packets 16 **--transfers 32** --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`（**不要用 64**，v30b 已证更差；短跑 64 用 `--transfers 8 --timeout-ms 5000`） |
+| app | `-DUAC_U2_BURSTS=8 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_QUIET_PIPE -DUAC_U2_EVENT_LOG`；短跑 `STREAM_POSTS=64`，长跑 `STREAM_POSTS=512 MAX_RECOVERIES=128`；miss 立即恢复；（**不要**再加 `CURSOR_DIAG`） |
+| host | 长跑（最佳）：`uac-raw-probe4 --trigger-first --delay-ms 30 --packets 16 **--transfers 32** --rearm --max-urbs 2048 --timeout-ms 10000 --keep-alt`（probe4 = probe3 把 `MAX_URBS_TOTAL` 1024→4096；host 每套约消耗 2 个 URB，512 套要 ~1024–1100 次提交。**不要用 64 在飞**，v30b 已证更差；短跑 64 用 `--transfers 8 --timeout-ms 5000`） |
 | 结果（短跑 64） | **61×3072（187392 B）**、host 188544、span **1146 ms**、host 覆盖 **88.9%**、misses=2、recoveries=1（cancelled=1）、无 crash/fatal |
 | 结果（长跑 256，**32 在飞**） | **253×3072（777216 B）**、host **777792**、span **4351 ms**、覆盖 **94.1%**、2 miss（1 事件）、1 recovery、`max_gap_ms=78` |
+| 结果（长跑 512，**32 在飞**） | **498×3072（1529856 B）**、host **1533696**（499.25 套）、span **8885 ms**、覆盖 **89.7%**（host 90.4%）、10 miss（**5 事件**）、5 recovery、`max_gap_ms=92`、事件间隔 **~1.85 s** |
 | 对照 | v29q 59 段 / 1201 ms / 81.7%；v29s 59 段 / 1250 ms / 78.7%；v29m 带诊断 63 段但 2609 ms / 35% |
 | 对照 | v29m 同 payload 带诊断：63 段但 span 2609 ms、覆盖 35.3%——**段数不是节奏指标** |
 
@@ -242,19 +249,19 @@
 
 ## 下一步
 
-1. **先接受方差**：同配置两次（v30a / v30d）差 6 套、2 次事件，所以任何
-   “深度 X 更好”的结论都必须多次或更长训练才能成立。已确定的是 **8 深
-   明显更差**（有 host 可见 `p0` 丢包），16–64 之间差异在噪声内。
-2. **下一步做 8–10 s 长跑**（app-only 改动：`-DUAC_U2_STREAM_POSTS=512/640
-   -DUAC_U2_MAX_RECOVERIES=128`，host `--max-urbs 1024 --timeout-ms 15000`）：
-   一次跑就能平均掉多次 hiccup，给出真正的稳态占空比（4–5 s 的样本只有
-   2–4 次事件，统计上太薄）。
-3. 深度就用 **32**（不是因为它最优，而是 16–64 里它和 16 都稳定、且 64 的
-   单轮更差、32 的 host 覆盖面最大）。
+1. **8–10 s 长跑已做（v30e）**：512 posts → 498 套 / 8.885 s、5 事件、0.56/s、
+   `max_gap 92`；与 v29v/v30d 的 0.67/s 同量级，v30a 的 0.23/s 是低异常。
+   结论：**稳态随时长线性成立**，产品数字定在 **~90% 占空 + ~92 ms 空洞 /
+   ~1.8 s**，不再单轮比较 16/32/64。
+2. **复跑一次同配置**（512 posts、probe4 `--max-urbs 2048`）确认 5 次事件的
+   ~1.85 s 间隔是否重现——这是当前唯一的新线索；不重现就只是本轮巧合。
+3. 若要 **>10 s** 的样本：probe 的 `--timeout-ms` 上限（10000）同时被当成
+   run deadline，需要拆成两个参数（host-only 小改动），否则长训练会被 10 s
+   截断、尾段变成假 miss。
 4. 设备侧不再动；8 个 descriptor-parser NOP 与 USB 字符串描述符两个小
    缺口仍未做（后者只影响宿主显示名字）。
 
-判定：长跑看占空比与事件率的稳定性，不再单轮比较深度。
+判定：先确认 1.85 s 周期；确认后再决定是否为它改 host 计时或驱动。
 
 ## 边界与纪律
 
@@ -269,7 +276,7 @@
 
 ## 不证明
 
-48 kHz 连续 PCM、标准宿主（Linux `snd-usb-audio`）互操作、>2.7 s 稳态与长期
+48 kHz 连续 PCM、标准宿主（Linux `snd-usb-audio`）互操作、>8.9 s 稳态与更长期
 ring/缓冲复用、0 miss、16 ms/段、时钟同步/反馈、A23 10 s 连续、旧超时根因。
 
 ## 文件角色

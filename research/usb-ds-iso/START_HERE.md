@@ -25,36 +25,38 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 22:3x）
+## 当前边界（2026-11-03 22:1x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
 - **当前最佳配置**：
-  - 设备镜像 **v29v `b8cf0807…`**（93050 B）：cave `pipe_quad_log.S`
-    548/684 B、`ISO_ENTRY=0x300`、3 在飞、miss 立即 cancel + 重投、
-    `STREAM_POSTS=256`、`MAX_RECOVERIES=64`、quiet + evlog。
-  - host：`uac-raw-probe3 --trigger-first --delay-ms 30 --packets 16
-    --transfers 32 --rearm --max-urbs 512 --timeout-ms 10000 --keep-alt`。
-- **最好一轮（v30a，32 在飞）**：256 posts → **253 段 / 777216 B**、host
-  777792 B、覆盖 **94.1%**、1 次 code-23、`span_ms=4351`、`max_gap_ms=78`、
-  无 crash/fatal。**同配置复跑（v30d）**：247 段 / 3 次 / 89.4% / 86 ms →
-  固定深度轮次方差 **≈6 段、2 次事件**，单轮不能排序 16/32/64。
+  - 设备镜像 **v30e `1737eb35…`**（93050 B，= v29v payload 逐字节相同）：
+    cave `pipe_quad_log.S` 548/684 B、`ISO_ENTRY=0x300`、3 在飞、miss 立即
+    cancel + 重投、`STREAM_POSTS=512`、`MAX_RECOVERIES=128`、quiet + evlog。
+  - host：`uac-raw-probe4 --trigger-first --delay-ms 30 --packets 16
+    --transfers 32 --rearm --max-urbs 2048 --timeout-ms 10000 --keep-alt`
+    （probe4 = probe3 把 `MAX_URBS_TOTAL` 1024→4096；每套约消耗 2 个 URB）。
+- **长跑（v30e，8.885 s）**：512/512 posts → **498 段 / 1529856 B**、host
+  1533696 B、覆盖 **89.7%**（host 90.4%）、**5 次 code-23**（0.56/s）、
+  `max_gap_ms=92`、无 crash/fatal。事件在 353/2209/4049/5905/7745 ms，
+  **间隔 ~1.85 s —— 新线索**。
+- **短跑最好一轮（v30a，32 在飞）**：253 段 / 777216 B / 94.1% / 1 次 /
+  `max_gap 78`；同配置复跑 v30d 247 段 / 3 次 / 89.4% → 单轮不能排序
+  16/32/64，**8 深明显更差**站得住。
 - **已定论**：
   - miss = 控制器的 **code 23（Missed Service）**；驱动 `0x31274` 对 23
     只置 halt、**不复位 ring**，所以 cave 无法 rearm，只能靠 app 收到
-    `status=5` 立刻 cancel + 重投 → ~80 ms 内恢复、丢 1 套。
+    `status=5` 立刻 cancel + 重投 → ~80–92 ms 内恢复、丢 1 套。
   - 设备侧其它假设全部否掉：lead 16/24/40、在飞 4、空 ring 门、memset
     长度、host 预排 8/16。
-  - **8 深明显更差**（host 可见 `p0` 单包丢包、4 次事件）；16/32/64 在噪声内。
 - **宿主侧事实**：设备在 **Bus 001 / `ehci-pci`**（不是 xHCI），内核没有
   ehci tracepoint；可用 **usbmon bus 1** 或 probe 的 per-packet detail
   （`urb[N] detail p<idx>=<status>/<len>`）。
-- **下一步**：8–10 s 长跑（app-only：`STREAM_POSTS=512/640`、
-  `MAX_RECOVERIES=128`；host `--max-urbs 1024 --timeout-ms 15000`），用长
-  样本定稳态占空比与事件率，再谈产品结论（当前区间 88–94% 占空 + ~80 ms 空洞）。
+- **下一步**：同配置复跑一次，确认 5 次事件的 ~1.85 s 间隔是否重现；若要
+  >10 s 样本，需把 probe 的 `--timeout-ms` 上限与 run deadline 拆开。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（21:0x）；VM 挂起；v30d 证据已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（22:1x）；VM 挂起；v30e 证据已归档。
 
 ## 文件角色
 

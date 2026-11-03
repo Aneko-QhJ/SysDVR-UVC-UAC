@@ -25,7 +25,12 @@
    246 -> 251 -> 253 sets), so the ceiling moves to 64 URBs (64 x 3072 B of
    buffers) to test the next step. */
 #define MAX_XFERS 64
-#define MAX_URBS_TOTAL 1024
+/* v30e: the host consumes ~2 URBs per 3072 B set (one data URB plus one
+   short/empty resubmit), so a 512-post train needs ~1024-1100 submissions
+   and the old 1024 ceiling cut the run at ~8.9 s.  The budget only sizes a
+   counter, not buffers, so 4096 is free; the run is still bounded by
+   --timeout-ms (also the deadline, max 10000). */
+#define MAX_URBS_TOTAL 4096
 
 struct xfer_state {
     volatile int done;

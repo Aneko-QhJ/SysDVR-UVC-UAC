@@ -1110,3 +1110,33 @@ miss [1] code=23 len=192 off=0xb80   set 5 Isoch slot 12
 2. v26B：16/32 buffer，测 gap/丢包；再谈 PCM、时钟与 UVC 共存。
 3. 并行课题：`ISO_ENTRY=0x270`（应为 0x300）与 8 个 descriptor-parser NOP
    的隔离；收尾崩溃的 app 侧规避（alt0 先 cancel 再 ack）。
+
+### 2026-11-03 22:1x v30e 长跑：8.9 s 稳态与 ~1.85 s 周期
+
+v30e 与 v29v 的 payload 逐字节相同（header `929b4b3b…`），只把 app 的
+`STREAM_POSTS` 256→512、`MAX_RECOVERIES` 64→128（NSP `1737eb35…`，
+93050 B）。host 用 probe4（`MAX_URBS_TOTAL` 1024→4096，一行改动），因为
+host 每套约消耗 2 个 URB：512 套需要 ~1024–1100 次提交，probe3 的 1024
+上限会在 ~8.9 s 停住；`--max-urbs 2048 --timeout-ms 10000`。
+
+设备侧：
+
+```text
+pipe end posted=512 completed=512 bytes=1529856 misses=10 recoveries=5
+pipe timing waits=506 timeouts=64 span_ms=8885 max_gap_ms=92 max_react_ms=44
+```
+
+- 498 个完整套 = 1529856 B，512 posts 的 **97.3%**；`span_ms=8885` 对应
+  512×16 = 8192 ms 下限，差 693 ms ≈ 5 × (92 ms 恢复 + 抖动) + 漂移。
+- 5 次 code-23 事件，每次两条 miss（两帧），第 3 次 `recover cancelled=0`
+  （cancel 时已无在飞）；其余 4 次 `cancelled=1`。
+- host 625 transfers、1533696 B（499.25 套）、数据窗 33–8865 ms、
+  覆盖 **90.4%**、384 个满 URB、4 条 `detail p0=1/0`。
+- 事件时刻：**353 / 2209 / 4049 / 5905 / 7745 ms**，间隔
+  **1856 / 1840 / 1856 / 1840 ms**。此前 4.5 s 轮次只有 2–3 次事件，
+  看不出间隔；这一轮是第一次能说“漏服务有周期”。
+- 与 v29v 对比：事件率 5/8.885 = **0.56/s**（v29v 0.67/s、v30d 0.67/s、
+  v30a 0.23/s 是低异常）；交付率 97.3% vs 96.5%。**稳态随时长线性成立**，
+  没有随 ring wrap 次数（本轮 ~92 次六套 wrap）退化的迹象。
+- 结论：产品数字改为 **~90% 占空 + ~92 ms 空洞 / ~1.8 s**；下一步是复跑
+  确认 1.85 s 周期，而不是继续调深度。
