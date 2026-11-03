@@ -123,6 +123,47 @@ REARM_EDITS = (
      "re-arm memset stops at 0xf00 so mailbox/cursor survive a drain"),
 )
 REARM_EDIT_COUNT = len(REARM_EDITS)
+
+# v31: code-23 (Missed Service) fast recovery.  The generic error branch at
+# 0x31274 only sets the endpoint halt bit at regs+0x50 and polls the ack at
+# regs+0x5c, then falls through to 0x31118 which completes the URB with
+# status 5.  It never resets the ring, so the app has to cancel + repost and
+# the cave can only re-arm on the next empty-ring post: a 20-40 ms app round
+# trip plus the 32 ms cave lead before the next TD set is fetched.
+#
+# Replace the whole halt dance with the driver's own endpoint setup
+# 0x2feb0(manager, endpoint) - ring reset, 64 B context rewrite, commit
+# (regs+0x58), and the halt clear at regs+0x54/0x50 - which is exactly what
+# the app's cancel plus the next post's empty-ring replay do today, only
+# before the URB is completed.  The app still cancels on the status=5 report,
+# but that cancel now finds the ring at base and the halt already clear, so
+# its own 0x54 handshake is a no-op and the next post starts from a running
+# endpoint.
+#
+# Instruction budget: 0x31274..0x312c3 is 0x50 bytes (20 words).
+#   sub  x0, x21, #0x22, lsl #12   manager = controller area - 0x22000
+#   mov  x1, x19                   endpoint object of the event's DCI
+#   bl   0x2feb0                   driver endpoint setup (preserves x19/x21)
+#   b    0x31118                   complete the URB with status 5 and return
+# The remaining 16 words are NOP padding so the edit keeps the original size.
+FAST_RECOVER_ADDR = 0x31274
+FAST_RECOVER_BEFORE = bytes.fromhex(
+    "a80640f92b0080527421c91a0a5140b95f01146a81f4ff544901142a16fa80"
+    "52095100b9a80640f909cd45b83f01146ae100005440068052f56aff97d606"
+    "007121ffff54a80640f908710191140100b9"
+)
+FAST_RECOVER_AFTER = (
+    struct.pack("<I", 0xD1408AA0)          # sub x0, x21, #0x22, lsl #12
+    + struct.pack("<I", 0xAA1303E1)        # mov x1, x19
+    + branch(0x3127C, 0x2FEB0, link=True)  # bl 0x2feb0
+    + branch(0x31280, 0x31118)             # b 0x31118
+    + bytes.fromhex("1f2003d5") * 16       # nop
+)
+FAST_RECOVER_EDITS = (
+    (FAST_RECOVER_ADDR, FAST_RECOVER_BEFORE, FAST_RECOVER_AFTER,
+     "code-23: re-arm the ring and clear halt inline before the completion"),
+)
+FAST_RECOVER_EDIT_COUNT = len(FAST_RECOVER_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -161,6 +202,8 @@ def payload_ready(work):
         allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
     if doc.get("driver_rearm_keep_mailbox"):
         allowed = tuple(value + REARM_EDIT_COUNT for value in allowed)
+    if doc.get("driver_fast_recover"):
+        allowed = tuple(value + FAST_RECOVER_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
@@ -206,7 +249,7 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 def build_edits(nso, code, symbols, breaker=False, report=True,
                 driver_queue=False, driver_link=False, link_slot=0xC00,
                 driver_map_soft=False, driver_map_soft2=False,
-                driver_rearm_keep_mailbox=False):
+                driver_rearm_keep_mailbox=False, driver_fast_recover=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -280,12 +323,16 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
     if driver_rearm_keep_mailbox:
         for address, before, after, reason in REARM_EDITS:
             edit(address, before, after, reason)
+    if driver_fast_recover:
+        for address, before, after, reason in FAST_RECOVER_EDITS:
+            edit(address, before, after, reason)
     expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
                 + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0)
                 + (LINK_EDIT_COUNT if driver_link else 0)
                 + (MAP_SOFT_EDIT_COUNT if driver_map_soft else 0)
                 + (MAP_SOFT2_EDIT_COUNT if driver_map_soft2 else 0)
-                + (REARM_EDIT_COUNT if driver_rearm_keep_mailbox else 0))
+                + (REARM_EDIT_COUNT if driver_rearm_keep_mailbox else 0)
+                + (FAST_RECOVER_EDIT_COUNT if driver_fast_recover else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -321,7 +368,7 @@ def render(edits):
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
              segments=1, frames=None, driver_queue=False, driver_link=False,
              link_slot=0xC00, driver_map_soft=False, driver_map_soft2=False,
-             driver_rearm_keep_mailbox=False):
+             driver_rearm_keep_mailbox=False, driver_fast_recover=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -350,6 +397,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "driver_map_soft": bool(driver_map_soft),
         "driver_map_soft2": bool(driver_map_soft2),
         "driver_rearm_keep_mailbox": bool(driver_rearm_keep_mailbox),
+        "driver_fast_recover": bool(driver_fast_recover),
         "link_slot": hex(link_slot) if driver_link else None,
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
@@ -391,6 +439,8 @@ def check(nso, work):
         allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
     if doc.get("driver_rearm_keep_mailbox"):
         allowed = tuple(value + REARM_EDIT_COUNT for value in allowed)
+    if doc.get("driver_fast_recover"):
+        allowed = tuple(value + FAST_RECOVER_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -428,13 +478,10 @@ def endpoint_constants_ok(code, require_report=True):
                     and (nxt >> 5) & 0xFFFF == 0x00C0
                     and (nxt >> 21) & 0x3 == 1
                 )
-    report_word = 0x7102111F in words  # cmp w8, #0x84 (iso_report only)
-    return (
-        low
-        and high
-        and 0x52801081 in words  # mov w1, #0x84
-        and (report_word or not require_report)
-    )
+    # `mov w1, #0x84` and `cmp w8, #0x84` only exist when the report hook is
+    # part of the cave; the v29s log-only cave completes through the driver.
+    report_words = 0x7102111F in words and 0x52801081 in words  # iso_report
+    return low and high and (report_words or not require_report)
 
 
 def main():
@@ -469,6 +516,10 @@ def main():
     parser.add_argument("--driver-rearm-keep-mailbox", action="store_true",
                         help="v29o: stop the 0x2feb0 re-arm memset at 0xf00 so "
                              "mailbox/cursor survive a drain re-arm")
+    parser.add_argument("--driver-fast-recover", action="store_true",
+                        help="v31: replace the 0x31274 halt-only error branch with "
+                             "an inline 0x2feb0 endpoint re-arm (ring reset + "
+                             "context commit + halt clear)")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -495,7 +546,8 @@ def main():
                         link_slot=args.link_slot,
                         driver_map_soft=args.driver_map_soft,
                         driver_map_soft2=args.driver_map_soft2,
-                        driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox)
+                        driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox,
+                        driver_fast_recover=args.driver_fast_recover)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
@@ -505,7 +557,8 @@ def main():
                    link_slot=args.link_slot,
                    driver_map_soft=args.driver_map_soft,
                    driver_map_soft2=args.driver_map_soft2,
-                   driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox)
+                   driver_rearm_keep_mailbox=args.driver_rearm_keep_mailbox,
+                   driver_fast_recover=args.driver_fast_recover)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -519,6 +572,7 @@ def main():
         + (", driver-map-soft" if doc["driver_map_soft"] else "")
         + (", driver-map-soft2" if doc["driver_map_soft2"] else "")
         + (", driver-rearm-keep-mailbox" if doc["driver_rearm_keep_mailbox"] else "")
+        + (", driver-fast-recover" if doc["driver_fast_recover"] else "")
     )
 
 

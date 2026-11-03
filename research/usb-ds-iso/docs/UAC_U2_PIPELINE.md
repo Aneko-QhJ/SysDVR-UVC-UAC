@@ -1284,3 +1284,41 @@ WAV 569344 frames = 11.86 s, but only 4 silence runs (0.17 s)
 - 结论：**回退 3 在飞**。参数调优（arm 延迟、在飞深度）到此为止，下一个
   结构性杠杆是驱动侧 code-23 快速恢复：在 `0x31274` 内联 ring 复位 + 清 halt，
   省掉 app 的 cancel 往返，把每次 miss 的 23–115 ms 空洞压到几毫秒。
+
+### 2026-11-04 01:3x v31 离线：驱动侧 code-23 快速恢复
+
+只改驱动的一处错误分支，app 与 cave 不动（仍是 v30h 配置）：
+
+```text
+0x31274 原：halt-set + 0x5c ack 轮询 + fall-through 到 0x31118
+             (20 条指令 / 0x50 B，最坏 2000 x 50 us)
+0x31274 新：sub  x0, x21, #0x22, lsl #12   ; manager = x21 - 0x22000
+             mov  x1, x19                   ; 事件里的端点对象
+             bl   0x2feb0                   ; ring reset + context + commit + unhalt
+             b    0x31118                   ; 原路径：status=5 完成 URB
+             + 16 x nop                     ; 保持 0x50 B
+```
+
+`0x2feb0` 的动作（`UAC_U2_ENDPOINT_CONTEXT.md` §2）：memset ring、`prod/cons`
+回 base、`regs+0x40` cycle=1、写 64 B context、`regs+0x58` commit、清
+`regs+0x54/0x50` halt。它与 app 的 cancel + 下一次空 ring post 所做的事
+完全相同，只是发生在 completion 之前；`0x312c4` 的 `b 0x31118` 不变，
+所以 URB 仍以 status=5 报给 app。
+
+- 动机：code 23 只置 halt、不复位 ring（`0x31274`），cave 的 `prod==cons`
+  门永远不成立，app 必须 `usbDsEndpoint_Cancel` + 重投，代价是 20–40 ms
+  往返 + 32 ms lead。
+- 预期：halt 握手（两次轮询）从空洞里消失，app 的 cancel 看到 ring 已在
+  base、halt 已清（`0x30470` 的 `0x54` 轮询直接跳过）。
+- 风险：`0x2feb0` 在事件上下文里跑 context writer + DMA 转换；断言会以
+  crash/fatal 出现。另两条在飞 URB 的 ring 内存被 memset 掉，仍由 app 紧随
+  其后的 cancel 完成（与今天相同）。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| 每段 `max_gap` 明显小于 v30h 的 28–67 ms，miss 数同量级 | **halt 握手就是空洞成本**；保留 v31，继续压 miss 或宿主样本差 |
+| 每段 `max_gap` 与 v30h 相同（28–67 ms） | 握手不是成本；剩下的只有 app round trip + 32 ms lead，下一轮改 app/cave（不再由驱动修） |
+| 空洞更大 / miss 更多 | 事件上下文里 re-arm 有副作用（可能与 app cancel 竞争）；回退 v30h |
+| 任一 crash/fatal/erpt | 立即停，读卡取报告，回退 v30h |
+
+判据只看空洞与 crash，不看段数（单轮段数方差 ≈ 6 套）。
