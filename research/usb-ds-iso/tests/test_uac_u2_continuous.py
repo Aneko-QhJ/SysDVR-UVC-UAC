@@ -625,6 +625,25 @@ class UacU2Alt1TriggerTests(unittest.TestCase):
         self.assertLess(block.index("_ctrlAck(iface);"),
                         block.index("_armUacBurstAsync();"))
 
+    def test_alt0_stops_the_pipe_before_the_cancel(self):
+        stop = self.source.index("case UAC_ACT_STOP:")
+        block = self.source[stop:self.source.index("case UAC_ACT_ACK:", stop)]
+        self.assertIn("g_uacCtx.streamRequested = false;", block)
+        self.assertLess(block.index("g_uacCtx.streamRequested = false;"),
+                        block.index("usbDsEndpoint_Cancel"))
+
+    def test_pipe_loop_observes_the_stop_flag(self):
+        self.assertIn("if (!g_uacCtx.streamRequested) break;", self.source)
+
+    def test_continuous_mode_guards_the_empty_break(self):
+        # v30h: continuous builds must not stop just because every posted set
+        # has completed; only alt0 (streamRequested=false) ends the stream.
+        self.assertIn("#define UAC_U2_STREAM_LIMIT 0xFFFFFFFFu", self.source)
+        self.assertIn("#define UAC_U2_STREAM_ENDLESS 1", self.source)
+        self.assertIn("#define UAC_U2_STREAM_ENDLESS 0", self.source)
+        self.assertIn("if (posted == completed &&\n"
+                      "            !UAC_U2_STREAM_ENDLESS) break;", self.source)
+
     def test_arm_helper_runs_the_train_on_a_worker_thread(self):
         start = self.source.index("static void _uacArmThreadFunc(void *arg)")
         block = self.source[start:self.source.index("static void _armUacBurstAsync", start)]

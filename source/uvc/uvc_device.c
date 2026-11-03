@@ -108,6 +108,17 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #if UAC_U2_STREAM_POSTS < UAC_U2_TRAIN_POSTS
 #error "UAC_U2_STREAM_POSTS must be >= UAC_U2_TRAIN_POSTS"
 #endif
+/* v30h: a continuous build keeps posting until SET_INTERFACE(alt=0) clears
+   streamRequested; the post counter is only a wrap guard.  The two macros
+   keep the pipe loop free of a new preprocessor branch (post_body() in the
+   tests slices that block at its first #else). */
+#if defined(UAC_U2_CONTINUOUS)
+#define UAC_U2_STREAM_LIMIT 0xFFFFFFFFu
+#define UAC_U2_STREAM_ENDLESS 1
+#else
+#define UAC_U2_STREAM_LIMIT UAC_U2_STREAM_POSTS
+#define UAC_U2_STREAM_ENDLESS 0
+#endif
 /* One DMA row per post: rounded up to a page so every row stays 0x1000
    aligned (the cave's TDs point into it). */
 #define UAC_U2_BUF_BYTES ((UAC_U2_BURST_BYTES + 0xFFFu) & ~0xFFFu)
@@ -781,6 +792,7 @@ static struct {
 
 #ifdef UAC_U2_PATCH
     bool burstPosted;               // U2: one bounded train per boot
+    volatile bool streamRequested;  // v30h: alt1 arms, alt0 clears
     u32 postSeq;                    // U2: diagnostic post sequence
     u32 patternFrame;               // U2: running 48 kHz stereo frame phase
 #endif
@@ -2666,6 +2678,7 @@ static void _postUacBurst(void)
         return;
     }
 
+    g_uacCtx.streamRequested = true;
     g_uacCtx.burstPosted = true;
     LOG("UAC U2 train begin count=%u pattern=%u\n", UAC_U2_TRAIN_POSTS,
         g_uacCtx.patternFrame);
@@ -2708,7 +2721,7 @@ static void _postUacBurst(void)
     bool pipe_failed = false;
     u8 free_slot[8];
     u32 urb_ids[8] = {0};
-    const u32 stream_posts = UAC_U2_STREAM_POSTS;
+    const u32 stream_posts = UAC_U2_STREAM_LIMIT;
     u64 last_progress = svcGetSystemTick();
     for (u32 i = 0; i < 8; ++i) free_slot[i] = 1;
 
@@ -2758,8 +2771,10 @@ static void _postUacBurst(void)
             last_progress = svcGetSystemTick();
         }
         if (pipe_failed) break;
+        if (!g_uacCtx.streamRequested) break; /* v30h: alt0 asked to stop */
         if (posted == stream_posts && completed == posted) break;
-        if (posted == completed) break; /* nothing in flight and nothing left */
+        if (posted == completed &&
+            !UAC_U2_STREAM_ENDLESS) break; /* nothing in flight, nothing left */
 
         Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
                                 16E+6);
@@ -3029,8 +3044,19 @@ static void _postUacBurst(void)
 static void _uacArmThreadFunc(void *arg)
 {
     (void)arg;
-    svcSleepThread(20E+6);
-    _postUacBurst();
+    for (;;) {
+        while (!g_uacCtx.streamRequested) {
+            svcSleepThread(1E+6);
+        }
+        /* Let the alt1 status stage land and the host queue its first ISO
+           reads before the train submits. */
+        svcSleepThread(20E+6);
+        if (!g_uacCtx.streamRequested) continue;
+        _postUacBurst();
+        /* v30h: a later alt1 may arm a fresh stream; alt0 clears the flag so
+           the loop above parks again. */
+        g_uacCtx.burstPosted = false;
+    }
 }
 
 static void _armUacBurstAsync(void)
@@ -3152,12 +3178,18 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         if (packet.bmRequestType == 0x01 &&
             packet.bRequest == 0x0B /* SET_INTERFACE */ &&
             packet.wIndex == g_uacStd.as_interface) {
+            g_uacCtx.streamRequested = true;
             _armUacBurstAsync();
         }
 #endif
         break;
     case UAC_ACT_STOP:
         g_uacCtx.streaming = false;
+#ifdef UAC_U2_PATCH
+        /* v30h: stop the pipe before the endpoint is cancelled, so a host
+           that keeps cycling alt0/alt1 only costs one ring reset. */
+        g_uacCtx.streamRequested = false;
+#endif
 #ifdef UAC_U2_ALT_RETRIGGER
         /* v22: a host alt0 -> alt1 cycle re-installs the endpoint; let the
            next alt1 SET_CUR post a fresh burst again. */
