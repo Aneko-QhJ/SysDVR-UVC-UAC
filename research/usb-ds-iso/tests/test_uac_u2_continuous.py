@@ -600,5 +600,29 @@ class UacRawProbeRearmTests(unittest.TestCase):
             self.assertIn(text, result.stderr)
 
 
+class UacU2Alt1TriggerTests(unittest.TestCase):
+    """v30f: a standard host arms the train with SET_INTERFACE(alt=1).
+
+    macOS AppleUSBAudio selects alt 1 and never sends the 3-byte SET_CUR the
+    Linux probe uses, so the alt-1 START action must also call the bounded
+    train, after the status stage ACK and only for the AS interface.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.source = SOURCE.read_text()
+
+    def test_alt1_start_arms_the_burst_after_ack(self):
+        start = self.source.index("case UAC_ACT_START:")
+        block = self.source[start:self.source.index("case UAC_ACT_STOP:", start)]
+        self.assertIn("packet.bRequest == 0x0B", block)
+        self.assertIn("packet.wIndex == g_uacStd.as_interface", block)
+        self.assertIn("_postUacBurst();", block)
+        self.assertLess(block.index("_ctrlAck(iface);"),
+                        block.index("_postUacBurst();"))
+
+
 if __name__ == "__main__":
     unittest.main()

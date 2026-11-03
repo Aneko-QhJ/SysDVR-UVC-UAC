@@ -3113,6 +3113,19 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
     case UAC_ACT_START:
         g_uacCtx.streaming = true;
         _ctrlAck(iface);
+#ifdef UAC_U2_PATCH
+        /* v30f: a standard host (macOS AppleUSBAudio) arms the stream by
+           selecting alt 1 on the AS interface and never sends the 3-byte
+           SET_CUR rate request the Linux probe uses (the default rate is
+           already 48000), so the bounded train has to start here as well.
+           The status stage is ACKed above, so the train cannot delay it;
+           _postUacBurst is idempotent and refuses anything but alt 1. */
+        if (packet.bmRequestType == 0x01 &&
+            packet.bRequest == 0x0B /* SET_INTERFACE */ &&
+            packet.wIndex == g_uacStd.as_interface) {
+            _postUacBurst();
+        }
+#endif
         break;
     case UAC_ACT_STOP:
         g_uacCtx.streaming = false;
