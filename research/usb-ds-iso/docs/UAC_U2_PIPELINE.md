@@ -1265,3 +1265,22 @@ WAV 537088 frames = 11.19 s (wall 20.55 s = 54%), 145 silence runs 0.76 s
 - 结论：**arm 时序不是杠杆**，回退 20 ms。下一单变量：`IN_FLIGHT` 3→4
   （64 ms 窗口，4 是 mailbox 上限）；若 miss 不降，改 `0x31274` 内联快速恢复，
   把每次 miss 的 23–70 ms 空洞压到几 ms。
+
+### 2026-11-04 01:0x v30j：in-flight 4 是负结果
+
+只加 `-DUAC_U2_IN_FLIGHT=4`（窗口 48→64 ms，4 是 4 个 mailbox 的上限）：
+
+```text
+trains=12 posted=953 completed=905 bytes=2457600 (800 sets = 12.8 s)
+misses=59 code23=97 (~48 events) recoveries=23  alt1=12 alt0=6
+per-train max_gap 68-115 ms
+WAV 569344 frames = 11.86 s, but only 4 silence runs (0.17 s)
+```
+
+- 流内确实更干净（静音段 105 → 4），但**总投递反而少**（1014 → 800 套）、
+  miss 更多（46 → 59）、每段空洞更大（28–67 → 68–115 ms）；少掉的时间落在
+  训练之间。
+- 原因与 v29u 一致：多一套在飞，每次 cancel 就多丢一套，环状态更差。
+- 结论：**回退 3 在飞**。参数调优（arm 延迟、在飞深度）到此为止，下一个
+  结构性杠杆是驱动侧 code-23 快速恢复：在 `0x31274` 内联 ring 复位 + 清 halt，
+  省掉 app 的 cancel 往返，把每次 miss 的 23–115 ms 空洞压到几毫秒。
