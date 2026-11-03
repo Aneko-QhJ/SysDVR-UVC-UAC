@@ -1185,3 +1185,39 @@ UAC setup[3] type=01 req=0b val=0001 idx=0003 len=0 action=3 rate=48000   (x13)
 **结论：U2 的 arm 条件必须同时接受 `SET_INTERFACE(alt=1)` on AS 接口**
 （幂等，只在未 arm 时启动）。这是产品路径缺陷，不是数据路径问题；
 payload/cave 不用动，app-only 改动即可（v30f）。
+
+### 2026-11-04 00:1x–00:2x macOS 裸机：v30f/v30g 与 alt 抖动
+
+**v30f（alt1 inline arm）**：`SET_INTERFACE(alt=1)` 里直接调 `_postUacBurst()`。
+宿主在 status stage 完成前不提交 ISO 读，而处理函数被 9 s 训练占住：
+
+```text
+UAC U2 train begin count=8 pattern=0
+UAC U2 pipe end posted=388 completed=385 bytes=0 misses=188 recoveries=128
+UAC U2 pipe timing waits=257 timeouts=233 span_ms=10612 max_gap_ms=106 max_react_ms=72
+```
+
+`ffmpeg` 在设备打开处卡死 >2 min；之后 macOS 反复 alt0/alt1（317 条 teardown）。
+
+**v30g（worker thread + 20 ms）**：EP0 立即返回，训练在线程里跑：
+
+```text
+UAC U2 arm thread create rc=0x0 / start rc=0x0
+UAC U2 train begin count=8 pattern=0
+UAC U2 pipe end posted=512 completed=512 bytes=1324032 misses=47 recoveries=23
+UAC U2 pipe timing waits=476 timeouts=91 span_ms=9772 max_gap_ms=214 max_react_ms=161
+```
+
+- 数据真的到了：WAV 4.096 s / 196608 帧、值 ±16384（1 kHz 方波），但 PTS 已
+  9.2 s，且 42 段 ≥1 ms 静音（前段每 ~10.5 ms 一个、约 3 ms）。
+- 关键：`val=0001` 440 次、`val=0000` 441 次 —— **macOS 每 ~68 ms 切一次
+  alt**。每次 alt0 都会 cancel 端点；`g_uacArmStarted` 又让后续 alt1 不能
+  重新 arm，所以流只靠 23 次恢复硬撑，miss 的 code-23 全在 `off=0x0/0x20`
+  （重新 arm 后的环头）。
+- 对比 VM：VM 是 0.67 次/s 的稳态漏服务 + 87–92 ms 空洞；macOS 是持续
+  alt 抖动、47 次 miss、214 ms 空洞、只拿到 4.096 s 样本（设备侧 431 套 =
+  6.9 s）。**VM 数字不是虚拟 EHCI 伪影，原生更差。**
+
+结论：一次性训练的形态不适合真实宿主。下一步 v30h 把 producer 改成
+“alt1 开、alt0 停、每次 alt1 可重新 arm”的连续循环（不设固定 post 数），
+让 alt 抖动只造成一次环复位，而不是杀死整条流。

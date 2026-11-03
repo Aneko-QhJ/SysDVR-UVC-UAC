@@ -9,10 +9,15 @@
 ## 一分钟
 
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
-- **macOS 裸机首测（v30e）不成立，原因干净**：AppleUSBAudio 绑定、识别 2ch/48k，
-  但日志里**没有任何 class SET_CUR**，只有 13 次 `SET_INTERFACE(alt0/alt1)`；
-  `_postUacBurst()` 只挂在 SET_CUR 分支 → 流没 arm、录音全零。**标准宿主靠
-  alt1 开流，触发必须挂到 SET_INTERFACE(alt=1)**（v30f，app-only）。
+- **macOS 裸机三轮（v30e→v30g）**：v30e 没出流——标准宿主只发
+  `SET_INTERFACE(alt0/alt1)`、不发 SET_CUR，而 arm 只挂在 SET_CUR。v30f 把 arm
+  挂到 alt1 → 训练启动了，但在 EP0 处理函数里跑 9 s，堵住 status stage，宿主
+  不提交 URB（`bytes=0`、188 miss）。v30g 改成 worker 线程 + 20 ms → **出了
+  数据**：512/512 posts、431 套、方波到手；但 **macOS 在 ~30 s 里切了
+  440 次 alt0/alt1**，每次 alt0 都 cancel 端点、下一次 alt1 又不能重新 arm
+  （一次性训练），结果 47 miss / 23 恢复、`max_gap 214 ms`、`span 9772 ms`，
+  宿主只拿到 4.096 s 样本（对比 431 套 = 6.9 s）。**VM 的 88–90% 不是
+  虚拟 EHCI 伪影——原生 macOS 更差且形态不同（alt 抖动，不是稳态漏服务）。**
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -256,18 +261,18 @@
 
 ## 下一步
 
-1. **先修 macOS 触发（v30f，app-only）**：在 `SET_INTERFACE(alt=1)` 的 AS
-   接口分支里也调用 `_postUacBurst()`（幂等，只在未 arm 时启动）。这是
-   macOS 首测暴露的产品路径缺陷：标准宿主不发 SET_CUR，只切 alt1。
-2. **macOS 复测**：同一 512-post 训练，判据是设备日志出现 `pipe end`、录音
-   出现 1 kHz 方波。若 macOS 上 miss≈0 → 88–90% 是 Parallels 虚拟 EHCI 的
-   伪影，真实宿主连续；若仍是 0.6–0.8/s → 漏服务在设备/控制器路径。
-3. **VM 长跑数字已收口**（498/494 套、0.67 事件/s、~90% 占空、~90 ms 空洞、
-   ~1.85 s 周期已排除）；只有上一条 macOS 结论会改写它。
+1. **v30h：把一次性训练改成“alt1 开、alt0 停”的连续 producer**（产品形态）。
+   要求：每个 alt1 都能重新 arm（不再用一次性的 `g_uacArmStarted`）、alt0
+   立即停并在 ACK 前完成 cancel、producer 不设固定 post 数，由 alt0/停止条件
+   收尾。这是让 macOS 的 alt 抖动不再杀死流的唯一办法。
+2. **再测 macOS**：判据是 alt0/alt1 次数降到个位数、`pipe end` 的 span 与样本
+   时长一致、WAV 里没有 >1 ms 的静音段。
+3. **VM 数字仍成立但只描述 probe 路径**（498/494 套、0.67 事件/s、~90% 占空、
+   ~90 ms 空洞）；它不能被当成“真实宿主上限”。
 4. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
    字符串描述符仍未做。
 
-判定：先让 macOS 出流，再谈连续；VM 数字只作对照。
+判定：连续 producer 是产品路径的分水岭；macOS 的 alt 抖动必须先解决。
 
 ## 边界与纪律
 
