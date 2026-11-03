@@ -31,17 +31,16 @@
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
   `remaining=0`/`next_hardware_authorized=false` 是 eMMC 采集额度字段，不是
   UAC 回合的授权状态。
-- **当前最佳 v29h（lead 32）**：64/64 posts、**62×3072（190464 B）**、
-  host==device、**misses=2 / recoveries=0**。
-- **v29m 未复现 v29h**：lead 32 + 双 map-soft 得到 **58 段 / 3 miss /
-  1 recover（178176 B）**，与 v29l 完全相同；两轮 map-soft-2 一致，因此
-  先重复一次分离方差与 map-soft-2 影响。
+- **当前最佳 v29m 重复轮**：64/64 posts、**63×3072（193536 B）**、
+  host==device、**misses=1 / recoveries=0**、无 crash/fatal。
+- **方差**：同一 NSP 首跑 58 段 / 3 miss / 1 recover，重复轮 63 / 1 / 0；
+  单轮结果要至少两次重复才能下结论。
 - 最近否定：v29i（4 在飞/4 套环）miss 2→3；v29j（lead 16）54 段；v29k
-  （开机纪律违规）0 数据；v29l（lead 40）58 段；v29m 58 段。
-- 收尾安全：v29m 枚举 5 次 alt0 无 `svcBreak`、无新 crash/fatal/erpt；
+  （开机纪律违规）0 数据；v29l（lead 40）58 段。
+- 收尾安全：v29m 两轮枚举 5 次 alt0 都无 `svcBreak`、无新 crash/fatal；
   v29l 的 `2162-0004` 未复现。
-- 下一步：同 NSP（`a1318cf0…`）再跑一次；若仍是 58/3/1，回退 map-soft-2
-  做对照或查 `0x4a20`；之后做 ring 复位诊断（`prod=cons=cur=0`）。
+- 下一步：ring 复位诊断——最后 1 次 miss 前仍出现 `prod=cons=cur=0`，
+  记录触发者（driver `0x30ff4` vs cave 空 ring rearm），目标 0 miss。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 

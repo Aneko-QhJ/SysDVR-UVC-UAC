@@ -737,6 +737,18 @@ map-soft-2，共 46 条 edits。
   的 v29h 不同，所以先重复 v29m 分离方差与 map-soft-2 影响；不要在这之前
   改 ring 或 lead。
 
+### 2026-11-03 13:0x v29m 重复轮：63 段 / 1 miss（新最好）
+
+- 同一 NSP `a1318cf0…`、同一 probe、同一 VM 纪律，结果与首跑不同：
+- host：`rc=0`；312 transfers、`valid=2273 bad=2719 **bytes=193536**`，
+  数据 t=18–2514 ms。
+- 设备：**posted=64 completed=64 bytes=193536 misses=1 recoveries=0**——
+  63 个 `3072/3`、1 次 `status=5`、无 stall；**host==device**。
+- 枚举 5 次 `SET_INTERFACE(0)` 无 `svcBreak`，无新 crash/fatal/erpt。
+- 判定：**首跑 58/3/1 是 run-to-run 方差**，不是 map-soft-2 的稳定影响；
+  同一构建两轮 58↔63。v29m 重复轮成为新的最好数据轮（63 段、1 miss），
+  下一个目标是那一跳 miss 前的 ring 复位。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

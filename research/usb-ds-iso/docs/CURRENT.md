@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 12:4x，Asia/Shanghai）
+# 当前状态（2026-11-03 13:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -9,25 +9,24 @@
 ## 一分钟
 
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
-- **数据路径最好一轮（v29h，lead 32）**：64/64 posts、**62 个完整 3072 B
-  片段（190464 B）**、host 与设备字节相等、2 次单套 miss、0 恢复。
-- **lead 扫描收敛**：lead 16（v29j）54 段、lead 32（v29h）62 段、lead 40
-  （v29l）58 段——40 是负结果，32 最好，继续加大 lead 不再有用。
-- **v29m 没有复现 v29h**：lead 32 + 双 map-soft 也是 **58 段 / 3 miss /
-  1 recover（178176 B）**，与 v29l 完全相同；host 179904（多 1728）。
-  两轮 map-soft-2 一致、与 map-soft-only 的 v29h 不同，因此要么
-  map-soft-2 扰动了 map/ring 状态，要么是 run-to-run 方差。
-- **收尾/map 安全**：v29m 枚举阶段 5 次 `SET_INTERFACE(0)` 无 `svcBreak`，
-  无新 crash/fatal/erpt；v29l 的 1 份非致命 `2162-0004` 未复现。
+- **数据路径最好一轮（v29m 重复轮）**：64/64 posts、**63 个完整 3072 B
+  片段（193536 B）**、host 与设备字节相等、**1 次单套 miss、0 恢复**、
+  无 crash/fatal/erpt；alt0 不崩。
+- **同一 NSP 的方差**：v29m 首跑 58 段 / 3 miss / 1 recover（179904），
+  重复跑 63 段 / 1 miss / 0 recover（193536）——**58 是方差，不是
+  map-soft-2 的影响**；单轮比较需要至少两次重复。
+- **lead 扫描**：16（v29j）54 段、32（v29h）62 段、40（v29l）58 段；
+  lead 32 仍是最好，40 没有收益。
+- **收尾/map 安全**：v29m 两轮枚举 5 次 `SET_INTERFACE(0)` 均无
+  `svcBreak`、无新 crash/fatal；v29l 的 `2162-0004` 未复现。
 - **已否掉的路线**：单次请求 >16 帧、两 buffer 流水线、4 在飞/4 套环
   （v29i）、lead 4/16/40。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：**用同一 v29m NSP 再跑一次**，先分离方差与 map-soft-2 影响；
-  若仍是 58/3/1，回退 map-soft-2（即 v29h）做对照，或查 `0x4a20` 失败
-  本身；ring 复位诊断排在后面。
+- 下一步：做 **ring 复位诊断**——最后一 miss 前仍出现 `prod=cons=cur=0`，
+  要记录触发者是驱动 `0x30ff4` 还是 cave 的空 ring rearm；目标 0 miss。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
-- 卡：安全 `52069a44…` 已恢复并弹出（12:5x）；v29m 日志已归档并从卡删除。
+- 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
 ## 阶段进度
 
@@ -52,29 +51,29 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29d | link `+0xf70`→`+0xc00`，六套对齐 | 57024 B | 18×`3072/3`；两次 wrap 干净 | wrap 修好；ring 跑空 |
 | v29e | 4 mailbox + 3 在飞 + status=5 恢复 | 180672 B | 56×`3072/3`、4 recover | 3 在飞成立 |
 | v29f | miss 只释放槽并补投，stall 才 cancel | 187392 B | 61×`3072/3`、3 miss | 数据好；收尾仍崩 |
 | v29g | alt0 STOP 先 cancel + 收 report | 193536 B | 63×`3072/3`、1 miss | 数据最好；崩溃仍在 |
-| v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | **收尾不崩；当前最佳** |
+| v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | 收尾不崩 |
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
 | v29k | v29h + lead 32→40 | —（崩溃，无数据） | —（开机枚举 alt0 崩溃） | 0 数据；第二入口 `0x3dac` 崩溃，v29k 未测 |
 | v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | 179712 B | 58×`3072/3`、3 miss、1 recover | lead 40 负结果；host 比设备多 1536 |
-| v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 未复现 v29h；与 v29l 相同 |
+| v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 首跑；后被证明是方差 |
+| v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
 
-## 当前最佳配置（v29h 数据路径 + v29m 安全补丁）
+## 当前最佳配置（v29m）
 
 | 项 | 值 |
 | --- | --- |
-| NSP / NSO | v29m `a1318cf0…`（92676 B）/ `7bd8bf08…`；v29h 结果来自 `9610b3a0…` |
+| NSP / NSO | v29m `a1318cf0…`（92676 B）/ `7bd8bf08…` |
 | cave | `patches/iso_burst_uac84_dci9_pipe_quad.S`（680/684 B，lead 32） |
 | ring | link `+0xc00`（六套对齐）；mailbox `+0xf00/+0xf40/+0xf80/+0xfc0`，`set=(offset>>9)&3`；游标 `+0xfb8` |
 | 在飞 | 3；miss 容忍（status=5 只释放槽并补投）；100 ms stall 才 cancel + 重投；alt0 STOP 先 cancel + 收 report |
 | 驱动 | 3 处队列补丁 + 12 处 link `0xff0→0xc00` + map-soft `0x3fe0` + map-soft-2 `0x3dac`（46 条 edits） |
 | app | `-DUAC_U2_BURSTS=8 -DUAC_U2_STREAM_POSTS=64 -DUAC_U2_LIGHT_LOG -DUAC_U2_PIPELINE -DUAC_U2_CURSOR_DIAG` |
 | host | `uac-raw-probe --trigger-first --delay-ms 30 --packets 16 --transfers 8 --rearm --max-urbs 512 --timeout-ms 5000 --keep-alt` |
-| 结果 | v29h：62×3072（190464 B）、host==device、misses=2、recoveries=0、无 crash/fatal；v29m 待 boot |
+| 结果 | 最好：63×3072（193536 B）、host==device、misses=1、recoveries=0、无 crash/fatal；同一 NSP 另一轮 58 段（方差） |
 
 ## 构件与关键事实
 
@@ -97,12 +96,12 @@
 
 ## 下一步
 
-1. **重复 v29m（同一 NSP `a1318cf0…`）一次**：先判断 58/3/1 是方差
-   还是 map-soft-2 的稳定影响；卡已恢复安全版，需要重新部署；
-2. 若重复得到 62/2/0：回到 ring 复位诊断；若仍是 58/3/1：回退 map-soft-2
-   （即 v29h，注意 `0x3dac` 崩溃风险）做对照，或查 `0x4a20` 为何返回 0；
-3. 之后再做 **ring 复位诊断**（miss 前 `prod=cons=cur=0`），0 miss 后再谈
-   占空比与 48 kHz 连续。
+1. **ring 复位诊断**：v29m 重复轮唯一一跳 miss（buf 6，seq 附近
+   `prod=cons=cur=0`）仍是下一个目标；在 cave/驱动记录复位触发者
+   （driver `0x30ff4` 还是 cave 的空 ring rearm），不要先改 lead。
+2. 若诊断需要新候选，保持 v29m 的数据路径（lead 32、3 在飞、双
+   map-soft），只加观测；每次判定至少两次重复（v29m 已见 58↔63 的方差）。
+3. 0 miss 之后再评估占空比与 48 kHz 连续。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。
