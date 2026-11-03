@@ -638,6 +638,23 @@ map-soft），只改 TD 帧 lead：`MFI/8 + 32` → `+16`。
 - 判定：**lead 16 太小**（miss 2→4、段数 62→54）；current best 仍是 v29h
   （lead 32）。下一步试 40/48，或诊断 ring 复位来源。
 
+### 2026-11-03 08:5x v29k lead 40（离线）
+
+v29j 证明 lead 16 太小（miss 2→4、2 次 stall），v29h 的 lead 32 仍是最好。
+v29k 回到 v29h 的全部数据配置（3 在飞、6 套环、link `+0xc00`、quad mailbox、
+miss 容忍、stall 恢复、alt0 cancel、map-soft），只把 TD 帧 lead 从 32 提到 40：
+`add w9, w9, #32` → `#40`。
+
+- cave：`patches/iso_burst_uac84_dci9_pipe_quad40.S`（680/684 B）；与 v29j
+  cave 逐字比较只有 `+0x68e10` 一个字不同（`0x11004129` → `0x1100a129`）；
+- app：`posted - completed < 3`；驱动 45 条 edits（12 条 link `+0xc00` +
+  map-soft + 3 queue）与 v29h 相同；
+- 构建：NSP `f05f72a1…`（92589 B）、NSO `b48f0435…`；工作目录
+  `private/analysis/UAC-u2-v29k-lead40-20261103`；`tests/test_uac_u2_quad.py`
+  增加 lead-40 用例（编码、只差一个字、680 B）。
+- 判定：≥62 段、0 `status=5`、host==device（196608），alt0 不崩；若 40 更差，
+  说明 lead 不是杠杆，转 ring 复位诊断。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

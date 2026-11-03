@@ -1,4 +1,4 @@
-# 当前状态（2026-11-02 23:0x，Asia/Shanghai）
+# 当前状态（2026-11-03 08:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -16,9 +16,12 @@
 - **已否掉的路线**：单次请求 >16 帧（17–19 帧处挂死）、两 buffer 流水线
   （驱动单 transfer）、4 在飞/4 套环（v29i，miss 2→3）、lead 4（v25）与
   lead 16（v29j，miss 2→4）。
+- **新候选 v29k（lead 40）已离线构建**：NSP `f05f72a1…`（92589 B），
+  cave 680/684 B、45 条 edits；只把 TD 帧 lead 32→40，其余与 v29h 相同，待一次 boot。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：lead 40/48 或给驱动 ring 复位加诊断；目标 0 miss。
+- 下一步：先跑 v29k（lead 40）；若 40 不改善，试 48 或给驱动 ring 复位加诊断；
+  目标 0 miss。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…`，已弹出；实机按 START_HERE 的常设授权执行。
 
@@ -45,7 +48,6 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29a | 驱动队列补丁：每个追加请求立即提交 | 21504 B | 2 post 进 cave；status=2/5 | 队列 + 2 在飞成立；账本错 |
 | v29b | per-set mailbox（A/B）+ 只认 status=3 | 24576 B | 8/8 `3072/3` | 账本修好 |
 | v29c | 64 post 滚动 + 8 槽复用（≤2 在飞） | 187968 B | 61×`3072/3`、2×status=5 | 稳态成立；wrap 失败 |
 | v29d | link `+0xf70`→`+0xc00`，六套对齐 | 57024 B | 18×`3072/3`；两次 wrap 干净 | wrap 修好；ring 跑空 |
@@ -55,6 +57,7 @@
 | v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | **收尾不崩；当前最佳** |
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
+| v29k | v29h + lead 32→40 | —（0 实机） | —（0 实机） | 离线构建 `f05f72a1…`，待一次 boot |
 
 ## 当前最佳配置（v29h）
 
@@ -89,9 +92,11 @@
 
 ## 下一步
 
-1. **lead 40/48**：16 变差、32 最好，先确认更大的 lead 是否还能降 miss；
-2. **ring 复位诊断**：miss 前都出现 `prod=cons=cur=0` 的复位；需要在 cave/app
-   记录触发者（driver 的 `0x30ff4` 还是 cave 的空 ring rearm），再决定阻止或绕开；
+1. **v29k lead 40**（已离线构建，NSP `f05f72a1…`）：一次 boot 确认 40 是否
+   降 miss；底线是不倒退（≥62 段）、不产生 crash/fatal；
+2. 若 40 不变或变差：试 **lead 48**，或直接做 **ring 复位诊断**——miss 前都
+   出现 `prod=cons=cur=0` 的复位，需要在 cave/app 记录触发者（driver 的
+   `0x30ff4` 还是 cave 的空 ring rearm），再决定阻止或绕开；
 3. 0 miss 之后再做占空比与 48 kHz 连续评估。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes

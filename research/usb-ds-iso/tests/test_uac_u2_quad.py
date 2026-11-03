@@ -204,5 +204,56 @@ class Lead16Tests(unittest.TestCase):
         self.assertEqual(symbols["iso_enter"], 0x68D54)
 
 
+QUAD40 = ROOT / "patches/iso_burst_uac84_dci9_pipe_quad40.S"
+ADD_LEAD32 = 0x11008129  # add w9, w9, #0x20
+ADD_LEAD40 = 0x1100A129  # add w9, w9, #0x28
+LSR3 = 0x53037D29        # lsr w9, w9, #3
+
+
+def _words(code):
+    return [int.from_bytes(code[i:i + 4], "little")
+            for i in range(0, len(code) - 4 + 1, 4)]
+
+
+class Lead40Tests(unittest.TestCase):
+    """v29k: the v29h ring with frame lead 40 instead of 32."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = QUAD40.read_text()
+
+    def test_lead_is_forty(self):
+        self.assertIn("add w9, w9, #40", self.text)
+        self.assertNotIn("add w9, w9, #32", self.text)
+
+    def test_ring_and_mailboxes_are_v29h(self):
+        self.assertIn("add x13, x10, #0xc00", self.text)
+        self.assertIn("add x5, x10, #0xf00", self.text)
+        self.assertNotIn("ring+0x800", self.text)
+
+    def test_cave_differs_from_lead32_only_in_the_lead(self):
+        if not TOOLCHAIN.is_dir():
+            self.skipTest("missing devkitA64 toolchain")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            quad40, symbols = assemble(TOOLCHAIN, tmp / "a", QUAD40,
+                                       require_report=False)
+            quad32, _ = assemble(TOOLCHAIN, tmp / "b", QUAD,
+                                 require_report=False)
+        self.assertEqual(len(quad40), 680)
+        self.assertEqual(len(quad40), len(quad32))
+        self.assertEqual(symbols["iso_enter"], 0x68D54)
+        words40, words32 = _words(quad40), _words(quad32)
+        self.assertIn(ADD_LEAD40, words40)
+        self.assertNotIn(ADD_LEAD32, words40)
+        self.assertIn(ADD_LEAD32, words32)
+        lead40 = words40.index(ADD_LEAD40)
+        lead32 = words32.index(ADD_LEAD32)
+        self.assertEqual(lead40, lead32)
+        self.assertEqual(words40[lead40 - 1], LSR3)
+        diff = [i for i, (a, b) in enumerate(zip(quad40, quad32)) if a != b]
+        self.assertEqual(len(diff), 1, [hex(0x68D54 + i) for i in diff])
+
+
 if __name__ == "__main__":
     unittest.main()
