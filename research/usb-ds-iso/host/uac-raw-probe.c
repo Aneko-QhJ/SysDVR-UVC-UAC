@@ -45,6 +45,11 @@ static int submit_iso(struct libusb_transfer *t, libusb_device_handle *h,
     return libusb_submit_transfer(t);
 }
 
+/* v29x: the device-side miss shows up here as two packets that were not
+   serviced in the same URB.  Print their indices (and any zero-length
+   packet) so the host-side pattern can be compared with the device's
+   code-23 offsets: a tail pair means the URB boundary is where the host
+   scheduling gap lands, a scattered one means otherwise. */
 static void packet_stats(const struct libusb_transfer *t, unsigned packets,
                          unsigned *valid, unsigned *bad, unsigned *bytes)
 {
@@ -61,6 +66,28 @@ static void packet_stats(const struct libusb_transfer *t, unsigned packets,
     *valid = v;
     *bad = b;
     *bytes = n;
+}
+
+/* Print the packet-level detail of one ISO URB: the index/status/length of
+   every packet that was not COMPLETED or carried zero bytes.  `bad` is
+   capped so a dead run cannot flood the log. */
+static void packet_detail(const struct libusb_transfer *t, unsigned packets,
+                          unsigned urb_no)
+{
+    unsigned shown = 0;
+    for (unsigned p = 0; p < packets; ++p) {
+        const struct libusb_iso_packet_descriptor *d = &t->iso_packet_desc[p];
+        if (d->status == LIBUSB_TRANSFER_COMPLETED)
+            continue; /* the device answering with a ZLP is not a lost frame */
+        if (shown == 0)
+            printf("urb[%u] detail", urb_no);
+        printf(" p%u=%d/%u", p, d->status, d->actual_length);
+        if (++shown >= 16) {
+            printf(" ...\n");
+            return;
+        }
+    }
+    if (shown) printf("\n");
 }
 
 static unsigned long long now_ms(void)
@@ -381,6 +408,16 @@ int main(int argc, char **argv)
                 printf("urb[%u] t=%llums status=%d valid=%u bad=%u bytes=%u\n",
                        ++done_urbs, now_ms() - started, t->status, valid, bad,
                        bytes);
+                /* Only the miss signature: a few lost packets in an URB
+                   that otherwise completed.  A halted endpoint loses all 16
+                   and would drown the log. */
+                {
+                    static unsigned details;
+                    if (bad > 0 && bad <= 4 && details < 48) {
+                        packet_detail(t, packets, done_urbs);
+                        ++details;
+                    }
+                }
                 if (in_flight > 0) --in_flight;
                 if (submitted < budget && now_ms() < deadline) {
                     rc = submit_iso(t, h, endpoint, bufs[i], packets,

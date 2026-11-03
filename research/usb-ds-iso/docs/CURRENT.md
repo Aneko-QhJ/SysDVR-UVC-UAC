@@ -213,9 +213,12 @@
    --ep Ii:1:004`，采集步骤见 [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md)。
 2. **待读卡**：v29w 那次 probe 本身是成功的（host **768576 B / 250 套**），
    设备日志还在卡上，需要插卡读出来归档（`run.json` 等）。
-3. **下一轮实机**：同 v29v 镜像 + usbmon 采集一次（一次 boot 一次 probe），
-   判定：出现与 code 23 同节律的 384 B 缺口 → 宿主 URB 层；全 3072 →
-   控制器取指层。
+3. **usbmon 文本 API 已被证明不够**（v29x 实测）：每个 URB 只打印前 5 个
+   ISO packet 描述符、且不打印实际 URB 长度；512 个 URB 总体 status 全 0，
+   设备的丢失帧（槽 5–14）看不到。→ **改在 probe 里观测**：
+   `host/uac-raw-probe.c` 新增 `packet_detail()`，对“丢 1–4 包”的 URB 打印
+   `p<idx>=<status>/<len>`（最多 48 行）。下一轮在 guest 里重编译 probe
+   再跑同一镜像。
 4. item (a)（非 VM 宿主 / `usbfs` 对照）排在 (b) 之后。
 
 判定：宿主侧只做证据采集与对照，不改设备镜像。
