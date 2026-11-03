@@ -647,7 +647,7 @@ class UacU2Alt1TriggerTests(unittest.TestCase):
     def test_arm_helper_runs_the_train_on_a_worker_thread(self):
         start = self.source.index("static void _uacArmThreadFunc(void *arg)")
         block = self.source[start:self.source.index("static void _armUacBurstAsync", start)]
-        self.assertIn("svcSleepThread(40E+6);", block)
+        self.assertIn("svcSleepThread(20E+6);", block)
         self.assertIn("_postUacBurst();", block)
         helper = self.source[self.source.index("static void _armUacBurstAsync"):
                              self.source.index("\n}\n", self.source.index("static void _armUacBurstAsync"))]

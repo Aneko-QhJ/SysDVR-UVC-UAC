@@ -1247,3 +1247,21 @@ WAV 682088 frames = 14.21 s, +/-16384 square wave, 105 silence runs (0.42 s)
 - 每段训练的首个 miss 常在 `off=0x0`，即重新 arm 后立刻发生——20 ms 的 arm
   前延迟可能太短；这是下一个最便宜的实验（20→40 ms），其次是连续流下把
   在飞 3→4（窗口 48→64 ms，`max_react` 实测 20–36 ms 已接近上限）。
+
+### 2026-11-04 00:5x v30i：arm 延迟 40 ms 是负结果
+
+只改一个常量（`_uacArmThreadFunc` 的等待 20→40 ms），一次 boot：
+
+```text
+trains=18  posted=1026 completed=972 bytes=2749440 (895 sets = 14.32 s)
+misses=56 recoveries=18  alt1=18 alt0=13  per-train max_gap 23-70 ms
+WAV 537088 frames = 11.19 s (wall 20.55 s = 54%), 145 silence runs 0.76 s
+```
+
+对比 v30h：15 段、1014 套 / 16.22 s、46 miss、宿主 14.21 s（69%）。
+
+- 多等的 20 ms 让每次重新 arm 少投 ~1.5% 的音频，还多出 3 次重启；
+- `off=0x0` 的 miss 没有消失，其余 miss 仍在环中段；
+- 结论：**arm 时序不是杠杆**，回退 20 ms。下一单变量：`IN_FLIGHT` 3→4
+  （64 ms 窗口，4 是 mailbox 上限）；若 miss 不降，改 `0x31274` 内联快速恢复，
+  把每次 miss 的 23–70 ms 空洞压到几 ms。

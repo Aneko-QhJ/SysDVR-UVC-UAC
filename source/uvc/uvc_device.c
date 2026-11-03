@@ -3049,10 +3049,9 @@ static void _uacArmThreadFunc(void *arg)
             svcSleepThread(1E+6);
         }
         /* Let the alt1 status stage land and the host queue its first ISO
-           reads before the train submits.  v30i: 40 ms instead of 20 - the
-           v30h log still shows code-23 at off=0x0 right after two re-arms,
-           so give the host two more frames before the first TD set. */
-        svcSleepThread(40E+6);
+           reads before the train submits.  v30i tried 40 ms: it cost 12% of
+           the delivered audio and added three restarts, so 20 ms stands. */
+        svcSleepThread(20E+6);
         if (!g_uacCtx.streamRequested) continue;
         _postUacBurst();
         /* v30h: a later alt1 may arm a fresh stream; alt0 clears the flag so
