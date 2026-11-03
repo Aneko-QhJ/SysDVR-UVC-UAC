@@ -679,6 +679,22 @@ miss 容忍、stall 恢复、alt0 cancel、map-soft），只把 TD 帧 lead 从 
 - 下一步：v29l = lead 40 + `0x3dac → 0x409c`（map-soft-2）；实机前 Switch
   关机、VM suspend/detach，主界面后再 attach。
 
+### 2026-11-03 12:2x v29l map-soft-2（离线）
+
+v29k 的开机崩溃栈（`0x40d0←0x3ce0`）对应 `0x3dac` 的
+`cbz w0, 0x40cc`（`bl 0x4a20` 返回 0），不是 v29h map-soft 的 `0x3fe0`
+（其返回地址会是 `0x40d4`）。v29l 在 v29k 之上只加一条驱动编辑：
+`0x3dac` → `0x409c`，让 `0x4a20` 失败也走同一个错误收尾
+（`[x24,#72]++` 后返回 0，调用者 `0x3ce0 cbz x0` 走 `0x3d1c` → `0x19a8c`）。
+
+- 驱动 46 条 edits：v29k 的 45 条 + `0x3dac`（`00190034` → `80170034`）；
+- cave 与 app 不变：quad40（lead 40，680/684 B）、3 在飞、`STREAM_POSTS=64`；
+- 构建：NSP `49956ad1…`（92676 B）、NSO `4f9aedbf…`；工作目录
+  `private/analysis/UAC-u2-v29l-map-soft2-20261103`；`tests/test_uac_u2_quad.py`
+  增加 map-soft-2 用例（编码、跳转目标 0x409c）；
+- 判定：alt0/IOVA 两个 panic 入口都变成错误返回；数据路径仍回答 lead 40
+  的问题（≥62 段、host==device、alt0 不崩）。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

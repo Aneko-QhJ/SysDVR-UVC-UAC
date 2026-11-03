@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 12:1x，Asia/Shanghai）
+# 当前状态（2026-11-03 12:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -11,19 +11,23 @@
 - 目标：让 Switch `usb:ds` 输出标准 UAC 音频（48 kHz / 2ch / 16 bit = 192 B/ms）。
 - **数据路径最好一轮（v29h）**：64/64 posts、**62 个完整 3072 B 片段
   （190464 B）**、host 与设备字节相等、2 次单套 miss、收尾不崩。
-- **收尾崩溃没有彻底关闭**：v29h 的 map-soft（`0x3fe0`→`0x409c`）只覆盖
-  IOVA 节点分配失败；v29k 开机枚举在另一入口 `0x3dac`→`0x40cc` 命中同一
-  栈（`0x40d0←0x3ce0`），仍 `svcBreak`。需要 map-soft-2。
+- **收尾崩溃没有彻底关闭，v29l 已补第二个入口**：v29h 的 map-soft
+  （`0x3fe0`→`0x409c`）只覆盖 IOVA 节点分配失败；v29k 开机枚举在
+  `0x3dac`→`0x40cc` 命中同一栈（`0x40d0←0x3ce0`）。v29l 把 `0x3dac` 也
+  改成跳 `0x409c` 错误收尾，待实机确认。
 - **已否掉的路线**：单次请求 >16 帧（17–19 帧处挂死）、两 buffer 流水线
   （驱动单 transfer）、4 在飞/4 套环（v29i，miss 2→3）、lead 4（v25）与
   lead 16（v29j，miss 2→4）。
-- **v29k（lead 40）实机无效**：12:06 部署后第一次开机，VM 未 suspend 就
-  attach，host 在枚举阶段反复 `SET_INTERFACE(0)`，probe 之前 usb sysmodule
-  崩溃（PC `+0x1927c`、同 v29f/g 栈）；**0 数据，lead 40 仍未验证**。
+- **v29k（lead 40）实机无效**：12:06 第一次开机，VM 未 suspend 就 attach，
+  host 枚举在 probe 之前触发上面的崩溃；**0 数据，lead 40 仍未验证**。
+- **候选 v29l（lead 40 + map-soft-2）已离线构建**：NSP `49956ad1…`
+  （92676 B），46 条 edits（v29k + `0x3dac`）；alt0 两个 panic 入口都改成
+  错误返回，待一次 boot。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：先做 **map-soft-2**（`0x3dac`→`0x409c`）离线候选，并按严格 VM
-  纪律重跑 lead 40；lead 48 与 ring 复位诊断排在其后。
+- 下一步：部署 v29l，一次 boot；VM 在 Switch 开机前 suspend/detach、主界面
+  后再 attach，确认 guest 只在 attach 后看到 `1209:ca57`。lead 48 与 ring
+  复位诊断排在其后。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（12:08）；崩溃日志与 2 份新报告已
   归档并从卡删除。
@@ -51,7 +55,6 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29b | per-set mailbox（A/B）+ 只认 status=3 | 24576 B | 8/8 `3072/3` | 账本修好 |
 | v29c | 64 post 滚动 + 8 槽复用（≤2 在飞） | 187968 B | 61×`3072/3`、2×status=5 | 稳态成立；wrap 失败 |
 | v29d | link `+0xf70`→`+0xc00`，六套对齐 | 57024 B | 18×`3072/3`；两次 wrap 干净 | wrap 修好；ring 跑空 |
 | v29e | 4 mailbox + 3 在飞 + status=5 恢复 | 180672 B | 56×`3072/3`、4 recover | 3 在飞成立 |
@@ -61,6 +64,7 @@
 | v29i | 4 套环（`+0x800`）+ 4 在飞 | 187392 B | 61×`3072/3`、3 miss | 负结果：4 套深度不够 |
 | v29j | v29h + lead 32→16 | 170688 B | 54×`3072/3`、4 miss、2 stall | 负结果：lead 16 太小 |
 | v29k | v29h + lead 32→40 | —（崩溃，无数据） | —（开机枚举 alt0 崩溃） | 0 数据；第二入口 `0x3dac` 崩溃，v29k 未测 |
+| v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | —（0 实机） | —（0 实机） | 离线构建 `49956ad1…`，46 条 edits，待一次 boot |
 
 ## 当前最佳配置（v29h）
 
@@ -95,12 +99,12 @@
 
 ## 下一步
 
-1. **map-soft-2（v29l）**：`0x3dac` 的 `cbz w0, 0x40cc` → `cbz w0, 0x409c`，
-   让 `0x4a20` 失败走 0x409c 错误收尾；保留 lead 40，离线构建并加单测，
-   先于下一次实机；
-2. **重跑纪律**：Switch 开机前 suspend/detach VM，主界面后再 attach，确认
-   guest 只在 attach 后看到 `1209:ca57`；一次 boot、失败即停，不自动重试；
-3. lead 40 拿到数据后，再决定 lead 48、ring 复位诊断或占空比。
+1. **v29l 实机（一次 boot）**：部署 `49956ad1…`；Switch 开机前
+   suspend/detach VM，主界面后再 attach，确认 guest 只在 attach 后看到
+   `1209:ca57`，然后跑一次 probe；
+2. 判定：≥62 段、host==device、alt0 不崩（0x19a8c 错误返回算通过）；
+   若 lead 40 不改善，试 lead 48 或做 ring 复位诊断；
+3. 0 miss 之后再做占空比与 48 kHz 连续评估。
 
 判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。

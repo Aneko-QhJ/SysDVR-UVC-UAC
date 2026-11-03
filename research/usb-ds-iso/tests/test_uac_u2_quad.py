@@ -255,5 +255,28 @@ class Lead40Tests(unittest.TestCase):
         self.assertEqual(len(diff), 1, [hex(0x68D54 + i) for i in diff])
 
 
+class MapSoft2Tests(unittest.TestCase):
+    """v29l: the second alt0/IOVA panic entry at 0x3dac."""
+
+    def test_edit_retargets_the_second_panic(self):
+        import build_uac_u2_producer as builder
+        address, before, after, reason = builder.MAP_SOFT2_EDITS[0]
+        self.assertEqual(address, 0x3DAC)
+        self.assertEqual(before, bytes.fromhex("00190034"))  # cbz w0, 0x40cc
+        self.assertEqual(after, bytes.fromhex("80170034"))   # cbz w0, 0x409c
+        self.assertNotEqual(before, after)
+
+    def test_branch_targets(self):
+        def target(insn, pc):
+            imm = (insn >> 5) & 0x7FFFF
+            if imm & 0x40000:
+                imm -= 0x80000
+            return pc + (imm << 2)
+        before = int.from_bytes(bytes.fromhex("00190034"), "little")
+        after = int.from_bytes(bytes.fromhex("80170034"), "little")
+        self.assertEqual(target(before, 0x3DAC), 0x40CC)
+        self.assertEqual(target(after, 0x3DAC), 0x409C)
+
+
 if __name__ == "__main__":
     unittest.main()

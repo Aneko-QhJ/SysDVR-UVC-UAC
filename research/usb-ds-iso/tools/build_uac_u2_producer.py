@@ -99,6 +99,18 @@ MAP_SOFT_EDITS = (
      "DMA-map node exhaustion returns an error instead of panicking"),
 )
 MAP_SOFT_EDIT_COUNT = len(MAP_SOFT_EDITS)
+
+# v29l: one step earlier in the same alt0/IOVA map path, 0x3d40 calls 0x4a20
+# ("find a free range") and branches to the panic stub at 0x40cc when it returns
+# 0.  Return through the same 0x409c failure epilogue instead (it accounts the
+# error on [x24,#72] and returns 0), so the caller reports 0x19a8c instead of a
+# User Break.  The crash stack of v29f/v29g/v29k (0x40d0 <- 0x3ce0) is this
+# entry, not the 0x3fe0 allocation.
+MAP_SOFT2_EDITS = (
+    (0x3DAC, bytes.fromhex("00190034"), bytes.fromhex("80170034"),
+     "DMA-map range failure returns an error instead of panicking"),
+)
+MAP_SOFT2_EDIT_COUNT = len(MAP_SOFT2_EDITS)
 BREAKER_HOOK = 0x302C0          # bl complete_original in the ISO submit error path
 BREAKER_BEFORE = bytes.fromhex("b0e9ff97")  # bl 0x2a980
 BREAKER_AFTER = bytes.fromhex("1f2003d5")   # nop
@@ -133,6 +145,8 @@ def payload_ready(work):
         allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
     if doc.get("driver_map_soft"):
         allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
+    if doc.get("driver_map_soft2"):
+        allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("payload manifest is inconsistent; rebuild it")
     if doc["cave_bytes"] > CAVE_END - CAVE:
@@ -177,7 +191,7 @@ def assemble(toolchain, out, asm=ASM, require_report=True):
 
 def build_edits(nso, code, symbols, breaker=False, report=True,
                 driver_queue=False, driver_link=False, link_slot=0xC00,
-                driver_map_soft=False):
+                driver_map_soft=False, driver_map_soft2=False):
     """Return [(address, before, after, reason)] with every before verified."""
     if not code or CAVE + len(code) > CAVE_END:
         raise ValueError(
@@ -245,10 +259,14 @@ def build_edits(nso, code, symbols, breaker=False, report=True,
     if driver_map_soft:
         for address, before, after, reason in MAP_SOFT_EDITS:
             edit(address, before, after, reason)
+    if driver_map_soft2:
+        for address, before, after, reason in MAP_SOFT2_EDITS:
+            edit(address, before, after, reason)
     expected = ((EDITS_COUNT if report else EDITS_COUNT_NO_REPORT)
                 + (1 if breaker else 0) + (QUEUE_EDITS if driver_queue else 0)
                 + (LINK_EDIT_COUNT if driver_link else 0)
-                + (MAP_SOFT_EDIT_COUNT if driver_map_soft else 0))
+                + (MAP_SOFT_EDIT_COUNT if driver_map_soft else 0)
+                + (MAP_SOFT2_EDIT_COUNT if driver_map_soft2 else 0))
     if len(edits) != expected:
         raise ValueError(f"expected {expected} edits, built {len(edits)}")
     addresses = [address for address, _b, _a, _r in edits]
@@ -283,7 +301,7 @@ def render(edits):
 
 def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
              segments=1, frames=None, driver_queue=False, driver_link=False,
-             link_slot=0xC00, driver_map_soft=False):
+             link_slot=0xC00, driver_map_soft=False, driver_map_soft2=False):
     if frames is None:
         frames = 16 * segments
     return {
@@ -310,6 +328,7 @@ def manifest(edits, code, symbols, breaker=False, asm=ASM, report=True,
         "driver_queue": bool(driver_queue),
         "driver_link": bool(driver_link),
         "driver_map_soft": bool(driver_map_soft),
+        "driver_map_soft2": bool(driver_map_soft2),
         "link_slot": hex(link_slot) if driver_link else None,
         "symbols": {name: hex(symbols[name])
                     for name in (("iso_enter", "iso_event", "iso_report")
@@ -347,6 +366,8 @@ def check(nso, work):
         allowed = tuple(value + LINK_EDIT_COUNT for value in allowed)
     if doc.get("driver_map_soft"):
         allowed = tuple(value + MAP_SOFT_EDIT_COUNT for value in allowed)
+    if doc.get("driver_map_soft2"):
+        allowed = tuple(value + MAP_SOFT2_EDIT_COUNT for value in allowed)
     if doc["edit_count"] not in allowed:
         raise SystemExit("unexpected edit total")
     for entry in doc["edits"]:
@@ -419,6 +440,9 @@ def main():
     parser.add_argument("--driver-map-soft", action="store_true",
                         help="v29h: return DMA-map node exhaustion as an error "
                              "instead of the 0x40d0 panic")
+    parser.add_argument("--driver-map-soft2", action="store_true",
+                        help="v29l: return the 0x4a20 range failure at 0x3dac as "
+                             "an error instead of the 0x40cc panic")
     parser.add_argument("--frames", type=int, default=None,
                         help="v28 only: 192 B frames in one transfer (1..32; "
                              "overrides --segments)")
@@ -443,7 +467,8 @@ def main():
     edits = build_edits(nso, code, symbols, breaker=args.breaker, report=report,
                         driver_queue=args.driver_queue, driver_link=args.driver_link,
                         link_slot=args.link_slot,
-                        driver_map_soft=args.driver_map_soft)
+                        driver_map_soft=args.driver_map_soft,
+                        driver_map_soft2=args.driver_map_soft2)
     header = render(edits)
     if args.frames is not None and not 1 <= args.frames <= 32:
         raise SystemExit("--frames must be 1..32")
@@ -451,7 +476,8 @@ def main():
                    report=report, segments=args.segments, frames=args.frames,
                    driver_queue=args.driver_queue, driver_link=args.driver_link,
                    link_slot=args.link_slot,
-                   driver_map_soft=args.driver_map_soft)
+                   driver_map_soft=args.driver_map_soft,
+                   driver_map_soft2=args.driver_map_soft2)
     doc["header_sha256"] = sha256(header.encode())
     work.mkdir(parents=True, exist_ok=True)
     (work / "uac_u2_payload.h").write_text(header)
@@ -463,6 +489,7 @@ def main():
         + (", driver-queue" if doc["driver_queue"] else "")
         + (", driver-link" if doc["driver_link"] else "")
         + (", driver-map-soft" if doc["driver_map_soft"] else "")
+        + (", driver-map-soft2" if doc["driver_map_soft2"] else "")
     )
 
 
