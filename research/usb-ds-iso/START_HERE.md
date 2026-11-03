@@ -81,6 +81,10 @@
   漏的槽位不总在套尾（11/12、**5/6**、11/12）——之前的“尾部规律”是小样本。
 - **设备侧收口**：~1.5 s 一次两帧漏服务是宿主/VM 侧现象；产品结论按
   “88–90% 占空 + 80 ms 空洞”写。
+- **下一步是宿主侧 item (b)**：在 guest 里开 `xhci-hcd` tracepoint 跑
+  同一条 probe，用 [UAC_U2_HOST_TRACE.md](docs/UAC_U2_HOST_TRACE.md) 的
+  步骤采集、`tools/analyze_xhci_iso_trace.py` 解码，看 ISOC URB 是否出现
+  与 code 23 同节律的 384 B 缺口。
 - `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。

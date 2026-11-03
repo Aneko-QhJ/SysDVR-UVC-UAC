@@ -195,19 +195,21 @@
 
 ## 下一步
 
-1. **设备侧收口**。稳态已经量出来：88–90% 占空、每 ~1.5 s 一次 **两帧**
-   漏服务（code 23）、每次代价 ~80 ms + 1 套、环 wrap 正常。继续压 miss
-   需要宿主/VM 侧证据（guest xHCI 的 ISO 调度、URB 补投时序），不是设备
-   侧能再切的。
-2. **产品结论按实测写**：标准 48 kHz UAC 仍不连续（88–90% 占空 + 80 ms
-   空洞 → 必然 xrun），但设备侧不再随时间退化；把
-   [UAC_PCM_GAP.md](UAC_PCM_GAP.md) 的旧 16% 模型更新为实测 88–90%。
-3. **可选（宿主侧）**：a) 换非 VM 宿主或用 `usbfs` 直接跑 probe，比较
-   code 23 的频率；b) 在 guest 里记录 xHCI 的 ISO TRB 时序，看那两帧为什么
-   没被服务。
-4. 8 个 descriptor-parser NOP 仍未隔离；不在这条线上动。
+1. **宿主侧 item (b)：xhci trace（v29w）**。设备侧已收口；下一步是到 guest
+   内核里看那两帧为什么没被服务。工具与分析计划已就绪：
+   [UAC_U2_HOST_TRACE.md](UAC_U2_HOST_TRACE.md)、
+   `tools/analyze_xhci_iso_trace.py`（读 `xhci_urb_enqueue/giveback` +
+   `xhci_handle_transfer`，报告 ISOC URB 的 short 数与缺口）。
+   一次实机：部署 v29v（`b8cf0807…`）→ 开机 → 在 guest 里开 tracepoint、
+   跑同一条 probe → 取回 trace 与 host 日志 → 本机解码。
+   判定：出现与 code 23 同节律的 384 B short URB → 漏服务在宿主 URB 层；
+   全部 3072 → 在控制器取指层，不在 URB 层。
+2. **宿主侧 item (a)**（在 (b) 之后）：非 VM 宿主或用 `usbfs` 直接提交对照，
+   看 code 23 频率是否变化。
+3. 设备侧不再改这个形状（lead/在飞/门/memset/预排均有负结果）；
+   8 个 descriptor-parser NOP 仍未隔离。
 
-判定：设备侧不再做“消除 miss”的尝试，除非宿主侧给出具体机制。
+判定：宿主侧只做证据采集与对照，不改设备镜像。
 
 ## 边界与纪律
 
