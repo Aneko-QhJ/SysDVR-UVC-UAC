@@ -1221,3 +1221,29 @@ UAC U2 pipe timing waits=476 timeouts=91 span_ms=9772 max_gap_ms=214 max_react_m
 结论：一次性训练的形态不适合真实宿主。下一步 v30h 把 producer 改成
 “alt1 开、alt0 停、每次 alt1 可重新 arm”的连续循环（不设固定 post 数），
 让 alt 抖动只造成一次环复位，而不是杀死整条流。
+
+### 2026-11-04 00:3x v30h 连续 producer：alt 抖动被压住
+
+v30g 的 440 次 alt 切换说明一次性训练不能用在真实宿主上。v30h 改成：
+
+- `g_uacCtx.streamRequested`：alt1 置位、alt0 清除；管道循环在清除时 break；
+- `UAC_U2_CONTINUOUS`：post 计数变成回绕保护（0xFFFFFFFF），全部完成也继续投；
+- arm 线程循环：等标志 → 20 ms → 跑训练 → 清 `burstPosted` → 再等，每个
+  alt1 都能重新 arm。
+
+macOS 实机（一次 boot，`ffmpeg -t 20` 正常结束 20.5 s）：
+
+```text
+alt1=15 alt0=11 trains=15
+posted=1122 completed=1077 bytes=3115008 (1014 sets = 16.22 s)
+misses=46 recoveries=16, per-train max_gap 28-67 ms
+WAV 682088 frames = 14.21 s, +/-16384 square wave, 105 silence runs (0.42 s)
+```
+
+- **形态成立**：alt 切换 440→15，流不再被 alt0 杀死，每次 alt1 都能续上，
+  1 kHz 相位跨训练连续（`pattern` 从 6912、15360… 递增）。
+- **还剩两层损失**：设备投递 16.22 s / 20.5 s 墙钟（79%），宿主又只录到
+  14.21 s（投递的 87.6%）；miss 46 次（~1.15 事件/s）仍高于 VM 的 0.67/s。
+- 每段训练的首个 miss 常在 `off=0x0`，即重新 arm 后立刻发生——20 ms 的 arm
+  前延迟可能太短；这是下一个最便宜的实验（20→40 ms），其次是连续流下把
+  在飞 3→4（窗口 48→64 ms，`max_react` 实测 20–36 ms 已接近上限）。
