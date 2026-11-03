@@ -819,6 +819,22 @@ pending 的 completion 一起抹掉。
 - 判定：rearm-race 行可能仍出现，但 `status=5` 应下降；若仍有
   miss+race，说明新 set 复用了同一 mailbox，或 completion 丢在别处。
 
+### 2026-11-03 16:0x v29o 实机：memset 缩短没有消除 miss
+
+- host：`rc=0`；312 transfers、`valid=2361 bad=2631 **bytes=190464**`，
+  数据 t=18–2801 ms。
+- 设备：**posted=64 completed=64 bytes=190464 misses=2 recoveries=0**——
+  62 个 `3072/3`、2 次 `status=5`、无 stall；host==device。
+- **2 条 `UAC U2 rearm race` 仍与 2 次 miss 一一对应**（seq 30/34，
+  buf 5/1），说明把 memset 缩到 0xf00、保住 mailbox/cursor 并没有解决：
+- 丢的是 **rearm 本身**（`0x2feb0` 的 memset + prod/cons reset +
+  context commit + halt clear）与刚发出的 set 竞争。自然排空（控制器还
+  在跑、没有 halt）时不需要重置 context；只有驱动 `0x30ff4` 复位后才
+  需要。
+- 判定：v29o 不优于 v29h（62/2/0）；下一版改 cave 的空 ring 门——自然
+  排空直接在 `prod` 写，只有 halt/base 才 rearm；空间从 rearm 后的
+  死 link copy 腾出。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；

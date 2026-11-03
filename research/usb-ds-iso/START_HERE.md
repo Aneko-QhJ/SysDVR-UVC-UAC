@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 15:5x）
+## 当前边界（2026-11-03 16:0x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -42,10 +42,10 @@
 - **v29n 确认了 rearm race**：4 条 `UAC U2 rearm race` 与 4 次 miss
   一一对应（60 段、184320 B、host==device）；是 cave 空 ring rearm 的
   `0x2feb0` memset wipe 了 pending completion，不是 `0x30ff4`。
-- **修复候选 v29o 已离线构建**：NSP `855e7d41…`（92959 B），只把
-  `0x2feb0` 的 memset 从 0x1000 缩到 0xf00，保留 mailbox/cursor；待 boot。
-- 下一步：部署 v29o 跑一次；rearm race 行可能仍在，但 miss 应下降；
-  若仍有 miss，说明新 set 复用同一 mailbox 或 completion 丢在别处。
+- **v29o 未消除 miss**：memset 缩到 0xf00 后仍是 62 段 / 2 miss / 2 条
+  rearm race（1:1）；丢的是 rearm 本身与刚发出的 set 的竞争，不是 mailbox。
+- 下一步：改 cave 空 ring 门——只在驱动复位（halt/base）时 rearm，自然
+  排空直接写 `prod`；用 rearm 后的死代码腾空间，先离线设计 + 单测。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 

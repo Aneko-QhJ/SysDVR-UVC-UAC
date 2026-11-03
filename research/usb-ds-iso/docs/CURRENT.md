@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 15:5x，Asia/Shanghai）
+# 当前状态（2026-11-03 16:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -30,12 +30,15 @@
 - 机制：ring 在投递瞬间被排空，cave 走空 ring rearm（`0x2feb0` 的
   0x1000 memset + commit），把刚发出那套的 pending completion 一起
   wipe，控制器回 `status=5`——不是驱动 `0x30ff4`。
-- **修复候选 v29o 已离线构建**：NSP `855e7d41…`（92959 B），47 条 edits
-  = v29n 46 + `0x2ff14` 的 `mov w2,#0x1000 → #0xf00`；只缩短 `0x2feb0`
-  的 memset，保留 mailbox/cursor，TD 区与 link 仍清；`0x30ff4` 自己的
-  0x1000 memset 不动。待一次 boot。
-- 下一步：部署 v29o 跑一次；rearm-race 行可能仍在，但 miss 应下降；若
-  仍有 miss+race，说明新 set 复用了同一 mailbox，或 completion 丢在别处。
+- **v29o 实机：缩短 memset 没有消除 miss**：NSP `855e7d41…` 得到 62 段
+  （190464 B）、**misses=2、2 条 rearm race**，仍 1:1 对齐；host==device，
+  无 crash/fatal/erpt。
+- 解释：丢的不是 mailbox 里的 pending completion，而是 **rearm 本身**
+  （`0x2feb0` 的 context reset + commit + halt clear）与刚发出的 set
+  竞争——自然排空时不需要 rearm。
+- 下一步：改 cave 的空 ring 门——只有驱动复位（halt 置位/base）才 rearm，
+  自然排空直接在 `prod` 写；需要腾出 cave 空间（rearm 后那段 link copy
+  在驱动 link 已补到 `0xc00` 后是死代码），先离线设计 + 单测。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
@@ -71,7 +74,7 @@
 | v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 首跑；后被证明是方差 |
 | v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
 | v29n | v29m + app rearm-race 日志 | 184320 B | 60×`3072/3`、4 miss | **4/4 rearm race 对齐，机制确认** |
-| v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | —（0 实机） | —（0 实机） | 离线 `855e7d41…`（92959 B），待 boot |
+| v29o | v29n + `0x2feb0` memset 0x1000→0xf00 | 190464 B | 62×`3072/3`、2 miss、2 race | memset 缩短未消除 miss；rearm 本身是竞态源 |
 
 ## 当前最佳配置（v29m）
 
@@ -107,13 +110,15 @@
 
 ## 下一步
 
-1. **rearm 修复候选**：跳过或缩小 `0x2feb0` 里的 0x1000 memset（例如把
-   `0x2ff14` 的 `mov w2,#0x1000` 改成 `#0xf00`，保留 mailbox/cursor；
-   或 NOP `0x2ff18` 的 memset 调用），让排空时 pending completion 不被
-   wipe；离线构建 + 单测，再按纪律跑；
-2. 先保持 v29m 数据路径（lead 32、3 在飞、双 map-soft），一次只改
-   memset 这一处；判定 ≥62 段、0 miss；
-3. 若 memset 修复仍丢套，转查驱动 `0x30ff4` 的复位路径；
+1. **cave 空 ring 门重设计（v29p）**：自然排空时不要 rearm——在 `prod`
+   位置直接写下一套（控制器仍在跑）；只有驱动复位（`0x30ff4` 之后
+   halt/base）才走 `0x2feb0`。判别用 halt 位或 `prod==cons==ring` 的
+   base 检查；
+2. 空间：rearm 后的 link copy（`ldr x9,[x1,#0x28]` 起的 6 条）在驱动
+   link 已补到 `+0xc00` 后是死代码，可腾出 ~24 B 放判别逻辑；cave 仍
+   需 ≤684 B；
+3. 离线先构建 v29p + 单测（分支编码、cave 尺寸），再按纪律跑；判定
+   ≥62 段、0 miss；
 4. 0 miss 之后再评估占空比与 48 kHz 连续。
 
 判定：不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
