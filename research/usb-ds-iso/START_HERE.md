@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-03 12:4x）
+## 当前边界（2026-11-03 13:1x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。旧 A23 票据的
@@ -39,8 +39,11 @@
   （开机纪律违规）0 数据；v29l（lead 40）58 段。
 - 收尾安全：v29m 两轮枚举 5 次 alt0 都无 `svcBreak`、无新 crash/fatal；
   v29l 的 `2162-0004` 未复现。
-- 下一步：ring 复位诊断——最后 1 次 miss 前仍出现 `prod=cons=cur=0`，
-  记录触发者（driver `0x30ff4` vs cave 空 ring rearm），目标 0 miss。
+- **诊断候选 v29n 已离线构建**：NSP `5421884e…`（92960 B），payload 与
+  v29m 相同，只在 app 加 `UAC U2 rearm race` 日志，用来区分 cave 空 ring
+  rearm 与驱动 `0x30ff4`；待一次 boot。
+- 下一步：部署 v29n 跑一次，检查 rearm-race 行是否与 miss 对齐；若对齐，
+  修 cave rearm 竞态，否则查 `0x30ff4`。目标 0 miss。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。
 

@@ -1,4 +1,4 @@
-# 当前状态（2026-11-03 13:0x，Asia/Shanghai）
+# 当前状态（2026-11-03 13:1x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -23,8 +23,15 @@
   （v29i）、lead 4/16/40。
 - 限制：占空比约 47%，48 kHz 连续仍不成立；UAC 默认仍禁用（仅
   `UAC_HOST_PROBE`）。
-- 下一步：做 **ring 复位诊断**——最后一 miss 前仍出现 `prod=cons=cur=0`，
-  要记录触发者是驱动 `0x30ff4` 还是 cave 的空 ring rearm；目标 0 miss。
+- **诊断候选 v29n 已离线构建**：NSP `5421884e…`（92960 B），payload 与
+  v29m 完全相同（46 条），只在 app 的 cursor 诊断里加
+  `UAC U2 rearm race ...` 行：pre 非空、post 出现 rearm wipe
+  （`prod=cons=ring`、`cur=0`）时记录，用来区分 cave 空 ring rearm 与
+  驱动 `0x30ff4` 复位；待一次 boot。
+- 离线分类（已归档日志）：v29h 2 次 rearm-during-post / 2 miss、v29i
+  3/3、v29f 3/3、v29m-r2 1/1；v29l 另有多次普通 empty rearm 后的 miss。
+- 下一步：部署 v29n 跑一次，检查 rearm-race 行是否与 miss 一一对应；若是，
+  下一轮修 cave 的 rearm 竞态；若不是，查驱动 `0x30ff4`。
 - 未隔离：DCI-9 cave 的 `ISO_ENTRY=0x270`、8 个 descriptor-parser NOP。
 - 卡：安全 `52069a44…` 已恢复并弹出（13:0x）；两轮日志均已归档。
 
@@ -51,7 +58,6 @@
 
 | 轮次 | 做法 | host | 设备 | 判定 |
 | --- | --- | --- | --- | --- |
-| v29e | 4 mailbox + 3 在飞 + status=5 恢复 | 180672 B | 56×`3072/3`、4 recover | 3 在飞成立 |
 | v29f | miss 只释放槽并补投，stall 才 cancel | 187392 B | 61×`3072/3`、3 miss | 数据好；收尾仍崩 |
 | v29g | alt0 STOP 先 cancel + 收 report | 193536 B | 63×`3072/3`、1 miss | 数据最好；崩溃仍在 |
 | v29h | IOVA 节点耗尽返回错误（map-soft） | 190464 B | 62×`3072/3`、2 miss | 收尾不崩 |
@@ -61,6 +67,7 @@
 | v29l | v29k + `0x3dac`→`0x409c`（map-soft-2） | 179712 B | 58×`3072/3`、3 miss、1 recover | lead 40 负结果；host 比设备多 1536 |
 | v29m | 回退 lead 32 + 双 map-soft | 179904 B | 58×`3072/3`、3 miss、1 recover | 首跑；后被证明是方差 |
 | v29m-r2 | 同一 NSP 重复 | **193536 B** | **63×`3072/3`、1 miss、0 recover** | **新最好；host==device** |
+| v29n | v29m + app rearm-race 日志 | —（0 实机） | —（0 实机） | 离线 `5421884e…`（92960 B），诊断候选待 boot |
 
 ## 当前最佳配置（v29m）
 
@@ -96,14 +103,14 @@
 
 ## 下一步
 
-1. **ring 复位诊断**：v29m 重复轮唯一一跳 miss（buf 6，seq 附近
-   `prod=cons=cur=0`）仍是下一个目标；在 cave/驱动记录复位触发者
-   （driver `0x30ff4` 还是 cave 的空 ring rearm），不要先改 lead。
-2. 若诊断需要新候选，保持 v29m 的数据路径（lead 32、3 在飞、双
-   map-soft），只加观测；每次判定至少两次重复（v29m 已见 58↔63 的方差）。
-3. 0 miss 之后再评估占空比与 48 kHz 连续。
+1. **部署 v29n（一次 boot）**：同一 v29m 数据路径 + rearm-race 日志；
+   开机纪律不变；检查设备日志里 `UAC U2 rearm race` 行是否与 miss 对齐；
+2. 若 rearm race 与 miss 一一对应：下一轮修 cave 的 rearm 竞态（例如
+   在 ring 仍有在飞 TD 时避免 memset，或延后 rearm），先离线设计；
+3. 若没有 rearm race 却仍 miss：转查驱动 `0x30ff4` 的复位路径；
+4. 0 miss 之后再评估占空比与 48 kHz 连续。
 
-判定：先不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
+判定：不倒退（≥62 段），目标是 0 `status=5`、device bytes = host bytes
 （196608）。
 
 ## 边界与纪律

@@ -2337,6 +2337,10 @@ static void _uacLogInstallState(void)
    mailbox scratch (ring+0xFB8).  Log the cursor and the ring pointers around
    every pipeline post to tell "cursor not written/read" from "ring reset
    between posts".  Reads only. */
+static u64 g_cursorPreRing, g_cursorPreProd, g_cursorPreCons;
+static u32 g_cursorPreSeq;
+static bool g_cursorHasPre;
+
 static void _uacLogCursor(const char *tag, u32 seq)
 {
     if (!g_uacUsbPid) return;
@@ -2359,6 +2363,28 @@ static void _uacLogCursor(const char *tag, u32 seq)
         LOG("UAC U2 cursor %s seq=%u ring=0x%llx prod=0x%llx cons=0x%llx cycle=%u cur=%u rc=0x%x\n",
             tag, seq, (unsigned long long)ring, (unsigned long long)prod,
             (unsigned long long)cons, st[0x40], cursor, crc);
+        if (!strcmp(tag, "pre")) {
+            g_cursorPreRing = ring;
+            g_cursorPreProd = prod;
+            g_cursorPreCons = cons;
+            g_cursorPreSeq = seq;
+            g_cursorHasPre = true;
+        } else if (!strcmp(tag, "post") && g_cursorHasPre &&
+                   g_cursorPreSeq == seq && g_cursorPreRing == ring) {
+            /* v29n diagnostic: the cave re-arms (and memsets the ring) when
+               prod == cons at its gate.  If the ring was non-empty just
+               before the post but carries the re-arm wipe right after it,
+               the drain raced the post; log it so a miss can be attributed
+               to the re-arm instead of a driver reset.  Logging only. */
+            if (g_cursorPreProd != g_cursorPreCons && prod == ring &&
+                cons == ring && cursor == 0) {
+                LOG("UAC U2 rearm race seq=%u pre_prod=0x%llx pre_cons=0x%llx post_prod=0x%llx post_cons=0x%llx\n",
+                    seq, (unsigned long long)g_cursorPreProd,
+                    (unsigned long long)g_cursorPreCons,
+                    (unsigned long long)prod, (unsigned long long)cons);
+            }
+            g_cursorHasPre = false;
+        }
     }
     svcCloseHandle(h);
 }

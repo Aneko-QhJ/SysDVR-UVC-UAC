@@ -278,5 +278,18 @@ class MapSoft2Tests(unittest.TestCase):
         self.assertEqual(target(after, 0x3DAC), 0x409C)
 
 
+class RearmRaceDiagTests(unittest.TestCase):
+    """v29n: log a cave re-arm that races a post."""
+
+    def test_source_logs_rearm_race(self):
+        text = SOURCE.read_text()
+        self.assertIn("UAC U2 rearm race seq=%u pre_prod=0x%llx", text)
+        self.assertIn("g_cursorPreProd != g_cursorPreCons", text)
+        self.assertIn('!strcmp(tag, "pre")', text)
+        self.assertIn('!strcmp(tag, "post")', text)
+
+
 if __name__ == "__main__":
+    unittest.main()
+
     unittest.main()

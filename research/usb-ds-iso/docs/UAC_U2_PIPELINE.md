@@ -749,6 +749,34 @@ map-soft-2，共 46 条 edits。
   同一构建两轮 58↔63。v29m 重复轮成为新的最好数据轮（63 段、1 miss），
   下一个目标是那一跳 miss 前的 ring 复位。
 
+### 2026-11-03 13:1x v29n rearm-race 诊断（离线）
+
+对已归档设备日志做离线分类：把每个 post 的 `cursor pre/post` 配对，pre 非空
+（`prod != cons`）而 post 出现 rearm wipe（`prod == cons == ring`、`cur == 0`）
+记为一次 “rearm during post”。结果：
+
+| run | rearm-during-post | miss |
+| --- | --- | --- |
+| v29h | 2（seq 5/55） | 2 |
+| v29i | 3（seq 44/51/60） | 3 |
+| v29f | 3 | 3 |
+| v29m-r2 | 1（seq 39，buf 6） | 1 |
+| v29m 首跑 | 2 | 3 |
+| v29l | 1 | 3（另有多轮普通 empty rearm 后的 miss） |
+
+多数 miss 能在 post 内看到一次 rearm wipe，说明 cave 在 ring 刚被排空时
+rearm（memset + 0x2feb0）与这次投递竞争；但仍不能从现有日志区分 cave
+rearm 与驱动 `0x30ff4` 复位，所以 v29n 只在 app 加一行观测：
+
+- payload 与 v29m 完全相同（46 条 edits，cave 680/684 B）；
+- app `_uacLogCursor` 记住 pre 的 ring/prod/cons，post 后若 pre 非空且出现
+  wipe，则 `LOG("UAC U2 rearm race seq=... pre_prod=... pre_cons=...")]
+  post_prod=... post_cons=...")`；不改变驱动、cave 或时序；
+- 构建 NSP `5421884e…`（92960 B）、NSO `f4b351c6…`；工作目录
+  `private/analysis/UAC-u2-v29n-rearm-diag-20261103`；
+- 判定：数据路径应与 v29m 相同（63 段最好，方差 58–63）；rearm-race 行
+  与 miss 对齐 → 修 cave rearm 竞态；不对齐 → 查 `0x30ff4`。
+
 ## 里程碑
 
 1. **v26A**：8 buffer、2 在飞、16 ms tick、lead 32、light log、`--keep-alt`；
