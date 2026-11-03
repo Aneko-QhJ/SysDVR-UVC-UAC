@@ -63,8 +63,9 @@
   prod/cons 不变 → cave 无法 rearm → 100 ms stall 定时器 cancel → ring
   复位 → 下一次 post 的 `0x2feb0` 才 commit + 清 halt → 194 ms 空档。
   **miss 是 host/控制器漏服务，不是 cave 竞态。**
-- **下一版 v29t（app-only）**：`urb_status == 5` 一出现就 cancel + 重投，
-  不等 100 ms；预期 `max_gap_ms` ~50–60，每次恢复少丢 2 套。
+- **候选 v29t 已建（app-only）**：NSP `cac6ed88…`（93059 B），cave/payload
+  同 v29s；`urb_status == 5` 一出现就 cancel + 重投，不等 100 ms。预期
+  `max_gap_ms` 194→~50–60，每次恢复少丢 2 套；若不动说明 cancel 自身阻塞。
 - `ISO_ENTRY=0x300` 已实测确认；诊断时用 `pipe_quad_log.S` + `-DUAC_U2_EVENT_LOG`。
 - 仍未隔离：DCI-9 cave `ISO_ENTRY=0x270`、8 个 descriptor NOP；A23 线挂起。
 - 卡：安全 `52069a44…` 已恢复并弹出；设备现场状态不推定。

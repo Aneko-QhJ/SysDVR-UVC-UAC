@@ -126,6 +126,12 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #if UAC_U2_STALL_MS < 16 || UAC_U2_STALL_MS > 1000
 #error "UAC_U2_STALL_MS must be 16..1000"
 #endif
+/* How many times one train may cancel + repost after a lost endpoint.  A
+   v29q/v29s run needs one per miss event, so 8 leaves room for a handful of
+   code-23 events without letting a dead endpoint spin forever. */
+#ifndef UAC_U2_MAX_RECOVERIES
+#define UAC_U2_MAX_RECOVERIES 8
+#endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES];
 #endif
 
@@ -2744,7 +2750,8 @@ static void _postUacBurst(void)
             ++timeouts;
             if ((svcGetSystemTick() - last_progress) >
                 (u64)UAC_U2_STALL_MS * 19200) {
-                if (recoveries < 8 && posted < stream_posts) {
+                if (recoveries < UAC_U2_MAX_RECOVERIES &&
+                    posted < stream_posts) {
                     /* v29f: a miss leaves the endpoint idle; cancel what is
                        still queued and let the next post take the empty
                        re-arm path.  Bounded so a dead endpoint cannot spin. */
@@ -2778,6 +2785,7 @@ static void _postUacBurst(void)
             pipe_failed = true;
             break;
         }
+        bool halt_miss = false; /* v29t: a status=5 report means the endpoint is halted */
         for (u32 i = 0; i < report.report_count && i < 8; ++i) {
             const u32 id = report.report[i].id;
             /* v29b: with two in-flight requests the driver can emit a
@@ -2812,12 +2820,37 @@ static void _postUacBurst(void)
                        without paying a per-post SD write. */
                     LOG("UAC U2 pipe miss buf=%u status=%u\n",
                         b, report.report[i].urb_status);
+                    if (report.report[i].urb_status == 5) halt_miss = true;
 #if defined(UAC_U2_EVENT_LOG)
                     _uacLogEventScratch("miss");
 #endif
                 }
                 break;
             }
+        }
+        if (halt_miss && recoveries < UAC_U2_MAX_RECOVERIES &&
+            posted < stream_posts) {
+            /* v29t: status=5 is completion code 23 (Missed Service Error).
+               The controller stopped the endpoint and the driver's 0x31274
+               only sets the halt bit at regs+0x50 - it does not reset the
+               ring - so the cave can no longer re-arm (prod/cons are
+               unchanged) and no completion will ever arrive.  Cancel right
+               away instead of waiting for the 100 ms stall timer: the cancel
+               resets the ring to base and the next post's 0x2feb0 commits and
+               clears the halt.  That turns the 194 ms silence into ~50 ms. */
+            Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+            u32 freed = 0;
+            for (u32 c = 0; c < UAC_U2_TRAIN_POSTS; ++c) {
+                if (free_slot[c]) continue;
+                free_slot[c] = 1;
+                ++completed;
+                ++freed;
+            }
+            ++recoveries;
+            LOG("UAC U2 pipe miss recover cancelled=%u rc=0x%x\n",
+                freed, cancel);
+            last_progress = svcGetSystemTick();
+            continue;
         }
         last_progress = svcGetSystemTick();
     }

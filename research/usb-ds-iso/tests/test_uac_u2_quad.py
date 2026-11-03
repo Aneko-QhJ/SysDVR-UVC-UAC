@@ -84,7 +84,8 @@ class PipelineAppTests(unittest.TestCase):
 
     def test_stall_cancels_and_reposts(self):
         self.assertIn("UAC U2 pipe stall recover cancelled=%u", self.text)
-        self.assertIn("recoveries < 8", self.text)
+        # v29t moved the cap behind a define; the stall path shares it
+        self.assertIn("recoveries < UAC_U2_MAX_RECOVERIES", self.text)
         self.assertIn("usbDsEndpoint_Cancel(", self.text)
         self.assertIn("++recoveries;", self.text)
 

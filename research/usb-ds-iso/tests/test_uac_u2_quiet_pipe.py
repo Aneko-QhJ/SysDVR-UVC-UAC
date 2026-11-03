@@ -126,5 +126,41 @@ class UacU2StallLimitTests(unittest.TestCase):
                       self.text)
 
 
+class UacU2MissRecoveryTests(unittest.TestCase):
+    """v29t: a status=5 report cancels and reposts immediately.
+
+    v29s showed the halt comes from completion code 23 (Missed Service) and
+    that the driver only sets regs+0x50 for it, so prod/cons stay put and the
+    cave cannot re-arm.  Waiting for the 100 ms stall timer only stretches the
+    silence; a status=5 report is already the proof that nothing will complete.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not SOURCE.is_file():
+            raise unittest.SkipTest(f"missing {SOURCE}")
+        cls.text = SOURCE.read_text()
+
+    def test_status5_is_remembered(self):
+        self.assertIn("bool halt_miss = false; /* v29t: a status=5 report means",
+                      self.text)
+        self.assertIn("if (report.report[i].urb_status == 5) halt_miss = true;",
+                      self.text)
+
+    def test_recovery_cancels_before_the_stall_timer(self):
+        index = self.text.index("if (halt_miss && recoveries < UAC_U2_MAX_RECOVERIES")
+        block = self.text[index:index + 1600]
+        self.assertIn("usbDsEndpoint_Cancel", block)
+        self.assertIn("pipe miss recover cancelled=%u rc=0x%x", self.text)
+        # the recovery comes after the report loop, before the loop's own
+        # last_progress update, so it takes effect on the same iteration
+        self.assertIn("continue;", block)
+
+    def test_recovery_cap_is_a_define(self):
+        self.assertIn("#ifndef UAC_U2_MAX_RECOVERIES", self.text)
+        self.assertIn("#define UAC_U2_MAX_RECOVERIES 8", self.text)
+        self.assertNotIn("recoveries < 8", self.text)
+
+
 if __name__ == "__main__":
     unittest.main()

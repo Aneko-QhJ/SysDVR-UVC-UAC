@@ -124,6 +124,7 @@
 | v29q | v29m payload + app 静默流水线 | 180672 B（58.8 套） | **59×`3072`、2 miss、1 recover、span 1201 ms** | **成立**：覆盖 81.7%（v29p 35.3%）；损失集中在那一次 miss → halt |
 | v29r | v29q + `STALL_MS=32` | **4032 B** | posted=27、completed=24、**bytes=0**、8 recover | **负结果**：阈值 < lead+一套（≈48 ms）→ cancel 风暴 |
 | v29s | v29q + `ISO_ENTRY 0x300` / 只记录型 `iso_event` | 183744 B（59.8 套） | 59×`3072`、2 miss、1 recover、span 1250 ms | **诊断命中**：code=23（Missed Service）@0xba0/0xbc0；驱动只置 halt |
+| v29t | v29s + miss 立即 cancel/重投（app-only） | —（0 实机） | —（0 实机） | 离线 `cac6ed88…`（93059 B），待 boot；目标 `max_gap_ms` < 100 |
 
 ## 当前最佳配置（v29q = v29m payload + 静默 app）
 
@@ -161,12 +162,11 @@
 
 ## 下一步
 
-1. **v29t（app-only）：miss 立即恢复**。既然 code 23 已把端点 halt、驱动又
-   不复位 ring，就不该再等 100 ms：`urb_status == 5` 的报告一到，立刻
-   `usbDsEndpoint_Cancel`（把 ring 复位到 base、释放 3 个在飞槽）并重投，
-   下一次 post 的 `0x2feb0` 就会 commit + 清 halt。预期 `max_gap_ms` 从
-   194 降到 **~50–60 ms**（cancel + 32 ms lead + 16 ms），并且每次恢复少丢
-   2 套（3 套 vs 现在的 5 套）。
+1. **跑 v29t**（`cac6ed88…`，93059 B，cave/payload 同 v29s，app-only）：
+   `urb_status == 5` 的报告一到就 cancel + 重投，不再等 100 ms stall。
+   预期 `max_gap_ms` 从 194 降到 **~50–60 ms**，每次恢复少丢 2 套
+   （3 套 vs 5 套）；`evlog` 应仍是 `code=23`。若 `max_gap_ms` 不动，
+   说明 cancel 自身会阻塞 100 ms（驱动事件线程），要换 cave 侧方案。
 2. **不要改 cave 的 lead（32）与在飞深度（3）**，也不要再动 stall 阈值
    （100 ms，v29r 已证下限 ≈48 ms）。
 3. 若 v29t 把空档压到 ~50 ms 后仍是“每 1.2 s 一次”，下一步就是 host 侧：
