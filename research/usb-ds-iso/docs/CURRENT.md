@@ -1,4 +1,4 @@
-# 当前状态（2026-11-04 01:3x，Asia/Shanghai）
+# 当前状态（2026-11-04 23:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -29,14 +29,21 @@
   16.22 s）、**59 miss、97 条 code-23（~48 事件）**、每段 `max_gap 68–115 ms`
   （v30h 28–67）；宿主 11.86 s。流内静音只有 4 段，但缺的时间落在**训练之间**。
   → **回退 3 在飞**；参数调优到头了。
-- **v31 驱动侧快速恢复（离线候选，0 实机、未部署）**：NSP `997de2f7…`
-  （94288 B，**47 edits** = v30h 46 + 一条 0x50 B 替换）。`0x31274` 的
-  halt-only 分支整段换成 `sub x0,x21,#0x22,lsl#12` + `mov x1,x19` +
-  `bl 0x2feb0` + `b 0x31118` + 16 NOP：code-23 时当场做 ring 复位、
-  64 B context 重写、`regs+0x58` commit、清 `regs+0x54/0x50` halt，再由原路径
-  用 status=5 完成 URB。app 与 cave 逐字节不变（仍是 v30h 配置）。
-  验证：`--check` 47/548 B 通过；同一段代码用 devkitA64 在 0x31274 重新汇编
-  逐字节相同；新增 6 个解码测试；quick 36 文件全绿。
+- **v31 驱动侧快速恢复（macOS 一次 boot，负结果）**：NSP `997de2f7…`
+  （94288 B，47 edits = v30h 46 + 一条 0x50 B 替换）。`0x31274` 的 halt-only
+  分支整段换成 `bl 0x2feb0`（ring 复位 + 64 B context + `regs+0x58` commit +
+  清 halt）+ `b 0x31118`（仍以 status=5 完成 URB），app/cave 逐字节不变。
+  实机：**13 段 / 1011 套 = 16.18 s**（v30h 1014 / 16.22 s，持平）、
+  **status=5 恰好 30 条，与 v30h 相同**、`misses=71`、`recoveries=15`、
+  **每段 `max_gap 30–83 ms`（v30h 28–67，均值 43 vs 38，最长 83 vs 67）**、
+  `max_react 41`；宿主 **680,832 帧 = 14.184 s**（v30h 14.21 s）、
+  静音 126 段 / 0.587 s（v30h 105 / 0.42）；无新 crash/fatal/erpt。
+  → **判负**：空洞不在驱动的 halt 握手；app 仍要 cancel + 重投、cave 仍要
+  重放 `0x2feb0`，事件路径里多跑一次 reset 只是把 completion 推后。
+  已恢复 v30h。另见一条未决观察：抓取后出现 **106 次 USB
+  disconnect/connect**（v30h/i/j 都只有 1 次），每次跟一次 alt0 teardown；
+  本轮空闲窗口 ~65 min（v30h 轮 ~2 min），无 crash 报告，暂不归因于 v31，
+  需要单独一轮才能分清。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -283,15 +290,17 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v31 已构建，等一次 boot**：驱动侧 code-23 快速恢复（`0x31274` 内联
-   `0x2feb0`，见上）。判定只看一件事：macOS 上每次 miss 的空洞是否比 v30h 的
-   28–67 ms 更短。若不变，说明 halt 握手不是成本，剩下的只有 app 的 cancel
-   往返 + 32 ms cave lead，下一轮改 app/cave 的恢复路径（不再由驱动修）。
-   风险不变：这是 payload 之外的新驱动 edit，0x2feb0 在事件上下文里跑
-   context writer + DMA 转换，可能触发 usb:ds 断言 → 一次 boot、失败即停。
-3. **VM 数字只描述 probe 路径**（498/494 套、0.67 事件/s、~90% 占空、
+2. **v31 已判负，回退 v30h**：驱动侧 halt 握手不是空洞来源（见上）。下一个
+   杠杆改 app/cave 的恢复本身：status=5 后**不 cancel、不做整环重放**，让环
+   保持运行（或在 miss 处只重写 context、保留 prod 位置），从而去掉 20–40 ms
+   的 app 往返和 32 ms 的 cave lead。难点是另外两条在飞 URB 的归属——需要先在
+   离线把 driver 队列与 `0x30470` 的完成语义读清楚，再决定改 app 还是改 cave。
+3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
+   观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
+   v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。
+4. **VM 数字只描述 probe 路径**（498/494 套、0.67 事件/s、~90% 占空、
    ~90 ms 空洞），不是真实宿主上限。
-4. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
+5. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
    字符串描述符仍未做。
 
 判定：形态已对；现在只调 miss 率，不再改流结构。

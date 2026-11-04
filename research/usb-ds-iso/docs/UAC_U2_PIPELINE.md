@@ -1322,3 +1322,35 @@ WAV 569344 frames = 11.86 s, but only 4 silence runs (0.17 s)
 | 任一 crash/fatal/erpt | 立即停，读卡取报告，回退 v30h |
 
 判据只看空洞与 crash，不看段数（单轮段数方差 ≈ 6 套）。
+
+### 2026-11-04 22:4x–23:5x v31 实机：负结果
+
+一次 boot、一次 20 s 抓取；`patch result=0 record=46` 说明 47 条 edit 全部生效。
+
+```text
+trains=13  posted=1125 completed=1086 bytes=3105792 (1011 sets = 16.18 s)
+status=5 = 30 (v30h 30)  misses=71 recoveries=15  alt1=13
+per-train max_gap = 53 33 36 35 44 43 33 58 83 37 30 34 43   (mean 43.1, max 83)
+max_react=41
+WAV 680832 frames = 14.184 s, 126 silence runs (0.587 s), square 95.8%
+reports crash 22 / fatal 15 / erpt 28 / fatal_errors 2 = baseline, no new report
+```
+
+对照 v30h（1014 套 / 16.22 s、status=5 30、`max_gap` 28–67 均值 37.8、宿主
+14.21 s、静音 105 段 / 0.42 s）：
+
+- **code-23 事件数完全不变**（30 vs 30），符合“miss 是控制器漏服务、不是
+  cave/驱动竞态”的既定结论；
+- **交付与宿主样本不变**（1011 vs 1014 套、14.184 vs 14.21 s），在单轮方差内；
+- **`max_gap` 略差**（均值 43.1 vs 37.8，最长 83 vs 67 ms）——不是预期的
+  “几毫秒”。
+
+原因：app 收到 status=5 后仍然 `usbDsEndpoint_Cancel` + 重投，cave 的下一次
+post 仍然走空环重放 `0x2feb0`。事件路径里多跑一次整环 reset 只是把 completion
+推后，20–40 ms 的 app 往返和 32 ms 的 cave lead 一个都没省。判定：**halt 握手
+不是空洞的来源**，回退 v30h；下一杠杆必须改 app/cave 的恢复本身（不 cancel、
+不整环重放，保留环的位置），而不是再改驱动。
+
+未决观察：抓取结束后 106 次 USB disconnect/connect（v30h/i/j 都是 1 次），每次
+跟一次 alt0 teardown；本轮空闲窗口 ~65 min、无 crash 报告，需要用
+`v30h + 保持连接 10 min` 的单独一轮分辨是 macOS 的空闲重试还是 v31 的副作用。

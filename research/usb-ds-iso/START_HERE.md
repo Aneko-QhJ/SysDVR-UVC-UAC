@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-04 01:3x）
+## 当前边界（2026-11-04 23:5x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
@@ -62,17 +62,20 @@
 - **宿主侧事实**：设备在 **Bus 001 / `ehci-pci`**（不是 xHCI），内核没有
   ehci tracepoint；可用 **usbmon bus 1** 或 probe 的 per-packet detail
   （`urb[N] detail p<idx>=<status>/<len>`）。
-- **下一步（v31 已构建，等一次 boot）**：参数调优到头（arm 延迟、在飞 4 都是
-  负结果）。**v31 = 驱动侧 code-23 快速恢复**：NSP `997de2f7…`（94288 B，
-  47 edits），把 `0x31274` 的 halt-only 分支整段换成
-  `bl 0x2feb0`（ring 复位 + context + commit + 清 halt）+ `b 0x31118`，
-  app/cave 不变。判定：macOS 上 miss 空洞是否比 v30h 的 28–67 ms 更短；
-  若不变，下一轮改 app/cave 的恢复路径。风险：新驱动 edit 可能触发
-  usb:ds 断言 → 一次 boot、失败即停。VM 数字（~90% 占空、0.67 次/s）只描述
-  probe 路径，不是真实宿主上限。
+- **v31 已判负（macOS 一次 boot）**：驱动侧 code-23 快速恢复 NSP `997de2f7…`
+  （47 edits）把 `0x31274` 的 halt-only 分支换成 `bl 0x2feb0` + `b 0x31118`。
+  实机 13 段 / 1011 套 = 16.18 s（v30h 1014 / 16.22 s）、**status=5 仍 30 条**、
+  每段 `max_gap 30–83 ms`（v30h 28–67，均值 43 vs 38）、宿主 14.184 s
+  （v30h 14.21）；无新 crash/fatal/erpt。→ **halt 握手不是空洞来源**，app 的
+  cancel 往返 + cave 的 32 ms lead 才是。已恢复 v30h；下一杠杆是 app/cave 的
+  恢复路径（不 cancel、不整环重放），另需一轮分辨抓取后 106 次重连是否与 v31
+  有关（本轮空闲窗口长 30 倍，无 crash 报告）。
+- **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）
+  都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
+  上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（01:1x）；VM 挂起；v30e 两轮 + macOS v30e…v30j 证据已归档；v31 候选未部署（等插卡）。
+- 卡：安全 `52069a44…` 已恢复并弹出（23:5x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31 证据已归档。
 
 ## 文件角色
 
