@@ -1354,3 +1354,40 @@ post 仍然走空环重放 `0x2feb0`。事件路径里多跑一次整环 reset �
 未决观察：抓取结束后 106 次 USB disconnect/connect（v30h/i/j 都是 1 次），每次
 跟一次 alt0 teardown；本轮空闲窗口 ~65 min、无 crash 报告，需要用
 `v30h + 保持连接 10 min` 的单独一轮分辨是 macOS 的空闲重试还是 v31 的副作用。
+
+### 2026-11-05 08:2x v32 离线：keep-ring 恢复（不 cancel，改 dequeue）
+
+v31 证明空洞不在驱动的 halt 握手，而在 app 的 cancel（整环 memset + 复位回
+base）和下一次 post 的 32 ms lead。v32 把环留在原地：
+
+```text
+iso_event (code 23 only):  ring+0xc10 += 1      ; 1 event = 1 URB completed
+iso_enter (prod != cons):  if count != 0:
+                             resume_endpoint(controller, ep)
+                           write the TD set at prod, doorbell
+resume_endpoint:
+  ctx[0] = (ctx[0] & ~7) | 1                    ; state = running
+  off    = (cons - base) + count * 0x200        ; one 0xc00 wrap
+  phys   = ring_phys + off
+  dcs    = first TD control word at off & 1     ; no cycle tracking needed
+  ctx[2] = phys | dcs ; ctx[3] = phys >> 32
+  bl 0x2ff90                                    ; driver commit + unhalt tail
+  ring+0xc10 = 0
+app: status=5 -> free the completed slots only, do not cancel
+```
+
+- `0x2ff90` 是 `0x2feb0` 里 commit（`regs+0x58`）+ 清 `0x54/0x50` 的尾；按
+  `0x2feb0` 的栈帧（x29/x30、x22/x21、x20/x19）进去，返回后仍走原来的
+  `b 0x31118` 完成 URB。
+- 计数来自 `iso_event`：驱动对每个 code-23 事件完成队列头的一个 URB，所以
+  count 正好是要跳过的套数；两个事件 → 跳过两套，从第三套继续。
+- 失败模式自限：如果 commit 没让控制器重新取指，app 的 100 ms stall 路径仍会
+  cancel + 让下一次 post 走空环 `0x2feb0` 恢复。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| 每段 `max_gap` 降到 16–32 ms 量级、`recoveries`≈0、交付/宿主 ≥ v30h | **keep-ring 成立**；后续压 miss 率或训练间的 alt 抖动 |
+| `max_gap` 仍在 40–80 ms，或 `recoveries` 与 v30h 相近 | 控制器不接受中途 dequeue 的 commit（走了 stall 兜底）；回到只读 context 诊断 |
+| 交付明显下降 / 训练提前结束 | halted 状态下 post 被拒；改回 v30h，或把 resume 提前到事件处理里 |
+
+判据仍只看空洞、recoveries、交付与 crash，不看单轮段数。

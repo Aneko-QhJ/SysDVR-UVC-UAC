@@ -2723,6 +2723,11 @@ static void _postUacBurst(void)
     u32 urb_ids[8] = {0};
     const u32 stream_posts = UAC_U2_STREAM_LIMIT;
     u64 last_progress = svcGetSystemTick();
+#if defined(UAC_U2_KEEP_RING)
+    /* v32 marker: the cave resumes a code-23 halt at the first pending set
+       instead of the app cancelling the ring back to base. */
+    LOG("UAC U2 pipe keep-ring resume=cave\n");
+#endif
     for (u32 i = 0; i < 8; ++i) free_slot[i] = 1;
 
     for (;;) {
@@ -2860,6 +2865,17 @@ static void _postUacBurst(void)
                 break;
             }
         }
+#if defined(UAC_U2_KEEP_RING)
+        /* v32: the cave resumes the halted endpoint at the first still
+           pending TD set on the next post (iso_resume: rewrite the context
+           TR dequeue, commit, clear halt) and the ring keeps its position.
+           Cancelling here would reset the ring to base and pay the 32 ms
+           cave lead again, so the miss only frees the completed slots.  If
+           the resume does not take, the 100 ms stall path below still
+           cancels and recovers. */
+        (void)halt_miss;
+#endif
+#if !defined(UAC_U2_KEEP_RING)
         if (halt_miss && recoveries < UAC_U2_MAX_RECOVERIES &&
             posted < stream_posts) {
             /* v29t: status=5 is completion code 23 (Missed Service Error).
@@ -2884,6 +2900,7 @@ static void _postUacBurst(void)
             last_progress = svcGetSystemTick();
             continue;
         }
+#endif
         last_progress = svcGetSystemTick();
     }
     if (completed < posted) {

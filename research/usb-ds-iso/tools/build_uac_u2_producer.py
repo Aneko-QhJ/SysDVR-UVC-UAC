@@ -176,6 +176,7 @@ LINKER = (
     "event_original = 0x30f70; complete_original = 0x2a980; "
     "report_epilogue = 0x2cbe4; copy_original = 0x60e50;\n"
     "rearm_endpoint = 0x2feb0; /* driver endpoint setup: commit + unhalt */\n"
+    "resume_tail = 0x2ff90; /* its commit + halt-clear tail, needs the 0x2feb0 frame */\n"
 )
 
 
