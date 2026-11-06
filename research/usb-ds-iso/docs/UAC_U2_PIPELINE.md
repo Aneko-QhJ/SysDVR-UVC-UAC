@@ -1624,3 +1624,24 @@ app:   "pipe miss" / "miss recover"    (两行 SD 写，改由 -DUAC_U2_MISS_LOG
 | `react_ms` 不动 | 成本在 completion 唤醒或 post IPC；下一轮分段计时 |
 
 两个变量同轮，赢了不分账；只有结果含糊时才需要拆开各跑一次。
+
+### 2026-11-06 18:4x v37 实机：空洞压到宿主容忍之下，静音归零
+
+lead 24 + 两行 miss SD 写编译掉，一次 boot：
+
+```text
+trains=8   posted=1274 completed=1250 bytes=3480576 (1133 sets = 18.13 s)
+per-train max_gap = 0 39 40 39 30 30 40 29 (mean 35.3, max 40)
+miss diag: react_ms = 0 (38 samples), cancel_ms = 0
+misses=67  recoveries=38  alt1=8  alt0=9
+WAV 747601 frames = 15.575 s, 100.0% square, 0 silence runs >= 1 ms (v36 87 / 0.208 s)
+```
+
+- **两行 SD 写就是 v36 剩下的 22.5 ms**：去掉后 completion→post 测量为 0，
+  miss 空洞只剩 `16 ms 丢套 + 24 ms lead`，`max_gap` 首次全部 ≤40。
+- 宿主侧是最大改善：**15.575 s**（v36 14.238）、**静音段 0 段**、方波 100%。
+- 代价：`misses 67`（v36 40）——24 ms 的余量比 32 小，控制器在 cancel 后取首套
+  更容易漏；但每次 miss 更便宜，净结果仍全面更好。
+- **瓶颈转移**：交付 18.13 s 对宿主 15.575 s，差 ~2.5 s ≈ 8 次 alt0 × 宿主
+  122–191 ms 重 arm + teardown。下一轮从“压 miss 空洞”转到“减少 alt0 / 加快
+  宿主重 arm”。
