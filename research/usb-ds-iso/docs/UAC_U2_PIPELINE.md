@@ -1753,3 +1753,27 @@ WAV 722798 frames = 15.058 s (perturbed: see below), 8 alt0, misses 76
   **15.058 s 不与 v38 可比**。后续诊断必须在下一次 alt1 之后 dump。
 - **下一步**：打断串——(a) halt 位置位时首套 32 ms（v35 16 ms 的镜像）；
   (b) 首次 miss 不 cancel、直接补投，验证串是否由 cancel 制造。
+
+### 2026-11-06 22:2x v40 离线：halt 门控 32 ms 打断 miss 串
+
+v39 的结论是“宿主对一串 miss 反应，不对单次反应”。v40 只改 cave 的 lead 策略：
+
+```text
+empty-ring re-arm:
+  if (regs+0x50 & (1<<dci))   ; 驱动 0x31274 在 code-23 置位、cancel 不清
+      lead = 32               ; 刚 miss 过：让首套稳稳落地，别再生一个 miss
+  else
+      lead = 20               ; v38 的正常值
+  bl 0x2feb0
+  frame0 = MFI/8 + lead       (add w9, w9, w14)
+non-empty sets:               lead = 20
+```
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| 串长 1–2、alt0 0–3 次、宿主 >16 s 且静音 0–2 段、交付 ≥1200 | **打断串成立**；腾出 teardown 预算后，再看 miss 率本身 |
+| alt0 变多 / 宿主变差 | post-miss 的 48 ms 洞过线（v36 的 54 ms 也只是勉强）；回退 20，改试“首次 miss 不 cancel” |
+| miss 总数不变、串不变 | 串不是 lead 造成的，是 halt 之后的固有行为；转 driver 侧（halt 握手/ring 复位） |
+
+注意：cave 600/684 B，只多 52 B；app 与 v38 逐字节相同，所以本轮结果可以和
+v37/v38 四轮直接比。
