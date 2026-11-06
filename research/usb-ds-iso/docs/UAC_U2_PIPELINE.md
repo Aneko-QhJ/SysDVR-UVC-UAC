@@ -1520,3 +1520,28 @@ alt1 since_alt0_ms = 122..191 (boot one 27558)
 | 只把 lead 降到 16（已试 v33） | 少 16 ms，但首套漏服务 → 更多 miss（负） |
 
 前两个的前提都是**先修 logger**，否则测不出差别。
+
+### 2026-11-06 13:5x v35 离线：post-miss 短 lead（16 ms）
+
+v34 把宿主的容忍量出来了：alt0 只在 status=5 之后流静默 42–75 ms 时到来。
+现有恢复 = app 反应 + cancel + 32 ms lead；32 ms 是其中最大的一块，而且只在
+**空环 re-arm 后的首套**生效。v35 用 halt 位区分两种空环：
+
+```text
+empty-ring path:
+  if (regs+0x50 & (1<<dci))     ; 驱动 0x31274 置位、app cancel 不清
+      lead = 16                 ; 刚 miss 过，宿主在等
+  else
+      lead = 32                 ; 新鲜 arm（训练开头/自然排空）
+  bl 0x2feb0
+  frame0 = MFI/8 + lead         (add w9, w9, w14)
+```
+
+同轮还修了 `LogFunctionImpl` 的并发覆盖（v34 因此丢了两条 diag 行），并在
+miss 时加 `UAC U2 miss diag react_ms= cancel_ms=`。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| `dt_done_ms` 42–75 → 26–59、status=5 仍 ~30、交付 ≥ v30h | **短 lead 成立**；继续把 repost 反应时间也压下来 |
+| status=5 变多 / 空洞更大 | 16 ms 不够取首套；回退 32，改从 app 反应侧下手 |
+| `miss diag react_ms` 远大于 `cancel_ms` | 成本在 app 的唤醒/报告路径，不在 cancel 或 lead |

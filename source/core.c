@@ -74,6 +74,13 @@ static void _exitFileLogging(void)
     }
 }
 
+/* v35: the usb:ds thread and the arm thread both log.  Without a lock two
+   writers can read the same file size and overwrite each other - v34 lost
+   two alt0 diag lines that way and the ordering was not reliable.  Hold a
+   small lock across size+write+close; the wait sleeps 100 us so it does not
+   burn the core while the other thread is in the SD write. */
+static int g_logLock;
+
 void LogFunctionImpl(const char* fmt, ...)
 {
     if (!g_sdMounted) return;
@@ -86,6 +93,9 @@ void LogFunctionImpl(const char* fmt, ...)
 
     if (len <= 0) return;
 
+    while (__atomic_exchange_n(&g_logLock, 1, __ATOMIC_ACQUIRE)) {
+        svcSleepThread(100000);
+    }
     FsFile file;
     if (R_SUCCEEDED(fsFsOpenFile(&g_sdCard, "/logfile.txt", FsOpenMode_Write | FsOpenMode_Append, &file))) {
         s64 offset = 0;
@@ -93,6 +103,7 @@ void LogFunctionImpl(const char* fmt, ...)
         fsFileWrite(&file, offset, buf, len, FsWriteOption_Flush);
         fsFileClose(&file);
     }
+    __atomic_store_n(&g_logLock, 0, __ATOMIC_RELEASE);
 }
 #endif
 

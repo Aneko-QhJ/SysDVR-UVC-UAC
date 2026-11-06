@@ -2638,6 +2638,9 @@ typedef struct {
     u32 posted, completed, misses, last_status;
     u32 active;
     u32 alt1_count, alt0_count;
+    u64 miss_tick;      /* completion time of a status=5 report */
+    u64 cancel_in;      /* app cancel window */
+    u64 cancel_out;
 } UacAltDiag;
 static UacAltDiag g_altDiag;
 #define UAC_ALT_DIAG_MS(tick) ((unsigned long long)((tick) / 19200))
@@ -2754,6 +2757,9 @@ static void _postUacBurst(void)
     g_altDiag.last_status = 0;
     g_altDiag.last_post_tick = 0;
     g_altDiag.last_done_tick = 0;
+    g_altDiag.miss_tick = 0;
+    g_altDiag.cancel_in = 0;
+    g_altDiag.cancel_out = 0;
     g_altDiag.active = 1;
 #endif
     for (u32 i = 0; i < 8; ++i) free_slot[i] = 1;
@@ -2802,6 +2808,14 @@ static void _postUacBurst(void)
 #if defined(UAC_U2_ALT_DIAG)
             g_altDiag.posted = posted;
             g_altDiag.last_post_tick = svcGetSystemTick();
+            if (g_altDiag.miss_tick && g_altDiag.cancel_out) {
+                LOG("UAC U2 miss diag react_ms=%llu cancel_ms=%llu\n",
+                    UAC_ALT_DIAG_MS(g_altDiag.last_post_tick - g_altDiag.miss_tick),
+                    UAC_ALT_DIAG_MS(g_altDiag.cancel_out - g_altDiag.cancel_in));
+                g_altDiag.miss_tick = 0;
+                g_altDiag.cancel_in = 0;
+                g_altDiag.cancel_out = 0;
+            }
 #endif
             if (posted == 1) first_post_tick = svcGetSystemTick();
             if (++next >= UAC_U2_TRAIN_POSTS) next = 0;
@@ -2890,6 +2904,10 @@ static void _postUacBurst(void)
                     LOG("UAC U2 pipe miss buf=%u status=%u\n",
                         b, report.report[i].urb_status);
                     if (report.report[i].urb_status == 5) halt_miss = true;
+#if defined(UAC_U2_ALT_DIAG)
+                    if (report.report[i].urb_status == 5)
+                        g_altDiag.miss_tick = done_tick;
+#endif
 #if defined(UAC_U2_EVENT_LOG)
                     _uacLogEventScratch("miss");
 #endif
@@ -2924,7 +2942,13 @@ static void _postUacBurst(void)
                away instead of waiting for the 100 ms stall timer: the cancel
                resets the ring to base and the next post's 0x2feb0 commits and
                clears the halt.  That turns the 194 ms silence into ~50 ms. */
+#if defined(UAC_U2_ALT_DIAG)
+            g_altDiag.cancel_in = svcGetSystemTick();
+#endif
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+#if defined(UAC_U2_ALT_DIAG)
+            g_altDiag.cancel_out = svcGetSystemTick();
+#endif
             u32 freed = 0;
             for (u32 c = 0; c < UAC_U2_TRAIN_POSTS; ++c) {
                 if (free_slot[c]) continue;

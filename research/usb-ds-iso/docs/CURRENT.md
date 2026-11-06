@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 13:3x，Asia/Shanghai）
+# 当前状态（2026-11-06 13:5x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -79,6 +79,15 @@
 - **附带发现（日志竞态）**：`LogFunctionImpl` 每次 open/取 size/写/close，
   **没有锁**；usb:ds 线程与 arm 线程并发写会互相覆盖（本轮 2 条 alt0 的
   setup 行有、diag 行丢失，顺序也不可靠）。再做细粒度时序轮之前要先修这个。
+- **v35 post-miss 短 lead（离线候选，0 实机、未部署）**：NSP `a6ed6f15…`
+  （94857 B，46 edits，cave `pipe_quad_slead.S` **600/684 B**，app +`ALT_DIAG`）。
+  (1) cave：当 `regs+0x50` 的 halt 位仍置位（= 刚经历过 miss 的 cancel）时，
+  首套 lead 用 **16 ms**，其它情况仍 32 ms——halt 位就是“刚 miss”的天然标记，
+  不需要新通道；(2) 修掉 logger 并发覆盖（v34 丢行）；(3) miss 时多打一行
+  `miss diag react_ms= cancel_ms=`。目的：v34 量到宿主只在流静默 42–75 ms
+  后切 alt0，32 ms lead 是其中最大的一块；砍到 16 应把空洞压到 26–59 ms。
+  验证：`--check` 46/600 B、slead cave 汇编 600 B、quick **40 文件全绿**、
+  新增 3 个测试。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -325,12 +334,10 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v34 已给出结论**：alt0 是 miss 静默 42–75 ms 之后的宿主反应，容忍
-   阈值 <~40 ms。下一轮的目标因此明确：把 miss 恢复压进 40 ms。可行组合：
-   **(a)** 驱动在 0x31274 事件里直接回 base + 清 halt（v31 的 re-arm），app
-   不再 cancel；**(b)** cave 在“刚 re-arm 过”的 post 上用短 lead（需要 app
-   把“刚 miss”写给 cave，例如通过 dmnt 写端点对象的一个空闲字节）；两者
-   都要先把 logger 竞态修掉，否则时序读数不可信。
+2. **v35 已构建，等一次 boot**：post-miss 短 lead + logger 修复 + miss 时序
+   日志（见上）。判定：`miss diag` 的 `react_ms/cancel_ms` 是否说明成本在
+   app 侧；alt0 的 `dt_done_ms` 是否从 42–75 降到 ~26–59；`status=5` 是否
+   仍 ~30（变多就是 16 ms 不够，回退 32）。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。
