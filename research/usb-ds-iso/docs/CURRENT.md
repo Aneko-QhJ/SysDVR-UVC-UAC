@@ -1,4 +1,4 @@
-# 当前状态（2026-11-05 08:2x，Asia/Shanghai）
+# 当前状态（2026-11-06 12:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -44,17 +44,19 @@
   disconnect/connect**（v30h/i/j 都只有 1 次），每次跟一次 alt0 teardown；
   本轮空闲窗口 ~65 min（v30h 轮 ~2 min），无 crash 报告，暂不归因于 v31，
   需要单独一轮才能分清。
-- **v32 keep-ring 恢复（离线候选，0 实机、未部署）**：NSP `4146dba7…`
-  （94063 B，46 edits，cave `pipe_quad_resume.S` **680/684 B**，app +`UAC_U2_KEEP_RING`）。
-  `iso_event` 只数 code-23 事件（每个事件驱动完成 1 个 URB，计数在 ring+0xc10）；
-  下一次 post 在写 TD 前调用 `resume_endpoint`：把 context 的 TR dequeue 改写成
-  `ring_phys + (cons-base) + count*0x200`（一次 0xc00 回卷），DCS 取该套第一个
-  TD 的 cycle 位，再复用驱动自己的 commit+清 halt 尾（`0x2ff90`，按 `0x2feb0`
-  的栈帧），最后清计数。app 在 status=5 时**不再 cancel**（100 ms stall 路径仍
-  保留为兜底）。目的：去掉 cancel 的整环复位和 32 ms lead，把每次 miss 压到
-  一两套（16–32 ms）。验证：`--check` 46/680 B、cave 反汇编核对、ELF 含
-  `keep-ring` 标记且不含 `pipe miss recover`、quick **37 文件全绿**、新增 5 个
-  测试。
+- **v32 keep-ring 恢复（macOS 一次 boot，负结果）**：NSP `4146dba7…`
+  （94063 B，46 edits，cave 680/684 B，app +`UAC_U2_KEEP_RING`）。机制按设计
+  跑通（**18 条 keep-ring 标记、`recoveries=1`**——app 确实没 cancel），但结果
+  全面变差：**926 套 = 14.82 s** 交付（v30h 1014 / 16.22 s）、宿主
+  **551,936 帧 = 11.499 s**（v30h 14.21）、**每段 `max_gap` 均值 48.6 / 最长
+  154 ms**（v30h 37.8 / 67）、`misses=102`（status=5 **38**，v30h 30）、
+  **2 段训练 bytes=0**、alt1 18 / alt0 19；无新 crash/fatal/erpt（22/15/28/2
+  不变）。原因：被 halt 的那段时间里，环里已排队的 TD 套**帧号已经过期**；
+  resume 把它们重新交给控制器时，控制器按旧 MFI 判成新的 missed service
+  （status=5 变多），训练开头的那一套还会让流静默到 macOS 直接切走 alt1。
+  → **判负，回退 v30h**：32 ms lead 存在的原因就是 re-arm 后必须用未来的
+  帧号，保留旧套不是免费的。下一杠杆不再是环的位置，而是 re-arm 的代价本身
+  （缩短 lead 但保持新鲜帧号，或去掉 app 往返但仍旧回 base）。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -301,12 +303,12 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v32 已构建，等一次 boot**：keep-ring 恢复（见上）。判定：每段 `max_gap`
-   是否明显低于 v30h 的 28–67 ms（理想是每次 miss 只有 16–32 ms 的一步）、
-   `recoveries` 是否接近 0（说明 app 真的没 cancel）、交付与宿主 WAV 是否
-   不低于 v30h（1014 套 / 16.22 s / 14.21 s）。若失败：控制器不接受中途
-   dequeue 的 commit，100 ms stall 路径会 cancel 并恢复（一次训练内自限）；
-   下一轮改回 v30h 或做只读上下文诊断。
+2. **v32 已判负，回退 v30h**：keep-ring 会让旧 TD 套的帧号过期，控制器把它们
+   当成新的 missed service（见上）。剩下的方向只有两个：**(a) 缩短 32 ms
+   lead**——cave 在 re-arm 后用当前帧号重写，不再依赖 MFI+32；**(b) 去掉 app
+   的 cancel 往返但仍旧回 base**——需要驱动侧在事件里做完整 re-arm（v31 做过
+   一半：它保留 base 复位但 app 仍 cancel，所以没省到）。两者都要先离线建模
+   `0x2feb0` 的 MFI 起点和 cancel 的时序。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。

@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-05 08:2x）
+## 当前边界（2026-11-06 12:4x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
@@ -70,18 +70,20 @@
   cancel 往返 + cave 的 32 ms lead 才是。已恢复 v30h；下一杠杆是 app/cave 的
   恢复路径（不 cancel、不整环重放），另需一轮分辨抓取后 106 次重连是否与 v31
   有关（本轮空闲窗口长 30 倍，无 crash 报告）。
-- **v32 keep-ring 恢复已构建（离线，未部署）**：NSP `4146dba7…`（94063 B，
-  cave 680/684 B，app +`UAC_U2_KEEP_RING`）。code-23 计数 → 下一次 post 调
-  `resume_endpoint` 把 context dequeue 写回第一个未完成套（cycle 取该套 TD），
-  commit + 清 halt（复用驱动 `0x2ff90` 尾），app 不再 cancel。目的：去掉整环
-  复位和 32 ms lead，每次 miss 只丢一两套。判定看 `max_gap` 是否低于 v30h 的
-  28–67 ms、`recoveries` 是否接近 0。
-- **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）
-  都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
+- **v32 keep-ring 已判负（macOS 一次 boot）**：NSP `4146dba7…`（46 edits，
+  cave 680/684 B，app +`KEEP_RING`）。机制跑通（18 条 keep-ring 标记、
+  `recoveries=1`），但交付 926 套 / 14.82 s（v30h 1014 / 16.22）、宿主
+  11.499 s（v30h 14.21）、`max_gap` 均值 48.6 / 最长 154 ms（v30h 37.8 / 67）、
+  status=5 38 条（v30h 30）、2 段 bytes=0。原因：halt 期间排队的 TD 套帧号
+  已过期，resume 后被控制器当成新的 missed service；训练开头还会静默到
+  macOS 切走 alt1。→ **回退 v30h**；32 ms lead 是必需品，下一杠杆是缩短
+  re-arm 代价（新鲜帧号 + 更短 lead），不是保留旧套。
+- **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
+  keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（11-04 23:5x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31 证据已归档；v32 候选未部署。
+- 卡：安全 `52069a44…` 已恢复并弹出（11-06 12:4x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31 + v32 证据已归档。
 
 ## 文件角色
 

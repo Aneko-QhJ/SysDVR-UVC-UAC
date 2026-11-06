@@ -1391,3 +1391,32 @@ app: status=5 -> free the completed slots only, do not cancel
 | 交付明显下降 / 训练提前结束 | halted 状态下 post 被拒；改回 v30h，或把 resume 提前到事件处理里 |
 
 判据仍只看空洞、recoveries、交付与 crash，不看单轮段数。
+
+### 2026-11-06 12:3x–12:4x v32 实机：负结果（旧套帧号过期）
+
+一次 boot、20 s 抓取；`patch result=0 record=45`、18 条 keep-ring 标记、
+`recoveries=1`——机制确实按设计跑了，但指标全面变差：
+
+```text
+trains=18  posted=1085 completed=1031 bytes=2844672 (926 sets = 14.82 s)
+misses=102 (status=5 38, status=4 51)  recoveries=1  stall_recover=1
+per-train max_gap = 23 67 49 27 34 27 83 35 60 43 22 29 36 47 154 20 61 34
+                    (mean 48.6, max 154; v30h mean 37.8, max 67)
+empty trains (bytes=0): 2     alt1=18 alt0=19
+WAV 551936 frames = 11.499 s, silence 122 runs / 0.437 s, square 96.2%
+reports crash 22 / fatal 15 / erpt 28 / fatal_errors 2 = baseline
+```
+
+对照 v30h（1014 套 / 16.22 s、status=5 30、`max_gap` 28–67 均值 37.8、宿主
+14.21 s）：
+
+- **机制成立、结果判负**：app 不再 cancel（`recoveries=1`），但交付反而少
+  1.4 s、宿主少 2.7 s、空洞均值从 37.8 升到 48.6、最长从 67 升到 154 ms。
+- **原因**：被 halt 的窗口里，环中已排队的 TD 套的**帧号（MFI）已经过期**。
+  resume 把 dequeue 指回这些旧套后，控制器按旧帧号判定“又错过一个服务点”，
+  产生新的 code-23（status=5 30→38）；训练开头的那一套还会让流静默到 macOS
+  直接切走 alt1，于是出现两段 `bytes=0` 的短训练。
+- **结论**：32 ms lead 不是保守参数，而是 re-arm 后必须写入未来帧号的直接
+  结果。**保留旧套不是免费的**；回退 v30h。下一杠杆是缩短 re-arm 的代价
+  （cave 在 re-arm 后用当前帧号重写、把 lead 压到几 ms，或驱动侧在事件里做
+  完整 base re-arm 以去掉 app 往返），而不是保留环位置。
