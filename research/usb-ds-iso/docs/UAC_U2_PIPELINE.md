@@ -1777,3 +1777,21 @@ non-empty sets:               lead = 20
 
 注意：cave 600/684 B，只多 52 B；app 与 v38 逐字节相同，所以本轮结果可以和
 v37/v38 四轮直接比。
+
+### 2026-11-06 22:1x v40 实机：32 ms 首套没有打断串（负结果）
+
+```text
+trains=6  posted=1302 completed=1284 bytes=3661824 (1192 sets = 19.07 s)
+per-train max_gap = 33 47 35 47 54 53 (mean 44.8, max 54)
+misses=56 (2.9/s)  recoveries=31  alt1=6  alt0=6  react_ms=0
+WAV 784631 frames = 16.346 s, 99.87% square, 1 silence run / 21 ms
+```
+
+- **空洞如预期变大**（44.8 vs v38 的 32–34），但 **alt0 仍是 6 次、miss 率仍是
+  2.9/s**：post-miss 的 32 ms lead 既没有换来更短的串，也没有换来更少的
+  teardown。
+- 宿主 16.346 s / 交付 19.07 s 都在 v38 带内，说明 +16 ms 的 post-miss 洞本身
+  宿主还能吃；问题只是**没用**。
+- **结论**：串不是“post-miss lead 太短”造成的。回退 v38。若继续打串，剩下的
+  假设是 **cancel 本身制造串**（首次 miss 跳过 cancel、直接补投），这需要
+  driver 侧 resume，风险与 v32 同级。
