@@ -1601,3 +1601,26 @@ WAV 683403 frames = 14.238 s, 87 silence runs / 0.208 s (v30h 105 / 0.42)
   下一步：lead 32→24（省 8 ms；16 在 v35 翻倍 miss）和/或再去掉 miss 路径的
   两行 SD 日志（"pipe miss"/"miss recover"，把 react 压到 ~15），目标
   `react + lead < 40`。
+
+### 2026-11-06 16:1x v37 离线：lead 24 + 清掉 miss 路径最后两行 SD 日志
+
+v36 把空洞拆成 `react 22 + lead 32 ≈ 54`，刚好在 v34 量到的宿主容忍（~40 ms）
+之上。v37 两个改动一起上，目标是让典型空洞落到 40 ms 以内：
+
+```text
+cave:  add w9, w9, #32  ->  #24        (只有这一条指令；其余逐字节 v30h)
+app:   "pipe miss" / "miss recover"    (两行 SD 写，改由 -DUAC_U2_MISS_LOG 选入)
+```
+
+为什么 24：16 在 v33（全局）和 v35（post-miss）都让 status=5 翻倍，说明控制器
+在 cancel 之后取首套需要 >16 ms；24 留 8 ms 余量，同时把空洞压到
+`react ~15 + 24 ≈ 39`。计数（`misses=`/`recoveries=`）和结尾行不动，`(void)`
+保证 `-Wall -Werror` 在编掉日志时仍干净。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| `react_ms` 12–16、`max_gap` 均值 ~38–46、alt0 `dt_done_ms` < 40、status=5 仍 ~40、交付 ≥ 1019 / 宿主 ≥ 14.24 s | **两个杠杆都要**；空洞压到门槛下，转 alt1 重 arm 延迟（v34: 122–191 ms） |
+| status=5 / `max_gap` 变大 | lead 24 太紧（v33/v35 的同一个符号）；回退 32，保留安静 miss 路径 |
+| `react_ms` 不动 | 成本在 completion 唤醒或 post IPC；下一轮分段计时 |
+
+两个变量同轮，赢了不分账；只有结果含糊时才需要拆开各跑一次。

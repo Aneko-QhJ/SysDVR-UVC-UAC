@@ -2899,10 +2899,15 @@ static void _postUacBurst(void)
                        post a replacement; a real halt is caught by the
                        100 ms stall path above. */
                     ++misses;
-                    /* a miss is rare, so keep it: it names the lost set
-                       without paying a per-post SD write. */
+                    /* v37: this is the second SD write left in the miss
+                       path (the first was the evlog dump v36 removed).  The
+                       end line already carries the miss count, so the per
+                       miss line is diagnostics only: -DUAC_U2_MISS_LOG
+                       restores it when a run needs the lost set named. */
+#if defined(UAC_U2_MISS_LOG)
                     LOG("UAC U2 pipe miss buf=%u status=%u\n",
                         b, report.report[i].urb_status);
+#endif
                     if (report.report[i].urb_status == 5) halt_miss = true;
 #if defined(UAC_U2_ALT_DIAG)
                     if (report.report[i].urb_status == 5)
@@ -2951,6 +2956,7 @@ static void _postUacBurst(void)
             g_altDiag.cancel_in = svcGetSystemTick();
 #endif
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
+            (void)cancel; /* v37: only the opt-in miss log reports the rc */
 #if defined(UAC_U2_ALT_DIAG)
             g_altDiag.cancel_out = svcGetSystemTick();
 #endif
@@ -2961,9 +2967,14 @@ static void _postUacBurst(void)
                 ++completed;
                 ++freed;
             }
+            (void)freed; /* v37: only the opt-in miss log reports the count */
             ++recoveries;
+            /* v37: the end line's recoveries= already covers this; the per
+               miss SD write only helps a diagnostic build. */
+#if defined(UAC_U2_MISS_LOG)
             LOG("UAC U2 pipe miss recover cancelled=%u rc=0x%x\n",
                 freed, cancel);
+#endif
             last_progress = svcGetSystemTick();
             continue;
         }
