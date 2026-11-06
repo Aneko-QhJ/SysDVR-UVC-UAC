@@ -1732,3 +1732,24 @@ v38 复跑之后，v37（lead 24）也复跑一次做干净对照：
   14.238 → 15.6–16.8 s、静音 87 段 → 0–19 段、交付 16.30 → 18.1–19.4 s。
 - 四轮的 active alt0 都紧跟一次 `status=5`（`dt_done_ms 0–17`），每轮 47–67 次
   miss 只有 4–8 次触发 → 下一问题：**哪一次 miss 会触发 alt0**。
+
+### 2026-11-06 21:5x v39 实机：alt0 跟着一串 miss，不是单次
+
+16 条 RAM miss 记录 + 训练结束时 dump，一次 boot：
+
+```text
+8 active alt0, each 1-16 ms after the LAST miss of a burst
+burst = 2..10 misses spaced 20-25 ms (often a same-tick pair = two URBs lost together)
+trigger's in-flight depth 2-4, slot/urb arbitrary, train age 171 ms .. 7.8 s
+WAV 722798 frames = 15.058 s (perturbed: see below), 8 alt0, misses 76
+```
+
+- **触发条件**：host 不是对某一次 miss 反应，也不是对某个 slot/urb；每次
+  teardown 都发生在**一串** miss 的末尾，孤立 miss（间隔 >50 ms）从不触发。
+- **串的形状**：`dprev_ms` 在 0/20/21/22/23/25 上，也就是每 ~20 ms 一个，
+  很多是同一 tick 的两个（一次 halt 让两个在飞 URB 一起失败）。
+- **扰动**：训练结束的 dump（17 行 SD 写）把下一次 alt1 推迟 60–100 ms
+  （`since_alt0` 250–284 vs v38 136–221），本轮 alt0 8 次（v38 4–6），
+  **15.058 s 不与 v38 可比**。后续诊断必须在下一次 alt1 之后 dump。
+- **下一步**：打断串——(a) halt 位置位时首套 32 ms（v35 16 ms 的镜像）；
+  (b) 首次 miss 不 cancel、直接补投，验证串是否由 cancel 制造。
