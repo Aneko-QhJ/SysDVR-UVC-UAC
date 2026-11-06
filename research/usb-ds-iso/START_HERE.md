@@ -96,6 +96,10 @@
   `cancel_ms≈0`、**`react_ms≈53 ms`**——成本在 app 的 miss 路径（每次 miss 的
   evlog dmnt dump + SD 日志），不在 cancel 也不在 lead。回退 lead 32；下一步
   去掉 per-miss evlog dump（app-only）。
+- **v36 end-only evlog 已构建（离线，未部署）**：NSP `79ce6baf…`（94469 B，
+  cave 548/684 B = v30h）。纯 app：去掉每次 miss 的 evlog dmnt dump，结尾
+  保留一次。依据 v35 的 `react_ms≈53`、`cancel_ms≈0`。判定看 `react_ms` 是否
+  降到 ~10–20、`dt_done_ms`/`max_gap` 是否同幅下降、`status=5` 是否仍 ~30。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。

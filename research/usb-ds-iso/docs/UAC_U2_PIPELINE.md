@@ -1565,3 +1565,18 @@ miss diag: react_ms mean 53.1, cancel_ms mean 0.0   (no crash/fatal/erpt)
   写），加上唤醒、GetReportData、填 3072 B buffer 和 post IPC。
 - 下一步：**去掉 per-miss evlog dump**（结尾保留一次），app-only，不改驱动；
   预期 `react_ms` 降到 ~10–20，miss 空洞随之缩短。
+
+### 2026-11-06 14:0x v36 离线：去掉 per-miss evlog dump
+
+v35 的 `miss diag` 把成本定位到 app：`cancel_ms≈0`、`react_ms≈53`。日志里
+一次 miss 对会跑两遍 `_uacLogEventScratch("miss")`——每次 `svcDebugActiveProcess`
++ 两次读 + 五行 SD 写——这在 completion 与下一次 post 之间。
+
+v36 只改 app：`-DUAC_U2_EVENT_LOG_END_ONLY` 把 miss 处的 dump 编掉，训练结尾
+仍 dump 一次；cave/驱动/lead/在飞全部是 v30h。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| `react_ms` ~53 → ~10–20、`dt_done_ms`/`max_gap` 同幅下降、status=5 仍 ~30 | **dump 就是瓶颈**；继续清 app 的 miss 路径（SD 日志行），冲 40 ms 门槛 |
+| `react_ms` 仍 ~50 | 成本在 completion 唤醒或 post IPC；下一步分段计时（唤醒→报告→填 buffer→post） |
+| status=5 或空洞变差 | 与 dump 无关，回退 |

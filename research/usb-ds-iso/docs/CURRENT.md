@@ -89,6 +89,15 @@
   **`react_ms` 均值 53 ms**——miss 之后 app 的整条路径（completion 唤醒、
   GetReportData、**每次 miss 的 evlog dmnt dump + 5 行 SD 日志**、填 buffer、
   post）才是静默的来源。回退 lead 32。
+- **v36 end-only evlog（离线候选，0 实机、未部署）**：NSP `79ce6baf…`
+  （94469 B，46 edits，cave 548/684 B = v30h 逐字节；app 加
+  `-DUAC_U2_EVENT_LOG_END_ONLY`）。**纯 app 改动**：去掉每次 miss 的
+  `_uacLogEventScratch("miss")`（一对 miss 会跑两遍 dmnt attach + 两次读 +
+  5 行 SD 写），结尾仍 dump 一次；cave/驱动/lead 全部保持 v30h。依据 v35 的
+  时序：`cancel_ms≈0`、`react_ms≈53`，dump 是那 53 ms 里最大的一块。预期
+  `react_ms` 降到 ~10–20、alt0 的 `dt_done_ms` 与 `max_gap` 同幅缩短，
+  `status=5` 仍 ~30。验证：`--check` 46/548 B、构建成功、quick **40 文件
+  全绿**（新增 end-only 守卫测试）。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -335,11 +344,10 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v35 已判负，lead 回 32**：`cancel_ms≈0` + `react_ms≈53` 把成本定位在
-   app 的 miss 路径。下一轮（app-only，零驱动改动）：**去掉每次 miss 的 evlog
-   dmnt dump**（一对 miss 要 dump 两次，每次 attach + 读 + 5 行 SD 日志），
-   计数留到结尾一次；预期 `react_ms` 从 ~53 降到 ~10–20，空洞随之缩短。
-   这是纯 app 改动、不碰控制器，风险最低。
+2. **v36 已构建，等一次 boot**：去掉 per-miss evlog dump（见上）。判定：
+   `miss diag react_ms` 是否从 ~53 降到 ~10–20、alt0 的 `dt_done_ms` 与
+   每段 `max_gap` 是否同幅下降、`status=5` 是否仍 ~30。若 react 仍高，
+   成本在 completion 唤醒或 post IPC，下一步量那两段。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。

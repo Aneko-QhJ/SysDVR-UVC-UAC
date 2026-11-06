@@ -97,6 +97,14 @@ class UacU2EventLogAppTests(unittest.TestCase):
         endif = self.text.rfind("#endif", 0, miss)
         self.assertGreater(guard, endif)
 
+    def test_v36_can_drop_the_per_miss_dump(self):
+        # v35 measured the miss path at ~53 ms; the per-miss dmnt dump is the
+        # largest piece, so a build may keep only the end-of-train dump.
+        miss = self.text.index('_uacLogEventScratch("miss");')
+        guard = self.text.rfind("#if defined(UAC_U2_EVENT_LOG)", 0, miss)
+        line = self.text[guard:self.text.index("\n", guard)]
+        self.assertIn("UAC_U2_EVENT_LOG_END_ONLY", line)
+
     def test_opt_in_only(self):
         # the helper must not run in a build without the define
         index = self.text.index("static void _uacLogEventScratch")

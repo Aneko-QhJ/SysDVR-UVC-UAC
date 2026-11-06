@@ -2908,7 +2908,12 @@ static void _postUacBurst(void)
                     if (report.report[i].urb_status == 5)
                         g_altDiag.miss_tick = done_tick;
 #endif
-#if defined(UAC_U2_EVENT_LOG)
+#if defined(UAC_U2_EVENT_LOG) && !defined(UAC_U2_EVENT_LOG_END_ONLY)
+                    /* v36: this dump is a dmnt attach + two reads + five SD
+                       lines inside the miss path; v35 measured the whole
+                       completion -> post path at ~53 ms and this is the
+                       largest piece.  Keep the cave's counters and dump once
+                       at the end instead. */
                     _uacLogEventScratch("miss");
 #endif
                 }
