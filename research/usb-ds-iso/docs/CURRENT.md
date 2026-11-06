@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 13:5x，Asia/Shanghai）
+# 当前状态（2026-11-06 14:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -79,15 +79,16 @@
 - **附带发现（日志竞态）**：`LogFunctionImpl` 每次 open/取 size/写/close，
   **没有锁**；usb:ds 线程与 arm 线程并发写会互相覆盖（本轮 2 条 alt0 的
   setup 行有、diag 行丢失，顺序也不可靠）。再做细粒度时序轮之前要先修这个。
-- **v35 post-miss 短 lead（离线候选，0 实机、未部署）**：NSP `a6ed6f15…`
-  （94857 B，46 edits，cave `pipe_quad_slead.S` **600/684 B**，app +`ALT_DIAG`）。
-  (1) cave：当 `regs+0x50` 的 halt 位仍置位（= 刚经历过 miss 的 cancel）时，
-  首套 lead 用 **16 ms**，其它情况仍 32 ms——halt 位就是“刚 miss”的天然标记，
-  不需要新通道；(2) 修掉 logger 并发覆盖（v34 丢行）；(3) miss 时多打一行
-  `miss diag react_ms= cancel_ms=`。目的：v34 量到宿主只在流静默 42–75 ms
-  后切 alt0，32 ms lead 是其中最大的一块；砍到 16 应把空洞压到 26–59 ms。
-  验证：`--check` 46/600 B、slead cave 汇编 600 B、quick **40 文件全绿**、
-  新增 3 个测试。
+- **v35 post-miss 短 lead（macOS 一次 boot，负结果）**：NSP `a6ed6f15…`
+  （94857 B，cave 600/684 B；halt 位置位时 lead 16、否则 32；logger 加锁）。
+  设备：**843 套 = 13.49 s**（v30h 1014 / 16.22）、**status=5 56**（v30h 30，
+  翻倍）、`recoveries=39`、**`max_gap` 均值 70.2 / 最长 87**（v30h 37.8 / 67）、
+  18 次 USB 重连；宿主 10.955 s、160 段静音 / 0.796 s；无新 crash/fatal/erpt。
+  → **判负**：16 ms 不够控制器在 cancel 后取到首套，首套更容易被漏——与 v33
+  的担心一致。**但时序诊断给出了真正的成本**：`cancel_ms ≈ 0`（cancel 本身免费），
+  **`react_ms` 均值 53 ms**——miss 之后 app 的整条路径（completion 唤醒、
+  GetReportData、**每次 miss 的 evlog dmnt dump + 5 行 SD 日志**、填 buffer、
+  post）才是静默的来源。回退 lead 32。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -334,10 +335,11 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v35 已构建，等一次 boot**：post-miss 短 lead + logger 修复 + miss 时序
-   日志（见上）。判定：`miss diag` 的 `react_ms/cancel_ms` 是否说明成本在
-   app 侧；alt0 的 `dt_done_ms` 是否从 42–75 降到 ~26–59；`status=5` 是否
-   仍 ~30（变多就是 16 ms 不够，回退 32）。
+2. **v35 已判负，lead 回 32**：`cancel_ms≈0` + `react_ms≈53` 把成本定位在
+   app 的 miss 路径。下一轮（app-only，零驱动改动）：**去掉每次 miss 的 evlog
+   dmnt dump**（一对 miss 要 dump 两次，每次 attach + 读 + 5 行 SD 日志），
+   计数留到结尾一次；预期 `react_ms` 从 ~53 降到 ~10–20，空洞随之缩短。
+   这是纯 app 改动、不碰控制器，风险最低。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。

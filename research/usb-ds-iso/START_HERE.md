@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-06 13:5x）
+## 当前边界（2026-11-06 14:0x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
@@ -90,17 +90,18 @@
   流上。→ **alt 抖动是 miss 恢复太慢的后果**，宿主容忍 <~40 ms。下一轮目标：
   把 miss 恢复压进 40 ms（驱动侧即时 re-arm + app 不 cancel，或 post-miss
   专用短 lead）；先修 logger 竞态。
-- **v35 post-miss 短 lead 已构建（离线，未部署）**：NSP `a6ed6f15…`
-  （94857 B，cave 600/684 B）。`regs+0x50` 的 halt 位仍置位时（刚 miss 过）
-  首套 lead 用 16 ms，其余仍 32；同时修 logger 并发覆盖、加 miss 时序日志。
-  判定：`miss diag react_ms/cancel_ms`、alt0 的 `dt_done_ms` 是否从 42–75
-  降到 26–59、`status=5` 是否仍 ~30。
+- **v35 短 lead 已判负（macOS 一次 boot）**：NSP `a6ed6f15…`（cave 600 B）。
+  843 套 / 13.49 s（v30h 1014 / 16.22）、status=5 **56**（v30h 30）、
+  `max_gap` 均值 70.2 / 最长 87、18 次重连。16 ms 不够取首套。**但诊断命中**：
+  `cancel_ms≈0`、**`react_ms≈53 ms`**——成本在 app 的 miss 路径（每次 miss 的
+  evlog dmnt dump + SD 日志），不在 cancel 也不在 lead。回退 lead 32；下一步
+  去掉 per-miss evlog dump（app-only）。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（11-06 13:1x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v34 证据已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（11-06 14:0x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v35 证据已归档。
 
 ## 文件角色
 

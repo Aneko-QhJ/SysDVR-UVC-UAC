@@ -1545,3 +1545,23 @@ miss 时加 `UAC U2 miss diag react_ms= cancel_ms=`。
 | `dt_done_ms` 42–75 → 26–59、status=5 仍 ~30、交付 ≥ v30h | **短 lead 成立**；继续把 repost 反应时间也压下来 |
 | status=5 变多 / 空洞更大 | 16 ms 不够取首套；回退 32，改从 app 反应侧下手 |
 | `miss diag react_ms` 远大于 `cancel_ms` | 成本在 app 的唤醒/报告路径，不在 cancel 或 lead |
+
+### 2026-11-06 13:4x v35 实机：短 lead 负结果，但成本定位到 app
+
+halt 位门控的 16 ms lead，一次 boot：
+
+```text
+trains=19  posted=1015 completed=958 bytes=2589696 (843 sets = 13.49 s)
+status=5 = 56 (v30h 30)  recoveries=39  per-train max_gap mean 70.2 max 87
+USB reconnects=18   WAV 525824 frames = 10.955 s, 160 silence runs / 0.796 s
+miss diag: react_ms mean 53.1, cancel_ms mean 0.0   (no crash/fatal/erpt)
+```
+
+- **16 ms 太短**：首套在 cancel 后更容易被漏服务，status=5 翻倍、空洞从
+  37.8 涨到 70.2、交付少 171 套。lead 这一层到此关闭（32 是下限）。
+- **真正的收获是时序**：`cancel_ms ≈ 0`——cancel 本身不花时间；
+  `react_ms ≈ 53 ms`——从 completion 到下一次 post 的整段时间才是静默主体。
+  日志里一次 miss 对会跑两遍 `evlog miss`（dmnt attach + 两次读 + 5 行 SD
+  写），加上唤醒、GetReportData、填 3072 B buffer 和 post IPC。
+- 下一步：**去掉 per-miss evlog dump**（结尾保留一次），app-only，不改驱动；
+  预期 `react_ms` 降到 ~10–20，miss 空洞随之缩短。
