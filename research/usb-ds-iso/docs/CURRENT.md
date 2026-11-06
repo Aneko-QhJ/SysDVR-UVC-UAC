@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 19:3x，Asia/Shanghai）
+# 当前状态（2026-11-06 20:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -125,6 +125,14 @@
   - **注意**：所有 active alt0 都紧跟一次 status=5（`dt_done_ms 0–17`），
     即宿主是在**某一次 miss** 后 10–20 ms 内离开 alt1；每轮 47–67 次 miss
     只有 4–8 次触发，**触发条件未知**。
+- **v39 已构建（离线诊断候选，0 实机、未部署）**：NSP `7d30fbe7…`（94980 B，
+  cave 仍 v38 的 `pipe_quad_lead20.S` 548/684 B）。app 加 `-DUAC_U2_MISS_RING`：
+  miss 路径只往 RAM 里写 6 个字（16 条记录：`idx/tick/posted/completed/infl/
+  slot/urb/status`），**训练结束**后才 dump 一次（在 `pipe timing` 之后），
+  alt0 路径逐字节不动。读法：每段的 alt0 行已有 `misses=N`，对应的触发 miss
+  就是 `idx=N-1`，与同段其它记录比 `dprev_ms/infl/slot/urb`，找出宿主切
+  alt1 的共同条件。诊断成本：每段 ~17 行 SD 写，发生在流已停、宿主 ~140–220 ms
+  后才重 arm 的窗口里。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无

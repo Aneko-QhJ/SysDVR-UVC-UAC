@@ -2646,6 +2646,69 @@ static UacAltDiag g_altDiag;
 #define UAC_ALT_DIAG_MS(tick) ((unsigned long long)((tick) / 19200))
 #endif
 
+#if defined(UAC_U2_MISS_RING)
+#if !defined(UAC_U2_ALT_DIAG)
+#error "UAC_U2_MISS_RING dumps from the ALT_DIAG alt0 hook"
+#endif
+/* v39: which miss does macOS react to?  Four runs showed every active alt0
+   following a status=5 within 0-17 ms, but only 4-8 of the 47-67 misses per
+   run triggered one.  The pipe thread keeps the last 16 misses in RAM (six
+   stores, no SD write) and the train-end hook dumps them: the alt0 line
+   already carries misses=N, so the triggering miss is the record with
+   index N-1 and the dump shows it next to its neighbours (back-to-back
+   misses, in-flight depth, slot, urb id).  The dump is at the end of the
+   train on purpose - the alt0 path keeps its exact v38 timing, which is one
+   of the things being measured. */
+typedef struct {
+    u64 tick;
+    u32 posted, completed, inflight;
+    u32 slot, urb, status;
+    u32 index; /* 0-based; the alt0 line's misses=N names N-1 */
+} UacMissRec;
+#define UAC_MISS_RING_LEN 16
+
+static UacMissRec g_missRing[UAC_MISS_RING_LEN];
+static u32 g_missRingHead;
+static u32 g_missRingTotal;
+
+static void _uacMissRingAdd(u64 tick, u32 posted, u32 completed, u32 slot,
+                            u32 urb, u32 status)
+{
+    UacMissRec *r = &g_missRing[g_missRingHead & (UAC_MISS_RING_LEN - 1)];
+    r->tick = tick;
+    r->posted = posted;
+    r->completed = completed;
+    r->inflight = posted - completed;
+    r->slot = slot;
+    r->urb = urb;
+    r->status = status;
+    r->index = g_missRingTotal;
+    ++g_missRingHead;
+    ++g_missRingTotal;
+}
+
+static void _uacMissRingDump(u64 now)
+{
+    const u32 have = g_missRingTotal < UAC_MISS_RING_LEN
+                         ? g_missRingTotal : UAC_MISS_RING_LEN;
+    LOG("UAC U2 miss ring total=%u n=%u\n", g_missRingTotal, have);
+    for (u32 i = 0; i < have; ++i) {
+        const u32 idx =
+            (g_missRingHead - have + i) & (UAC_MISS_RING_LEN - 1);
+        const UacMissRec *r = &g_missRing[idx];
+        u64 dprev = 0;
+        if (i > 0) {
+            const u32 prev = (idx + UAC_MISS_RING_LEN - 1) &
+                             (UAC_MISS_RING_LEN - 1);
+            dprev = r->tick - g_missRing[prev].tick;
+        }
+        LOG("UAC U2 miss rec i=%u idx=%u ago_ms=%llu dprev_ms=%llu post=%u comp=%u infl=%u slot=%u urb=%u st=%u\n",
+            i, r->index, UAC_ALT_DIAG_MS(now - r->tick), UAC_ALT_DIAG_MS(dprev),
+            r->posted, r->completed, r->inflight, r->slot, r->urb, r->status);
+    }
+}
+#endif
+
 static void _postUacBurst(void)
 {
     /* The host may trigger many times while chasing an alt1 window; log every
@@ -2909,6 +2972,14 @@ static void _postUacBurst(void)
                         b, report.report[i].urb_status);
 #endif
                     if (report.report[i].urb_status == 5) halt_miss = true;
+#if defined(UAC_U2_MISS_RING)
+                    /* v39: a RAM record only - the dump runs once per alt0 in
+                       the SET_INTERFACE handler, so the miss path keeps the
+                       v37 speed while still naming the miss that the host
+                       reacted to. */
+                    _uacMissRingAdd(done_tick, posted, completed, b, id,
+                                    report.report[i].urb_status);
+#endif
 #if defined(UAC_U2_ALT_DIAG)
                     if (report.report[i].urb_status == 5)
                         g_altDiag.miss_tick = done_tick;
@@ -3007,6 +3078,12 @@ static void _postUacBurst(void)
             (unsigned long long)(max_gap_tick / 19200),
             (unsigned long long)(max_react_tick / 19200));
     }
+#if defined(UAC_U2_MISS_RING)
+    /* v39: after the train, so the alt0 path keeps its v38 timing.  The alt0
+       line of this train carries misses=N; the record with idx=N-1 is the
+       miss the host reacted to. */
+    _uacMissRingDump(last_done_tick);
+#endif
     _uacLogInstallState();
 #if defined(UAC_U2_EVENT_LOG)
     _uacLogEventScratch("end");
