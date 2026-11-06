@@ -48,6 +48,7 @@ QUICK = [
     "test_uac_u2_event_log.py",
     "test_uac_u2_fast_recover.py",
     "test_uac_u2_keep_ring.py",
+    "test_uac_u2_lead16.py",
     "test_analyze_xhci_iso_trace.py",
 ]
 

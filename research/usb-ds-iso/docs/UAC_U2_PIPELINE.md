@@ -1420,3 +1420,25 @@ reports crash 22 / fatal 15 / erpt 28 / fatal_errors 2 = baseline
   结果。**保留旧套不是免费的**；回退 v30h。下一杠杆是缩短 re-arm 的代价
   （cave 在 re-arm 后用当前帧号重写、把 lead 压到几 ms，或驱动侧在事件里做
   完整 base re-arm 以去掉 app 往返），而不是保留环位置。
+
+### 2026-11-06 13:0x v33 离线：re-arm lead 32 → 16 ms
+
+v32 证明空洞不在“环的位置”：保留旧套会让帧号过期，反而多出 miss。v30h 的
+28–67 ms 空洞里还剩一个明确的常数——re-arm 后首套的 TD 帧 lead：
+
+```text
+cave (empty-ring path):  bl rearm_endpoint (0x2feb0)
+                         frame0 = MFI/8 + lead      ; lead = 32 in v30h
+                         write 16 TD slots at base  ; cursor keeps the next sets contiguous
+```
+
+lead 只作用于 re-arm 后的**第一套**；第二套起用 cursor（首套帧 +16、+32…），
+所以每段训练开头和每次 miss 恢复各吃一次 32 ms。把 `add w9, w9, #32` 改成
+`#16` 后，首套仍在写完后 16 帧才到点（32 个 TRB 的写入是微秒级），预期每次
+恢复的空洞缩短 ~16 ms、`max_gap` 从 28–67 降到约 12–51 ms。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| `max_gap` 明显下降、status=5 仍 ~30、交付 ≥ v30h | **lead 是空洞成本**；继续压到 8 ms 或转向 miss 率 |
+| status=5 变多 / 训练 stall | 16 ms 不够控制器取指；回退 32，下一步转 alt 抖动或 miss 率 |
+| 交付下降但 gap 未降 | 首套被漏服务、旧套 32 ms 的教训在 lead 上也成立 |
