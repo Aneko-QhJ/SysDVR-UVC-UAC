@@ -1486,3 +1486,37 @@ SET_INTERFACE alt0:  "UAC U2 alt diag alt0 n= active= inflight= posted=
 | `active=0` | alt0 在 pipe 结束之后才到 → 先看训练为何提前结束（`pipe end` 的 posted/completed） |
 
 `since_alt1_ms` 同时给出宿主的切换周期（v30h/v33 约 1.1 s）。
+
+### 2026-11-06 13:1x v34 实机：alt0 是 miss 之后的宿主反应（诊断成功）
+
+行为与 v30h 相同，只加 alt 日志。19 条 alt1 / 9 条 alt0（日志竞态丢了 2 条），
+所有 `active=1` 的 alt0 行一致：
+
+```text
+alt0 n=3  active=1 inflight=4 posted=57 completed=53 misses=2 last_status=5
+          dt_done_ms=63 dt_post_ms=19 since_alt1_ms=1025
+alt0 n=4  ... last_status=5 dt_done_ms=64 dt_post_ms=19 since_alt1_ms=489
+alt0 n=6  ... last_status=5 dt_done_ms=42 dt_post_ms=12 since_alt1_ms=768
+alt0 n=10 ... last_status=5 dt_done_ms=53 dt_post_ms=23 since_alt1_ms=218
+alt0 n=14 ... last_status=5 dt_done_ms=58 dt_post_ms=19 since_alt1_ms=1802
+alt0 n=16 ... last_status=5 dt_done_ms=72 dt_post_ms=30 since_alt1_ms=1645
+alt0 n=17 ... last_status=5 dt_done_ms=75 dt_post_ms=28 since_alt1_ms=496
+alt0 n=19 ... last_status=5 dt_done_ms=61 dt_post_ms=19 since_alt1_ms=315
+alt1 since_alt0_ms = 122..191 (boot one 27558)
+```
+
+- **结论**：alt0 只在一次 status=5 之后、流静默 42–75 ms 时到来；宿主随后
+  约 150 ms 重新 arm alt1。没有健康流被切。
+- 因此 **alt 抖动不是独立问题**：宿主欠载容忍 <~40 ms，现有恢复（cancel
+  往返 + 32 ms lead）刚好越过阈值。下一步是把恢复压进 40 ms，而不是改
+  alt0/alt1 交互。
+- **日志竞态**：`LogFunctionImpl` 无锁的 open/size/write/close 会丢行、乱序；
+  做更细的时序之前先修（进程内互斥或每线程缓冲）。
+
+| 恢复方案 | 预计 miss→数据 |
+| --- | --- |
+| 现状：app cancel + 空环 0x2feb0 + 32 ms lead | 42–75 ms（实测） |
+| 驱动事件内即时回 base + app 不 cancel + cave 直接写首套（短 lead） | ~15–25 ms |
+| 只把 lead 降到 16（已试 v33） | 少 16 ms，但首套漏服务 → 更多 miss（负） |
+
+前两个的前提都是**先修 logger**，否则测不出差别。

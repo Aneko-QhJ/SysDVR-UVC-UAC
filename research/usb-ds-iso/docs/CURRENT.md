@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 13:2x，Asia/Shanghai）
+# 当前状态（2026-11-06 13:3x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -66,14 +66,19 @@
   / 0.032 s**（v30h 105 / 0.42），方波 99.75%。→ **判负**：16 ms 太紧，
   status=5 与最坏空洞都变大（与 v29j 的旧结论一致）；宿主更干净是因为抓到的
   时间短 1.3 s，属于混淆，不足以保留。回退 lead 32。
-- **v34 alt 抖动诊断（离线候选，0 实机、未部署）**：NSP `71af3d22…`
-  （94426 B，46 edits，cave 548/684 B，lead 32；app +`UAC_U2_ALT_DIAG`，
-  行为不变）。管道循环维护快照（posted/completed/misses、last_status、
-  最后 post/done tick、active），SET_INTERFACE 处理在 alt1/alt0 各打一行：
-  `alt0 n= active= inflight= ... dt_done_ms= dt_post_ms= since_alt1_ms=`。
-  目的：20 s 里 18–19 次 alt 切换，段间损失大于 miss 空洞；这行日志要回答
-  “谁先动手”——alt0 到时 pipe 是否还在跑、距上次完成多久、是否刚 miss。
-  验证：ELF 含两处 `UAC U2 alt diag`、quick **39 文件全绿**、新增 5 个测试。
+- **v34 alt 抖动诊断（macOS 一次 boot，诊断成功）**：NSP `71af3d22…`
+  （94426 B，与 v30h 行为逐字节相同，只加 `UAC_U2_ALT_DIAG`）。日志结论：
+  **每一次 alt0 都发生在一次 status=5 miss 之后**（8 条 `active=1` 的 alt0
+  行全部 `last_status=5`，`dt_done_ms 42–75`、`dt_post_ms 12–30`），也就是
+  说 macOS 只在**流静默 ~40–75 ms** 之后才切 alt1；它随后 **122–191 ms**
+  重新 arm alt1。没有一次 alt0 是在健康流上（`last_status=3`）发生的。
+  → **alt 抖动是 miss 恢复太慢的后果，不是宿主独立行为**：宿主欠载容忍
+  低于 ~40 ms，而我们的恢复（app cancel 往返 + 32 ms cave lead）落在
+  42–75 ms。改动 alt0/alt1 交互不会有用，必须把 miss 恢复压到 ~40 ms 以内
+  （或恢复期间让宿主不断流）。
+- **附带发现（日志竞态）**：`LogFunctionImpl` 每次 open/取 size/写/close，
+  **没有锁**；usb:ds 线程与 arm 线程并发写会互相覆盖（本轮 2 条 alt0 的
+  setup 行有、diag 行丢失，顺序也不可靠）。再做细粒度时序轮之前要先修这个。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -320,11 +325,12 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v34 已构建，等一次 boot**：alt 抖动诊断（见上）。判定：`alt0
-   active=1` 且 `dt_done_ms` 小（<40）→ 宿主在切一条健康的流，下一步改
-   STOP/alt1 交互；`dt_done_ms` 大或 `last_status=5` → 宿主是在对我们的
-   stall 反应，下一步仍是压 miss；`active=0` → alt0 在 pipe 结束之后才到，
-   要看训练为何提前结束。
+2. **v34 已给出结论**：alt0 是 miss 静默 42–75 ms 之后的宿主反应，容忍
+   阈值 <~40 ms。下一轮的目标因此明确：把 miss 恢复压进 40 ms。可行组合：
+   **(a)** 驱动在 0x31274 事件里直接回 base + 清 halt（v31 的 re-arm），app
+   不再 cancel；**(b)** cave 在“刚 re-arm 过”的 post 上用短 lead（需要 app
+   把“刚 miss”写给 cave，例如通过 dmnt 写端点对象的一个空闲字节）；两者
+   都要先把 logger 竞态修掉，否则时序读数不可信。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。
