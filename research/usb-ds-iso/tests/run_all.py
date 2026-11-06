@@ -52,6 +52,7 @@ QUICK = [
     "test_uac_u2_alt_diag.py",
     "test_uac_u2_slead.py",
     "test_uac_u2_lead24.py",
+    "test_uac_u2_lead20.py",
     "test_analyze_xhci_iso_trace.py",
 ]
 
