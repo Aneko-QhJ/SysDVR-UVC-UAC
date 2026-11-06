@@ -52,11 +52,18 @@ class UacU2MissRingTests(unittest.TestCase):
         self.assertIn("ago_ms=%llu dprev_ms=%llu", body)
         self.assertIn("UAC_MISS_RING_LEN", body)
 
-    def test_dump_runs_once_per_train_after_the_timing_line(self):
-        dump = self.text.index("_uacMissRingDump(last_done_tick);")
-        timing = self.text.rindex('LOG("UAC U2 pipe timing waits', 0, dump)
-        self.assertLess(timing, dump)
-        # and NOT in the alt0 hook: that path keeps its exact v38 timing
+    def test_dump_is_deferred_to_the_next_alt1_after_the_arm(self):
+        # the train end only records the pending tick ...
+        pending = self.text.index("g_missRingPending = last_done_tick")
+        self.assertLess(self.text.rindex('LOG("UAC U2 pipe timing waits', 0, pending),
+                        pending)
+        # ... and the dump runs in the alt1 branch, after _armUacBurstAsync()
+        dump = self.text.index("_uacMissRingDump(at);")
+        arm = self.text.rindex("_armUacBurstAsync();", 0, dump)
+        alt1 = self.text.rindex('LOG("UAC U2 alt diag alt1', 0, dump)
+        self.assertLess(alt1, arm)
+        self.assertLess(arm, dump)
+        # never in the alt0 hook: that path keeps its exact v38 timing
         alt0 = self.text.index('LOG("UAC U2 alt diag alt0')
         self.assertNotIn("_uacMissRingDump", self.text[alt0:alt0 + 2000])
 
@@ -64,6 +71,15 @@ class UacU2MissRingTests(unittest.TestCase):
         # alt0 logs misses=N, so the record with idx=N-1 is the trigger
         self.assertIn("r->index = g_missRingTotal;", self.text)
         self.assertIn("idx=%u", self.text)
+
+    def test_records_the_distance_since_the_last_cancel(self):
+        # v41: if burst misses sit <=2 ms after a cancel, the cancel makes them
+        self.assertIn("g_missRingCancelTick = svcGetSystemTick();", self.text)
+        self.assertIn("r->since_cancel_ms = g_missRingCancelTick", self.text)
+        self.assertIn("since_cancel_ms=%u", self.text)
+        # stamped right after the miss-path cancel, not anywhere else
+        stamp = self.text.index("g_missRingCancelTick = svcGetSystemTick();")
+        self.assertLess(self.text.rindex("usbDsEndpoint_Cancel", 0, stamp), stamp)
 
     def test_requires_alt_diag_and_is_opt_in(self):
         self.assertIn('#error "UAC_U2_MISS_RING dumps from the ALT_DIAG alt0 hook"',

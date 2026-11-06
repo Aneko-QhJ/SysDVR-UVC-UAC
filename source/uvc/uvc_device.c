@@ -2650,26 +2650,32 @@ static UacAltDiag g_altDiag;
 #if !defined(UAC_U2_ALT_DIAG)
 #error "UAC_U2_MISS_RING dumps from the ALT_DIAG alt0 hook"
 #endif
-/* v39: which miss does macOS react to?  Four runs showed every active alt0
-   following a status=5 within 0-17 ms, but only 4-8 of the 47-67 misses per
-   run triggered one.  The pipe thread keeps the last 16 misses in RAM (six
-   stores, no SD write) and the train-end hook dumps them: the alt0 line
-   already carries misses=N, so the triggering miss is the record with
-   index N-1 and the dump shows it next to its neighbours (back-to-back
-   misses, in-flight depth, slot, urb id).  The dump is at the end of the
-   train on purpose - the alt0 path keeps its exact v38 timing, which is one
-   of the things being measured. */
+/* v39/v41: which miss does macOS react to, and does the cancel manufacture the
+   burst?  Four runs showed every active alt0 following a status=5 within 0-17
+   ms, but only 4-8 of the 47-67 misses per run triggered one; v39's ring then
+   showed the trigger is always the last miss of a 2-10 miss burst.  The pipe
+   thread keeps the last 16 misses in RAM (a few stores, no SD write) with the
+   time since the last usbDsEndpoint_Cancel: if the burst misses all sit <=2 ms
+   after a cancel, the cancel itself is producing them.
+
+   v41 also moves the dump: the train-end hook only records the pending tick,
+   and the SET_INTERFACE alt1 path dumps after _armUacBurstAsync(), so neither
+   the alt0 path nor the next train's start waits for the SD writes (v39's
+   train-end dump delayed the next alt1 by 60-100 ms). */
 typedef struct {
     u64 tick;
     u32 posted, completed, inflight;
     u32 slot, urb, status;
     u32 index; /* 0-based; the alt0 line's misses=N names N-1 */
+    u32 since_cancel_ms; /* 0xffffffff = no cancel since boot */
 } UacMissRec;
 #define UAC_MISS_RING_LEN 16
 
 static UacMissRec g_missRing[UAC_MISS_RING_LEN];
 static u32 g_missRingHead;
 static u32 g_missRingTotal;
+static u64 g_missRingCancelTick; /* last miss-path cancel */
+static u64 g_missRingPending;    /* train-end tick, dumped at the next alt1 */
 
 static void _uacMissRingAdd(u64 tick, u32 posted, u32 completed, u32 slot,
                             u32 urb, u32 status)
@@ -2683,6 +2689,9 @@ static void _uacMissRingAdd(u64 tick, u32 posted, u32 completed, u32 slot,
     r->urb = urb;
     r->status = status;
     r->index = g_missRingTotal;
+    r->since_cancel_ms = g_missRingCancelTick
+                             ? (u32)UAC_ALT_DIAG_MS(tick - g_missRingCancelTick)
+                             : 0xffffffffu;
     ++g_missRingHead;
     ++g_missRingTotal;
 }
@@ -2702,9 +2711,10 @@ static void _uacMissRingDump(u64 now)
                              (UAC_MISS_RING_LEN - 1);
             dprev = r->tick - g_missRing[prev].tick;
         }
-        LOG("UAC U2 miss rec i=%u idx=%u ago_ms=%llu dprev_ms=%llu post=%u comp=%u infl=%u slot=%u urb=%u st=%u\n",
+        LOG("UAC U2 miss rec i=%u idx=%u ago_ms=%llu dprev_ms=%llu since_cancel_ms=%u post=%u comp=%u infl=%u slot=%u urb=%u st=%u\n",
             i, r->index, UAC_ALT_DIAG_MS(now - r->tick), UAC_ALT_DIAG_MS(dprev),
-            r->posted, r->completed, r->inflight, r->slot, r->urb, r->status);
+            r->since_cancel_ms, r->posted, r->completed, r->inflight, r->slot,
+            r->urb, r->status);
     }
 }
 #endif
@@ -3028,6 +3038,9 @@ static void _postUacBurst(void)
 #endif
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
             (void)cancel; /* v37: only the opt-in miss log reports the rc */
+#if defined(UAC_U2_MISS_RING)
+            g_missRingCancelTick = svcGetSystemTick();
+#endif
 #if defined(UAC_U2_ALT_DIAG)
             g_altDiag.cancel_out = svcGetSystemTick();
 #endif
@@ -3079,10 +3092,10 @@ static void _postUacBurst(void)
             (unsigned long long)(max_react_tick / 19200));
     }
 #if defined(UAC_U2_MISS_RING)
-    /* v39: after the train, so the alt0 path keeps its v38 timing.  The alt0
-       line of this train carries misses=N; the record with idx=N-1 is the
-       miss the host reacted to. */
-    _uacMissRingDump(last_done_tick);
+    /* v39/v41: only remember the train-end tick.  The dump runs at the next
+       alt1, after the arm, so neither this train nor the next one waits for
+       the SD writes. */
+    g_missRingPending = last_done_tick ? last_done_tick : svcGetSystemTick();
 #endif
     _uacLogInstallState();
 #if defined(UAC_U2_EVENT_LOG)
@@ -3367,6 +3380,13 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
 #endif
             g_uacCtx.streamRequested = true;
             _armUacBurstAsync();
+#if defined(UAC_U2_MISS_RING)
+            if (g_missRingPending) {
+                const u64 at = g_missRingPending;
+                g_missRingPending = 0;
+                _uacMissRingDump(at);
+            }
+#endif
         }
 #endif
         break;

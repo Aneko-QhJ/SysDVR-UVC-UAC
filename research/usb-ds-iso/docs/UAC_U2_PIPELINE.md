@@ -1795,3 +1795,25 @@ WAV 784631 frames = 16.346 s, 99.87% square, 1 silence run / 21 ms
 - **结论**：串不是“post-miss lead 太短”造成的。回退 v38。若继续打串，剩下的
   假设是 **cancel 本身制造串**（首次 miss 跳过 cancel、直接补投），这需要
   driver 侧 resume，风险与 v32 同级。
+
+### 2026-11-06 23:0x v41 离线：cancel 相关性（环 2）
+
+v40 证明串不是 post-miss lead 造的，剩下的源头是 **cancel 本身**：
+
+```text
+miss -> usbDsEndpoint_Cancel  (丢掉另外 2 个在飞 URB)
+      -> 它们若以 status=5 回来 -> app 记成额外 miss + 宿主看到一串错误 URB
+v39 的形状：2-10 个 miss、20-25 ms 间隔、常见同 tick 成对
+```
+
+v41 只改诊断，不改行为：
+
+1. 每条环记录加 `since_cancel_ms`（cancel 处一次 store）；
+2. dump 从训练结束挪到**下一次 alt1 之后**（`_armUacBurstAsync()` 之后），
+   避开 v39 观测到的 60–100 ms 重 arm 扰动。
+
+| 观察（macOS 一次 boot） | 结论 |
+| --- | --- |
+| 串末记录 `since_cancel_ms ≤ 2`，孤立 miss 几十到上千 ms | **cancel 制造串** → v42 首次 miss 不 cancel |
+| 两类记录分布相同 | cancel 不是源头，串来自控制器侧 → v38 是平台期 |
+| 本轮宿主/alt0 仍像 v38（16.5–16.8 s、4–6 次） | 说明延后 dump 不再扰动 |
