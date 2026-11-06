@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-06 14:0x）
+## 当前边界（2026-11-06 16:0x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
@@ -96,16 +96,17 @@
   `cancel_ms≈0`、**`react_ms≈53 ms`**——成本在 app 的 miss 路径（每次 miss 的
   evlog dmnt dump + SD 日志），不在 cancel 也不在 lead。回退 lead 32；下一步
   去掉 per-miss evlog dump（app-only）。
-- **v36 end-only evlog 已构建（离线，未部署）**：NSP `79ce6baf…`（94469 B，
-  cave 548/684 B = v30h）。纯 app：去掉每次 miss 的 evlog dmnt dump，结尾
-  保留一次。依据 v35 的 `react_ms≈53`、`cancel_ms≈0`。判定看 `react_ms` 是否
-  降到 ~10–20、`dt_done_ms`/`max_gap` 是否同幅下降、`status=5` 是否仍 ~30。
+- **v36 end-only evlog 小胜（macOS 一次 boot）**：NSP `79ce6baf…`（cave 仍
+  v30h）。`react_ms` **53→22.5**、`cancel_ms 0`；交付 **1019 套 / 16.30 s**
+  （最好）、宿主 14.238 s、**静音 0.208 s（v30h 0.42，减半）**、98.4% 方波；
+  `max_gap` 均值 45.9 / 最长 60（v30h 37.8 / 67）。→ 保留。空洞现在由
+  `react 22 + lead 32` 主导；下一步 lead 24 和/或再去两行 miss 日志。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（11-06 14:0x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v35 证据已归档。
+- 卡：安全 `52069a44…` 已恢复并弹出（11-06 16:0x）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v36 证据已归档。
 
 ## 文件角色
 

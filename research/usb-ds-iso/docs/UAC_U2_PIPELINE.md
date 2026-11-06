@@ -1580,3 +1580,24 @@ v36 只改 app：`-DUAC_U2_EVENT_LOG_END_ONLY` 把 miss 处的 dump 编掉，训
 | `react_ms` ~53 → ~10–20、`dt_done_ms`/`max_gap` 同幅下降、status=5 仍 ~30 | **dump 就是瓶颈**；继续清 app 的 miss 路径（SD 日志行），冲 40 ms 门槛 |
 | `react_ms` 仍 ~50 | 成本在 completion 唤醒或 post IPC；下一步分段计时（唤醒→报告→填 buffer→post） |
 | status=5 或空洞变差 | 与 dump 无关，回退 |
+
+### 2026-11-06 15:3x v36 实机：end-only dump 成立，空洞转由 lead 主导
+
+app-only 去掉 per-miss evlog dump，一次 boot：
+
+```text
+trains=13  posted=1130 completed=1091 bytes=3130368 (1019 sets = 16.30 s)
+status=5 = 40 (v30h 30)  recoveries=25
+per-train max_gap = 0 48 48 48 51 48 47 47 46 58 48 48 60 (mean 45.9, max 60)
+miss diag: react_ms mean 22.5 (v35 53.1), cancel_ms 0
+WAV 683403 frames = 14.238 s, 87 silence runs / 0.208 s (v30h 105 / 0.42)
+```
+
+- **诊断命中**：dump 就是 miss 路径的大头，`react_ms` 砍半（53→22.5）；
+  cancel 仍是 0。
+- 交付 1019 套（最好）、宿主静音减半、方波 98.4%；代价是 `status=5` 40 vs 30
+  和 `max_gap` 均值 45.9 vs 37.8（最长反而从 67 降到 60）。
+- **空洞构成现在很清楚**：`react 22 + lead 32 ≈ 54`，与 46–60 的分布吻合。
+  下一步：lead 32→24（省 8 ms；16 在 v35 翻倍 miss）和/或再去掉 miss 路径的
+  两行 SD 日志（"pipe miss"/"miss recover"，把 react 压到 ~15），目标
+  `react + lead < 40`。

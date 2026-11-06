@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 14:0x，Asia/Shanghai）
+# 当前状态（2026-11-06 16:0x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -89,15 +89,14 @@
   **`react_ms` 均值 53 ms**——miss 之后 app 的整条路径（completion 唤醒、
   GetReportData、**每次 miss 的 evlog dmnt dump + 5 行 SD 日志**、填 buffer、
   post）才是静默的来源。回退 lead 32。
-- **v36 end-only evlog（离线候选，0 实机、未部署）**：NSP `79ce6baf…`
-  （94469 B，46 edits，cave 548/684 B = v30h 逐字节；app 加
-  `-DUAC_U2_EVENT_LOG_END_ONLY`）。**纯 app 改动**：去掉每次 miss 的
-  `_uacLogEventScratch("miss")`（一对 miss 会跑两遍 dmnt attach + 两次读 +
-  5 行 SD 写），结尾仍 dump 一次；cave/驱动/lead 全部保持 v30h。依据 v35 的
-  时序：`cancel_ms≈0`、`react_ms≈53`，dump 是那 53 ms 里最大的一块。预期
-  `react_ms` 降到 ~10–20、alt0 的 `dt_done_ms` 与 `max_gap` 同幅缩短，
-  `status=5` 仍 ~30。验证：`--check` 46/548 B、构建成功、quick **40 文件
-  全绿**（新增 end-only 守卫测试）。
+- **v36 end-only evlog（macOS 一次 boot，小胜）**：NSP `79ce6baf…`
+  （94469 B，cave 548/684 B = v30h；app-only 去掉 per-miss evlog dump）。
+  **`react_ms` 53.1 → 22.5、`cancel_ms` 仍 0**——诊断命中。设备：**1019 套 =
+  16.30 s**（v30h 1014 / 16.22，交付最好）、`status=5 40`（v30h 30）、
+  `recoveries=25`、**每段 `max_gap` 均值 45.9 / 最长 60**（v30h 37.8 / 67）；
+  宿主 **14.238 s**、**静音 87 段 / 0.208 s**（v30h 105 / 0.42，减半）、方波
+  98.4%；无新 crash/fatal/erpt。判定：**小胜，保留**。`react 22 + lead 32 ≈ 54`
+  与观测到的 46–60 ms 吻合——**空洞现在由 32 ms lead 主导**。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -344,10 +343,11 @@
 1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v36 已构建，等一次 boot**：去掉 per-miss evlog dump（见上）。判定：
-   `miss diag react_ms` 是否从 ~53 降到 ~10–20、alt0 的 `dt_done_ms` 与
-   每段 `max_gap` 是否同幅下降、`status=5` 是否仍 ~30。若 react 仍高，
-   成本在 completion 唤醒或 post IPC，下一步量那两段。
+2. **v36 已小胜**：去 per-miss dump 把 `react_ms` 砍半（53→22.5），交付与宿主
+   静音都改善（1019 套、0.208 s）。空洞现在是 `react + 32 ms lead`，由 lead 主导。
+   下一步二选一：**(a)** lead 32→24（16 在 v35 翻倍了 miss，24 是中间值，省 8 ms）；
+   **(b)** 再去掉 miss 路径里剩下的两行 SD 日志（"pipe miss"/"miss recover"），
+   把 react 从 22 压到 ~15。两者可以合起来做一次，目标 `gap < 40`。
 3. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。
