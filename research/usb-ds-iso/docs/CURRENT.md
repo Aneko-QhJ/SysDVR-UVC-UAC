@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 23:0x，Asia/Shanghai）
+# 当前状态（2026-11-06 23:4x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -142,13 +142,17 @@
   v37/v38 区间）、**alt0 6 次**（v38 4–6）。宿主 16.346 s、静音 1 段 / 21 ms，
   交付 1192 套 / 19.07 s，全在 v38 带内。→ **判负，回退 lead 20（v38）**：
   miss 串不是“post-miss lead 太短”造成的。
-- **v41 已构建（离线诊断候选，0 实机、未部署）**：NSP `dc9151b1…`（95121 B，
-  cave 仍 v38 的 `pipe_quad_lead20.S` 548/684 B）。环记录加 `since_cancel_ms`
-  （距上次 miss 路径 `usbDsEndpoint_Cancel` 的毫秒数），dump 从“训练结束”挪到
-  **下一次 alt1 之后**（避开 v39 那 60–100 ms 的扰动）。判定：每段 alt0 前那
-  两条记录的 `since_cancel_ms ≤ 2`、而同段孤立 miss 是几十到上千 ms →
-  **cancel 制造串**，v42 就做“首次 miss 不 cancel”；若两者分布相同 → cancel
-  不是源头，v38 是该机制的平台期。
+- **v41 环 2（macOS 一次 boot，诊断命中，**否掉 cancel 假设**）**：NSP
+  `dc9151b1…`（95121 B）。**结论**：串里每条 miss 的 `since_cancel_ms` 都是
+  **19–26 ms（正好一个 lead）**，而自发 miss（起串的那一条）是 **268–2387 ms**。
+  cancel 若制造 miss，延迟应是 0–1 ms——所以 **cancel 不是源头**。真实机制是
+  **自持的 21 ms 环**：一次自发 miss → cancel（免费）→ 按 20 ms lead 重投 →
+  下一套正好在 ~21 ms 后 miss → 再 cancel …… 环的周期等于 lead。这也解释了
+  为什么 v37/v38/v40 改 lead 都动不了串。合理解释：**宿主在那一帧没有排队
+  URB（host 侧饥饿）**，控制器报 code 23，不是我们投晚了。附带：本轮出现 3 条
+  `st=4`；**dump 挪到下次 alt1 之后后不再扰动**（`since_alt0` 133–224 ms，
+  v39 是 250–284）。本轮数据（宿主 14.716 s、10 段、misses 97、`max_gap`
+  均值 28.2/最长 39、alt0 10 次）只作诊断样本，不作性能结论。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -408,9 +412,11 @@
    **(b)** 首次 miss 时**不 cancel**、直接补投，看串是不是被 cancel 制造出来的
    （v32 的 keep-ring 是另一种形态，这次只跳过第一次 cancel）。
    **v40 = (a) 已判负**（32 ms 首套没有缩短串，只把空洞推到 47–54 ms）。
-   剩下的 (b) 先用 v41 诊断：环里记录 `since_cancel_ms` 并改到下次 alt1 后
-   dump。若确认串是 cancel 造的，v42 再做“首次 miss 不 cancel + cave 侧 halt
-   复位”；若不是，v38 就是该机制的平台期。
+   **v41 已否掉 cancel 假设**：串是“cancel → 20 ms lead → ~21 ms 后又 miss”
+   的自持环，周期 = lead，起点是一次自发 miss（268–2387 ms 才一次）。
+   这等于说**设备侧的 lead/恢复路径已到平台**：miss 的根因在宿主那一帧没有
+   排队 URB。要再往前，方向应转到宿主侧（队列深度/alt1 重入）或换目标
+   （更长稳态、标准宿主互操作），而不是继续调 cave。
    **v38 已把 lead 降到 20 并成立**：miss 反而略降（62 vs 67），说明这一区间
    里 miss 数不是 lead 的单调函数；36 ms 空洞让 alt0 从 9 次降到 6 次。
 4. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的

@@ -1817,3 +1817,24 @@ v41 只改诊断，不改行为：
 | 串末记录 `since_cancel_ms ≤ 2`，孤立 miss 几十到上千 ms | **cancel 制造串** → v42 首次 miss 不 cancel |
 | 两类记录分布相同 | cancel 不是源头，串来自控制器侧 → v38 是平台期 |
 | 本轮宿主/alt0 仍像 v38（16.5–16.8 s、4–6 次） | 说明延后 dump 不再扰动 |
+
+### 2026-11-06 23:2x v41 实机：串是一个 21 ms 的自持环（cancel 不是源头）
+
+```text
+burst  records: since_cancel_ms = 19..26   (= one 20 ms lead)
+spontaneous misses (start a burst): 268..2387 ms after the last cancel
+alt1 since_alt0 = 133..224 ms  (the deferred dump no longer perturbs)
+trains=10  sets=1073 / 17.17 s  misses=97  max_gap mean 28.2 / max 39  alt0=10
+```
+
+- **cancel 假设被否**：cancel 若把另外两个在飞 URB 变成 miss，它们会在 0–1 ms
+  内回来；实测全部是 19–26 ms。
+- **真实机制**：一次自发 miss → app cancel（免费）→ 按 20 ms lead 重投 →
+  下一套在 ~21 ms 后 miss → 再 cancel → …… **周期 = lead**。这是一个自持环，
+  起点是随机的自发 miss（每 0.3–2.4 s 才一次）。
+- 自持的合理解释是**宿主在那一帧没有排队 URB（host 侧饥饿）**：控制器对没有
+  宿主读请求的帧报 code 23。这也解释了为什么 v37（24）、v38（20）、v40
+  （post-miss 32）都改不动串：改的是“我们何时投”，而缺少的是“宿主何时读”。
+- **结论**：设备侧 lead/恢复路线到此为止。继续要有收益，只能转向宿主侧
+  （AppleUSBAudio 的队列深度 / alt1 重入）或换目标，而不是再调 cave。
+- 诊断手法本身也修好了：dump 放到下一次 alt1 之后，`since_alt0` 回到 133–224 ms。
