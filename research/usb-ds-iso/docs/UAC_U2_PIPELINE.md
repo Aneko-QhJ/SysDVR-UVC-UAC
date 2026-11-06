@@ -1661,3 +1661,26 @@ v37 的 `max_gap` 全在 39–40，落在 ~40 ms 的容忍线上，因此仍有 
 注意：v33（全局 16）、v35（post-miss 16）都让 miss 翻倍，v37 的 24 也把 miss
 从 40 抬到 67，所以 20 的 miss 数很可能继续上升；本轮要同时看“空洞是否过线”
 和“miss 是否失控”。
+
+### 2026-11-06 19:2x v38 实机：36 ms 空洞成立，alt0 9→6
+
+只把 lead 从 24 降到 20，一次 boot：
+
+```text
+trains=5   posted=1309 completed=1294 bytes=3667968 (1194 sets = 19.1 s)
+per-train max_gap = 22 36 36 35 41 (mean 34.0, max 41)
+miss diag: react_ms = 0 (34 samples)   misses=62  recoveries=34
+alt1=5  alt0=6   alt0 since_alt1_ms = 117 / 6464 / 1606 / 2541 / 9543
+WAV 790528 frames = 16.469 s, 100.0% square, 0 silence runs >= 1 ms
+```
+
+- **36 ms 低于阈值**：v37 的 `max_gap` 卡在 39–40 时还有 9 次 alt0，v38 只有 6 次，
+  宿主在 alt1 里连续跑了 6.4 s 和 9.5 s。
+- **更紧的 lead 没有换来更多 miss**（62 vs 67）：这一区间里 miss 数不是 lead 的
+  单调函数，v37 的“24 抬高了 miss”判断被推翻——更可能是轮次方差。
+- 交付 1194 套 / 19.1 s（v37 1133 / 18.13），宿主 16.469 s，音质干净（0 段静音）。
+- **新瓶颈**：5 条 active alt0 全部紧跟一次 `status=5`（`dt_done_ms 0–11`）——
+  宿主是在某一次 miss 后 10 ms 内离开 alt1，`since_alt1_ms` 只说明那一段此前跑了
+  117 ms–9.5 s。62 次 miss 只有 5 次触发切换，**触发条件未知**；每次 teardown 后
+  136–221 ms 的重 arm 构成 ~2.6 s 的差距。下一轮先同镜像复跑，确认 6 次 alt0 /
+  16.47 s 可重复，再从 `ALT_DIAG` 看被选中的 miss 有没有共同点。
