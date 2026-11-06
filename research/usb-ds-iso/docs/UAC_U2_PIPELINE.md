@@ -1463,3 +1463,26 @@ reports = baseline, no new crash/fatal/erpt
   也不同，这是混淆而不是改善；不能据此保留。
 - 判定：**回退 lead 32**。空洞的下限由帧调度决定，继续压 lead 没有空间；
   下一步只剩 miss 率本身或训练间的 alt 抖动（本轮 20 s 内 18 段训练）。
+
+### 2026-11-06 13:2x v34 离线：alt 抖动诊断
+
+v30i–v33 的空洞都在 30–126 ms，但 20 s 里 alt1/alt0 切了 18–19 次，段间损失
+更大；v33 的 12.87 s WAV 里只有 3 个 ≥1 ms 静音段，说明**段内已经干净、损失
+在训练之间**。v34 只加日志（行为与 v30h 逐字节相同）：
+
+```text
+pipe loop:   g_altDiag.{posted,completed,misses,last_status,
+                        last_post_tick,last_done_tick,active}
+SET_INTERFACE alt1:  "UAC U2 alt diag alt1 n= since_alt0_ms="
+SET_INTERFACE alt0:  "UAC U2 alt diag alt0 n= active= inflight= posted=
+                      completed= misses= last_status= dt_done_ms=
+                      dt_post_ms= since_alt1_ms="   (before the cancel)
+```
+
+| alt0 行 | 结论 |
+| --- | --- |
+| `active=1`、`dt_done_ms` < 40、`last_status=3` | 宿主在切一条健康的流 → 下一步改 STOP/alt1 交互（例如让 alt0 不杀流、只在 alt1 到达时重启） |
+| `dt_done_ms` 大或 `last_status=5` | 宿主是在对我们 stall 的反应 → 继续压 miss 率 |
+| `active=0` | alt0 在 pipe 结束之后才到 → 先看训练为何提前结束（`pipe end` 的 posted/completed） |
+
+`since_alt1_ms` 同时给出宿主的切换周期（v30h/v33 约 1.1 s）。

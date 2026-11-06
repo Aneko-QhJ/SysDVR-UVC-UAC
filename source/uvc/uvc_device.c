@@ -2624,6 +2624,25 @@ static Thread g_uacArmThread;
 static u8 alignas(0x1000) g_uacArmStack[0x4000];
 static bool g_uacArmStarted;
 
+#if defined(UAC_U2_ALT_DIAG)
+/* v34: who tears the stream down?  macOS alternates alt1/alt0 roughly every
+   second while the pipe runs on the arm thread, so the SET_INTERFACE handler
+   (usb:ds thread) only reads a small snapshot of the pipe counters and
+   stamps the arrival time.  The numbers answer: was the pipe still active,
+   how long since the last completion/post, and had a miss just happened. */
+typedef struct {
+    u64 alt1_tick;
+    u64 alt0_tick;
+    u64 last_post_tick;
+    u64 last_done_tick;
+    u32 posted, completed, misses, last_status;
+    u32 active;
+    u32 alt1_count, alt0_count;
+} UacAltDiag;
+static UacAltDiag g_altDiag;
+#define UAC_ALT_DIAG_MS(tick) ((unsigned long long)((tick) / 19200))
+#endif
+
 static void _postUacBurst(void)
 {
     /* The host may trigger many times while chasing an alt1 window; log every
@@ -2728,6 +2747,15 @@ static void _postUacBurst(void)
        instead of the app cancelling the ring back to base. */
     LOG("UAC U2 pipe keep-ring resume=cave\n");
 #endif
+#if defined(UAC_U2_ALT_DIAG)
+    g_altDiag.posted = 0;
+    g_altDiag.completed = 0;
+    g_altDiag.misses = 0;
+    g_altDiag.last_status = 0;
+    g_altDiag.last_post_tick = 0;
+    g_altDiag.last_done_tick = 0;
+    g_altDiag.active = 1;
+#endif
     for (u32 i = 0; i < 8; ++i) free_slot[i] = 1;
 
     for (;;) {
@@ -2771,6 +2799,10 @@ static void _postUacBurst(void)
             urb_ids[next] = urb;
             free_slot[next] = 0;
             ++posted;
+#if defined(UAC_U2_ALT_DIAG)
+            g_altDiag.posted = posted;
+            g_altDiag.last_post_tick = svcGetSystemTick();
+#endif
             if (posted == 1) first_post_tick = svcGetSystemTick();
             if (++next >= UAC_U2_TRAIN_POSTS) next = 0;
             last_progress = svcGetSystemTick();
@@ -2862,6 +2894,12 @@ static void _postUacBurst(void)
                     _uacLogEventScratch("miss");
 #endif
                 }
+#if defined(UAC_U2_ALT_DIAG)
+                g_altDiag.completed = completed;
+                g_altDiag.misses = misses;
+                g_altDiag.last_status = report.report[i].urb_status;
+                g_altDiag.last_done_tick = done_tick;
+#endif
                 break;
             }
         }
@@ -2903,6 +2941,9 @@ static void _postUacBurst(void)
 #endif
         last_progress = svcGetSystemTick();
     }
+#if defined(UAC_U2_ALT_DIAG)
+    g_altDiag.active = 0;
+#endif
     if (completed < posted) {
         /* Do not leave ISO requests pending across the alt0 teardown. */
         Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
@@ -3196,12 +3237,41 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
         if (packet.bmRequestType == 0x01 &&
             packet.bRequest == 0x0B /* SET_INTERFACE */ &&
             packet.wIndex == g_uacStd.as_interface) {
+#if defined(UAC_U2_ALT_DIAG)
+            {
+                const u64 now = svcGetSystemTick();
+                ++g_altDiag.alt1_count;
+                g_altDiag.alt1_tick = now;
+                LOG("UAC U2 alt diag alt1 n=%u since_alt0_ms=%llu\n",
+                    g_altDiag.alt1_count,
+                    g_altDiag.alt0_tick
+                        ? UAC_ALT_DIAG_MS(now - g_altDiag.alt0_tick) : 0);
+            }
+#endif
             g_uacCtx.streamRequested = true;
             _armUacBurstAsync();
         }
 #endif
         break;
     case UAC_ACT_STOP:
+#if defined(UAC_U2_ALT_DIAG)
+        {
+            const u64 now = svcGetSystemTick();
+            ++g_altDiag.alt0_count;
+            g_altDiag.alt0_tick = now;
+            LOG("UAC U2 alt diag alt0 n=%u active=%u inflight=%u posted=%u completed=%u misses=%u last_status=%u dt_done_ms=%llu dt_post_ms=%llu since_alt1_ms=%llu\n",
+                g_altDiag.alt0_count, g_altDiag.active,
+                (unsigned)(g_altDiag.posted - g_altDiag.completed),
+                g_altDiag.posted, g_altDiag.completed, g_altDiag.misses,
+                g_altDiag.last_status,
+                g_altDiag.last_done_tick
+                    ? UAC_ALT_DIAG_MS(now - g_altDiag.last_done_tick) : 0,
+                g_altDiag.last_post_tick
+                    ? UAC_ALT_DIAG_MS(now - g_altDiag.last_post_tick) : 0,
+                g_altDiag.alt1_tick
+                    ? UAC_ALT_DIAG_MS(now - g_altDiag.alt1_tick) : 0);
+        }
+#endif
         g_uacCtx.streaming = false;
 #ifdef UAC_U2_PATCH
         /* v30h: stop the pipe before the endpoint is cancelled, so a host
