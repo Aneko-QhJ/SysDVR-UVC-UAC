@@ -25,7 +25,7 @@
 不保证复现任意旧版本。旧路径缺失时先查 [STORAGE.md](STORAGE.md) 的处置清单，
 不要为重放历史流程补回整套旧树。常规测试产物使用临时目录，结束后清理。
 
-## 当前边界（2026-11-06 23:4x）
+## 当前边界（2026-11-07 00:2x）
 
 - 实机授权：2026-11-01 16:19 起常设授权“部署测试不再需要授权；通知插卡/
   开机即可”（一次 boot、失败即停、不重试）。
@@ -130,6 +130,15 @@
   的**自持环**，根因是宿主那一帧没有排队 URB。**设备侧 lead/恢复路线到此为止**；
   v38 仍是载体（两轮 16.5–16.8 s）。dump 改到下次 alt1 后已不再扰动
   （`since_alt0` 133–224 ms）。
+- **v42 宿主时间线（离线回读，0 实机）**：macOS 的 `usbaudiod` 收到**单个**
+  isoch `transaction error` 就停流（错误→`performStopIO` 4 ms；停流 104–138 ms，
+  再 90–200 ms 才 `performStartIO`）；设备侧 alt0→alt1 的 136–221 ms 就是这段，
+  5 次 alt0 ↔ 5 次 abort，`6464/1606/2541/9543 ms` 与宿主逐段吻合。宿主队列
+  `lockDelayMS 100` 不浅，ZLP 常态不致命。→ v38 的 ~2.5 s 是宿主固定
+  stop/start 代价；因果（miss 先还是 error 先）仍未判。v42 诊断
+  `0e3da14f…`（95227 B，v38 + `-DUAC_U2_TICK_LOG`）**已构建、未部署**；
+  宿主工具 `uac_host_capture.py` / `uac_host_timeline.py` 已备。
+  见 [docs/UAC_U2_HOST_TIMELINE.md](docs/UAC_U2_HOST_TIMELINE.md)。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。

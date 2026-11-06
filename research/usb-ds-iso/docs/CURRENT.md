@@ -1,4 +1,4 @@
-# 当前状态（2026-11-06 23:4x，Asia/Shanghai）
+# 当前状态（2026-11-07 00:2x，Asia/Shanghai）
 
 > 本文件是唯一“当前状态”，只写现在成立的事实、最佳配置、下一步与边界。
 > 逐轮时间线见 [README_HISTORY.md](../README_HISTORY.md)，U2 数据路径细节见
@@ -153,6 +153,19 @@
   `st=4`；**dump 挪到下次 alt1 之后后不再扰动**（`since_alt0` 133–224 ms，
   v39 是 250–284）。本轮数据（宿主 14.716 s、10 段、misses 97、`max_gap`
   均值 28.2/最长 39、alt0 10 次）只作诊断样本，不作性能结论。
+- **v42 宿主侧时间线（离线回读 v38 日志，0 实机）**：macOS 的 `usbaudiod`
+  收到**单个** isoch `transaction error`（`0xe00002ed`）就停流——错误到
+  `performStopIO` 只隔 4 ms；停流本身 **104–138 ms**（`abortGated` 掉
+  29–30 个在飞请求），再 **90–200 ms** 才 `performStartIO`。设备侧
+  alt0→alt1 的 136–221 ms 就是这段；5 次 active alt0 ↔ 5 次宿主 abort，
+  且 `6464/1606/2541/9543 ms` 与宿主 `startIO→error` 一一吻合。宿主队列
+  不浅：`lockDelayMS 100`（100 ms，开场 ZLP 20>2 后从 24 升上来）；ZLP
+  常态（一轮 88 次）不致命，**单个 transaction error 才致命**。→ v38 的
+  ~2.5 s 残余是宿主固定 stop/start 代价，不是设备 re-arm 可调参数。
+  **因果仍未判**：62 次 miss 只有 3 次 host error。v42（v38 +
+  `-DUAC_U2_TICK_LOG`，离线已构建 `0e3da14f…`、95227 B，**未部署**）
+  用共享时钟判"首条 miss 是否早于 error"。详见
+  [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
@@ -399,13 +412,19 @@
 
 ## 下一步
 
-1. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
+1. **v42 宿主时钟（离线已备，未部署）**：v38 + `-DUAC_U2_TICK_LOG`
+   （`0e3da14f…`、95227 B）给设备日志加开机毫秒；宿主用
+   `tools/uac_host_capture.py` 录 `log stream` + WAV，再用
+   `tools/uac_host_timeline.py` 对齐两侧时钟。判别：burst 首条 miss 比
+   host error 早 **>20 ms** → 设备侧是因；否则 host stop 造出 burst。
+   一次 boot、诊断样本；见 [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
+2. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
-2. **v37 成立（新最佳）**：去两行 miss SD 日志把 `react_ms` 从 22.5 压到 **0**，
+3. **v37 成立（新最佳）**：去两行 miss SD 日志把 `react_ms` 从 22.5 压到 **0**，
    lead 24 让 `max_gap` 首次全部 ≤40；宿主 **15.575 s、100% 方波、0 段静音**，
    交付 1133 套 / 18.13 s。**空洞不再是瓶颈。**
-3. **下一杠杆 = 打断 miss 串**：v39 已证明触发者是**一串**（2–10 个、间隔
+4. **下一杠杆 = 打断 miss 串**：v39 已证明触发者是**一串**（2–10 个、间隔
    20–25 ms）而不是单次 miss。下一步二选一：
    **(a)** halt 位置位时（刚 miss 过）首套用 **32 ms** lead、其余仍 20 ms——
    这是 v35（16 ms）的镜像，让 re-arm 后的首套稳稳落地、不再引发下一个 miss；
@@ -419,16 +438,17 @@
    （更长稳态、标准宿主互操作），而不是继续调 cave。
    **v38 已把 lead 降到 20 并成立**：miss 反而略降（62 vs 67），说明这一区间
    里 miss 数不是 lead 的单调函数；36 ms 空洞让 alt0 从 9 次降到 6 次。
-4. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
+5. **抓取后的 106 次重连**（v31 独有，但空闲窗口长 30 倍）需要一次单独的
    观察轮：v30h 镜像、保持连接 10 min，看重连是否同样出现；若出现，就不是
    v31 的问题，而是 macOS 在设备 alt0/stall 之后的重试行为。
-5. **VM 数字只描述 probe 路径**（498/494 套、0.67 事件/s、~90% 占空、
+6. **VM 数字只描述 probe 路径**（498/494 套、0.67 事件/s、~90% 占空、
    ~90 ms 空洞），不是真实宿主上限。
-6. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
+7. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
    字符串描述符仍未做。
 
-判定：形态已对；miss 恢复已压到宿主容忍之内，接下来只调 miss 率与 alt 切换，
-不再改流结构。
+判定：形态已对；miss 恢复已压到宿主容忍之内。残余损失是宿主每收到一个
+isoch transaction error 就 stop/start（104–138 + 90–200 ms）；下一步先用
+v42 判因果，再谈 miss 率与 alt 切换，不再改流结构。
 
 ## 边界与纪律
 

@@ -3,7 +3,7 @@
 > 自动生成，勿手改。重生成：`python3 research/usb-ds-iso/tools/index_tools.py`。
 > 使用约定见 [../WORKFLOW.md](../WORKFLOW.md)；分类说明见 [README.md](README.md)。
 
-共 440 个 Python 工具。
+共 442 个 Python 工具。
 
 ## 当前使用
 
@@ -38,6 +38,7 @@
 | `replay` | 2 |
 | `sequence` | 2 |
 | `summarize` | 2 |
+| `uac` | 2 |
 | `decode` | 1 |
 | `emulate` | 1 |
 | `experiment.py` | 1 |
@@ -613,6 +614,13 @@
 | --- | --- |
 | [summarize_host_microframe.py](summarize_host_microframe.py) | Summarize raw host query observations, retaining failures and uncertainty. |
 | [summarize_run.py](summarize_run.py) | Decode host JSONL and raw controller words; preserve unverified claims. |
+
+## uac（2）
+
+| 工具 | 说明 |
+| --- | --- |
+| [uac_host_capture.py](uac_host_capture.py) | Capture one macOS host-side UAC round: unified log + WAV + snapshots. |
+| [uac_host_timeline.py](uac_host_timeline.py) | Put the device log and the macOS `log stream` on one timeline. |
 
 ## validate（1）
 
