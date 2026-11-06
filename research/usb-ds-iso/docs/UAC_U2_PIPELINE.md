@@ -1442,3 +1442,24 @@ lead 只作用于 re-arm 后的**第一套**；第二套起用 cursor（首套�
 | `max_gap` 明显下降、status=5 仍 ~30、交付 ≥ v30h | **lead 是空洞成本**；继续压到 8 ms 或转向 miss 率 |
 | status=5 变多 / 训练 stall | 16 ms 不够控制器取指；回退 32，下一步转 alt 抖动或 miss 率 |
 | 交付下降但 gap 未降 | 首套被漏服务、旧套 32 ms 的教训在 lead 上也成立 |
+
+### 2026-11-06 12:4x–12:5x v33 实机：负结果（16 ms 太紧）
+
+只改一条 cave 指令（lead 32→16 ms），一次 boot：
+
+```text
+trains=18  posted=1094 completed=1040 bytes=2939904 (957 sets = 15.31 s)
+status=5 = 40 (v30h 30)  misses=55 recoveries=25  empty trains=1  alt1=18 alt0=9
+per-train max_gap = 30 58 35 51 41 52 40 56 126 36 58 37 44 34 24 20 67 44
+                    (mean 47.4, max 126; v30h mean 37.8, max 67)
+WAV 617844 frames = 12.872 s, 3 silence runs / 0.032 s, square 99.75%
+reports = baseline, no new crash/fatal/erpt
+```
+
+- 预期是空洞缩短 16 ms；实际是 **status=5 变多（30→40）、最坏空洞变大
+  （67→126 ms）、交付少 57 套**。16 ms 不够控制器在 re-arm 后取到首套的
+  证据与 v29j 一致，lead 不是免费参数。
+- 宿主侧看起来“更干净”（静音段 105→3），但抓到的时间短了 1.3 s、训练数
+  也不同，这是混淆而不是改善；不能据此保留。
+- 判定：**回退 lead 32**。空洞的下限由帧调度决定，继续压 lead 没有空间；
+  下一步只剩 miss 率本身或训练间的 alt 抖动（本轮 20 s 内 18 段训练）。
