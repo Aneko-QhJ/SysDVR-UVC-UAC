@@ -2624,6 +2624,23 @@ static Thread g_uacArmThread;
 static u8 alignas(0x1000) g_uacArmStack[0x4000];
 static bool g_uacArmStarted;
 
+#if defined(UAC_U2_TICK_LOG)
+#if !defined(UAC_U2_ALT_DIAG)
+#error "UAC_U2_TICK_LOG needs the ALT_DIAG clock conversion"
+#endif
+/* v42: absolute device clock (ms since boot) on the lines that mark a host
+   transition, so the device log can be aligned with the macOS `log stream`:
+   the host prints `performStopIO`/`performStartIO` and the isoch transaction
+   error with wall-clock timestamps, the device prints the SET_INTERFACE(0/1)
+   that answers each one.  Pairing the two gives a constant offset; every miss
+   ring record can then be placed on the host timeline as at_ms - ago_ms. */
+#define UAC_TICK_FMT " t_ms=%llu"
+#define UAC_TICK_ARG(tick) , ((unsigned long long)((tick) / 19200))
+#else
+#define UAC_TICK_FMT ""
+#define UAC_TICK_ARG(tick)
+#endif
+
 #if defined(UAC_U2_ALT_DIAG)
 /* v34: who tears the stream down?  macOS alternates alt1/alt0 roughly every
    second while the pipe runs on the arm thread, so the SET_INTERFACE handler
@@ -2700,7 +2717,8 @@ static void _uacMissRingDump(u64 now)
 {
     const u32 have = g_missRingTotal < UAC_MISS_RING_LEN
                          ? g_missRingTotal : UAC_MISS_RING_LEN;
-    LOG("UAC U2 miss ring total=%u n=%u\n", g_missRingTotal, have);
+    LOG("UAC U2 miss ring total=%u n=%u" UAC_TICK_FMT "\n",
+        g_missRingTotal, have UAC_TICK_ARG(now));
     for (u32 i = 0; i < have; ++i) {
         const u32 idx =
             (g_missRingHead - have + i) & (UAC_MISS_RING_LEN - 1);
@@ -3372,10 +3390,11 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
                 const u64 now = svcGetSystemTick();
                 ++g_altDiag.alt1_count;
                 g_altDiag.alt1_tick = now;
-                LOG("UAC U2 alt diag alt1 n=%u since_alt0_ms=%llu\n",
+                LOG("UAC U2 alt diag alt1 n=%u since_alt0_ms=%llu" UAC_TICK_FMT "\n",
                     g_altDiag.alt1_count,
                     g_altDiag.alt0_tick
-                        ? UAC_ALT_DIAG_MS(now - g_altDiag.alt0_tick) : 0);
+                        ? UAC_ALT_DIAG_MS(now - g_altDiag.alt0_tick) : 0
+                    UAC_TICK_ARG(now));
             }
 #endif
             g_uacCtx.streamRequested = true;
@@ -3396,7 +3415,7 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
             const u64 now = svcGetSystemTick();
             ++g_altDiag.alt0_count;
             g_altDiag.alt0_tick = now;
-            LOG("UAC U2 alt diag alt0 n=%u active=%u inflight=%u posted=%u completed=%u misses=%u last_status=%u dt_done_ms=%llu dt_post_ms=%llu since_alt1_ms=%llu\n",
+            LOG("UAC U2 alt diag alt0 n=%u active=%u inflight=%u posted=%u completed=%u misses=%u last_status=%u dt_done_ms=%llu dt_post_ms=%llu since_alt1_ms=%llu" UAC_TICK_FMT "\n",
                 g_altDiag.alt0_count, g_altDiag.active,
                 (unsigned)(g_altDiag.posted - g_altDiag.completed),
                 g_altDiag.posted, g_altDiag.completed, g_altDiag.misses,
@@ -3406,7 +3425,8 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
                 g_altDiag.last_post_tick
                     ? UAC_ALT_DIAG_MS(now - g_altDiag.last_post_tick) : 0,
                 g_altDiag.alt1_tick
-                    ? UAC_ALT_DIAG_MS(now - g_altDiag.alt1_tick) : 0);
+                    ? UAC_ALT_DIAG_MS(now - g_altDiag.alt1_tick) : 0
+                UAC_TICK_ARG(now));
         }
 #endif
         g_uacCtx.streaming = false;
@@ -3426,6 +3446,7 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
            the reinstalled ring (crash at +0x1927c).  Flush and reap before
            the status stage so alt0 sees a quiet endpoint. */
         if (g_uacCtx.audioEndpointIn) {
+            const u64 tick = svcGetSystemTick();
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
             UsbDsReportData report;
             Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
@@ -3434,7 +3455,8 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
                 eventClear(&g_uacCtx.audioEndpointIn->CompletionEvent);
                 usbDsEndpoint_GetReportData(g_uacCtx.audioEndpointIn, &report);
             }
-            LOG("UAC U2 teardown cancel rc=0x%x wait=0x%x\n", cancel, wait);
+            LOG("UAC U2 teardown cancel rc=0x%x wait=0x%x" UAC_TICK_FMT "\n",
+                cancel, wait UAC_TICK_ARG(tick));
         }
 #endif
         _ctrlAck(iface);
@@ -3589,7 +3611,12 @@ void UvcDeviceProcessRequests(void)
     }
 
     if (g_uvcCtx.state == UVC_STATE_DISCONNECTED) {
+#if defined(UAC_U2_TICK_LOG)
+        LOG("USB host connected" UAC_TICK_FMT "\n",
+            UAC_ALT_DIAG_MS(svcGetSystemTick()));
+#else
         LOG("USB host connected\n");
+#endif
         g_uvcCtx.state = UVC_STATE_CONNECTED;
         g_uvcCtx.frameId = 0;
         g_uvcCtx.frameNumber = 0;
