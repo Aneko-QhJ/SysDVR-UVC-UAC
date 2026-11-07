@@ -142,12 +142,17 @@
   `private/runs/UAC-u2-v42-host-clock-macos`；工具
   `tools/uac_host_capture.py` / `uac_host_timeline.py`；
   详见 [docs/UAC_U2_HOST_TIMELINE.md](docs/UAC_U2_HOST_TIMELINE.md)。
+- **Linux 对照（11-07 一次 boot）**：同一 v38 在 Debian guest 的
+  `snd-usb-audio` 上跑出**一段 20.9 s 的 alt1**（56 miss / 34 recovery、
+  `max_gap 39`），宿主 WAV **20.000 s、零静音**；内核打了 ~289 次
+  `retire_capture_urb` 错误但**没有停流**。→ macOS 的"一次 error 就拆流"
+  是 `usbaudiod` 的策略，不是设备/协议问题。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（11-07 22:13，v42 跑完）；
+- 卡：安全 `52069a44…` 已恢复并弹出（11-07 22:37，v42 + Linux 对照跑完）；
   VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v42 证据已归档。
 
 ## 文件角色

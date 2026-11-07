@@ -105,6 +105,24 @@ host 已经注定失败之后，改变不了结果。
 本轮是诊断样本，不能当性能结论：10 段、宿主 WAV 14.519 s / 95.9% 方波、
 4 段静音 / 0.257 s（ring dump 的 SD 写会把每段之后的 re-arm 推后）。
 
+## Linux 对照（2026-11-07，v38 载体，一次 boot）
+
+宿主换成 Parallels Debian 13 guest 的 `snd-usb-audio`（虚拟 xHCI），设备仍是
+v38 `1b6a6014…` 逐字节不变：
+
+| 项 | 值 |
+| --- | --- |
+| 设备 | 一段 **20,900 ms** 的 alt1（只有开场一次 87 ms 探测）；posted 1347 / completed 1344、**1244 套 = 3,821,568 B**、**misses 56 / recoveries 34**、`max_gap 39 ms`、`max_react 21 ms` |
+| 宿主 WAV | **960,000 帧 = 20.000 s**、≥1 ms 静音 **0 段**、零样本 **0**、方波保持率 0.958 |
+| 内核 | `retire_capture_urb` 速率限制打印 **239 / 9 / 41 次 suppressed**（约 289 次错误回调），驱动**没有**停流 |
+| usbmon | 20,727 个 iso URB（~1036/s、192 B/ms），只有收尾 12 个 `-ECONNRESET`；流内状态全 0 |
+| macOS 对照 | v38 两轮宿主 16.469 / 16.839 s、alt0 5–6 次、misses 47–62 |
+
+**结论**：`usbaudiod` 的"一次 isoch transaction error 就 stop/start"是**宿主
+驱动策略**，不是 UAC 设备或协议的问题。同样的设备、同样的 miss 率，Linux 拿到
+完整 20 s 方波。限制：Parallels 的虚拟 xHCI 不是物理 Linux 主机，这只证明驱动
+层策略差异，不是绝对性能对比。
+
 ## 操作（下一次实机，需另行通知开机）
 
 ```sh

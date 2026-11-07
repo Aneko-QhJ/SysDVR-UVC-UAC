@@ -169,6 +169,16 @@
   但第一帧仍是宿主没取（code 23），设备侧拦不住，**v38 平台期成立**。
   诊断样本（10 段、宿主 14.519 s）不作性能结论。详见
   [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
+- **Linux 对照（11-07，v38 载体，一次 boot，判定：拆流是 macOS 策略）**：
+  Parallels Debian 13 guest 的 `snd-usb-audio`（虚拟 xHCI）跑同一 v38：
+  **一段 20,900 ms 的 alt1**、1244 套 = 3,821,568 B、**misses 56 /
+  recoveries 34**、`max_gap 39`、`max_react 21`；宿主 WAV **20.000 s、
+  ≥1 ms 静音 0 段、零样本 0**。内核 `retire_capture_urb` 速率限制打印
+  239/9/41 次 suppressed（~289 次错误回调）但**没有停流**；usbmon 20,727 个
+  iso URB、只有收尾 12 个 `-ECONNRESET`。→ **"一次 transaction error 就
+  stop/start" 是 `usbaudiod` 的策略，不是 UAC 设备/协议缺陷**；同样 miss 率下
+  macOS 丢 ~3.5 s 且拆流 5–6 次，Linux 拿到完整 20 s。限制：虚拟 xHCI 不是
+  物理 Linux 主机，只证明驱动层策略差异。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
   （96.5%）、`span 8984`、88.0% / host 88.9%、7 次、`max_gap 87`；两轮均无
