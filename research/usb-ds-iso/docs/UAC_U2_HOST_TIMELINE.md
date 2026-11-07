@@ -84,11 +84,14 @@ log show --start "2026-11-06 18:51:25" --end "2026-11-06 18:52:10" --style compa
 ## 操作（下一次实机，需另行通知开机）
 
 ```sh
-# 1) 设备侧：部署 v42 NSP，开机前通知用户
-# 2) 宿主侧（Mac）：先列出音频序号，再抓一轮
-ffmpeg -f avfoundation -list_devices true -i ''
-python3 tools/uac_host_capture.py --out private/runs/<run>/ --seconds 20 --audio-index <N>
-# 3) 关机、读卡、归档设备日志
+# 1) 设备侧：v42 已部署。开机顺序很重要：先启动采集，再给 Switch 开机，
+#    否则日志里没有枚举锚点（log stream 必须早于设备出现）。
+# 2) 宿主侧（Mac）：工具先开 log stream，再等 SysDVR 音频设备出现，然后
+#    才启动 ffmpeg（ffmpeg 不能打开还不存在的设备）。
+python3 tools/uac_host_capture.py --out private/runs/<run>/ --seconds 20 \
+  --wait-audio 30
+#    看到 "log stream ->" 后立刻给 Switch 开机。
+# 3) 关机、读卡、归档设备日志，然后对齐：
 python3 tools/uac_host_timeline.py --device-log <device-log> \
   --host-log private/runs/<run>/host-log.ndjson --out private/runs/<run>/timeline.json
 ```

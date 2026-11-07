@@ -105,6 +105,32 @@ class UacHostTimelineTests(unittest.TestCase):
             self.assertIn("avfoundation", proc.stdout)
             self.assertFalse((Path(tmp) / "capture.wav").exists())
 
+    def test_capture_can_start_the_log_before_the_device_exists(self):
+        # the enumeration anchor needs log stream running before power-on,
+        # while ffmpeg can only open an audio device that already exists
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [sys.executable, str(CAPTURE), "--out", tmp, "--seconds", "5",
+                 "--wait-audio", "30", "--dry-run"],
+                capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("wait up to 30 s", proc.stdout)
+            self.assertLess(proc.stdout.index("log stream --style"),
+                            proc.stdout.index("wait up to"))
+
+    def test_audio_device_list_parser(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import uac_host_capture as capture  # noqa: E402
+        sample = (
+            "[AVFoundation indev @ 0x1] AVFoundation video devices:\n"
+            "[AVFoundation indev @ 0x1] [0] FaceTime HD Camera\n"
+            "[AVFoundation indev @ 0x1] AVFoundation audio devices:\n"
+            "[AVFoundation indev @ 0x1] [2] SysDVR-UVC Capture\n"
+            "[AVFoundation indev @ 0x1] [3] MacBook Pro Microphone\n")
+        self.assertEqual(capture.parse_audio_devices(sample),
+                         {2: "SysDVR-UVC Capture",
+                          3: "MacBook Pro Microphone"})
+
     def test_tick_stamp_is_opt_in_and_needs_the_alt_diag_clock(self):
         self.assertIn("#if defined(UAC_U2_TICK_LOG)", SOURCE.read_text())
         self.assertIn('#error "UAC_U2_TICK_LOG needs the ALT_DIAG clock conversion"',
