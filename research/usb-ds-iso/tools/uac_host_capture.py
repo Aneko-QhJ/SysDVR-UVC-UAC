@@ -117,6 +117,10 @@ def capture(out, seconds, audio_index, dry_run=False, wait_audio=0.0,
     log_err = open(out / "host-log.stderr.txt", "wb")
     started = time.time()
     log_proc = subprocess.Popen(log_cmd, stdout=log_file, stderr=log_err)
+    print(f"log stream attached (pid {log_proc.pid}); "
+          + (f"waiting up to {wait_audio:.0f} s for audio device "
+             f"{audio_name!r} - power the Switch on now"
+             if wait_audio else "starting ffmpeg in 1 s"), flush=True)
     waited, matched_label = 0.0, None
     try:
         if wait_audio:
@@ -127,6 +131,8 @@ def capture(out, seconds, audio_index, dry_run=False, wait_audio=0.0,
                     f"no audio device matching {audio_name!r} after "
                     f"{wait_audio:.0f} s; is the Switch powered on?")
             audio_index = found
+            print(f"audio device [{audio_index}] {matched_label} after "
+                  f"{waited:.1f} s; recording {seconds} s", flush=True)
         else:
             time.sleep(1.0)  # let the stream attach before the audio starts
         wav = out / "capture.wav"

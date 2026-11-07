@@ -16,8 +16,13 @@
   `transaction error`；62 次设备 miss 只对应 3 次 host error。
 - 由此，v38 残余的 ~2.5 s 损失是**宿主固定的 stop/start 代价**，
   不是设备侧重 arm 可调的参数；这也解释了 v37/v38/v40 调 lead 无效。
-- **因果方向尚未判定**：62 次 miss 只有 3 次 host error，说明
-  "miss → halt → host error" 不是充分条件。v42 用共享时钟判这个。
+- **因果已判定（v42，2026-11-07 一次 boot）**：**miss 在前**。每条 host
+  `transaction error` 之前 86.8–97.8 ms 已经出现一串 miss，起串那条是自发的
+  （`since_cancel_ms` 351–2383），其后每 20–25 ms 一条（= 一个 lead 的
+  cancel/repost 环）。host error 落在串的第 ~90 ms，也就是它那笔在飞 isoch
+  请求完成的时候；`performStopIO` 再晚 3–5 ms。**burst 不是 host stop 造的，
+  host stop 是对漏帧的反应**；但第一帧漏服务（code 23）仍是宿主没取，设备侧
+  拦不住 → v38 的平台期成立。
 
 ## 证据（v38 实机窗口，`log show` 回读）
 
@@ -62,7 +67,7 @@ log show --start "2026-11-06 18:51:25" --end "2026-11-06 18:52:10" --style compa
   可能混进了 re-arm 之后的记录——需要在共享时钟下重判。
 - 设备侧可动的只剩"让第一个 error 不出现"；lead/恢复参数没有空间。
 
-## v42：共享时钟诊断（离线已备，未部署）
+## v42：共享时钟诊断（2026-11-07 实机，一次 boot）
 
 - 设备：v38 逐字节 + `-DUAC_U2_MISS_RING -DUAC_U2_TICK_LOG`。在
   `alt diag alt0/alt1`、`miss ring` 头、`teardown cancel`、`USB host connected`
@@ -80,6 +85,25 @@ log show --start "2026-11-06 18:51:25" --end "2026-11-06 18:52:10" --style compa
 | 每个 burst 的首条 miss 早于 error **> 20 ms** | miss 在前，设备侧是因 |
 | 首条 miss 在 error 之后或 ≤ 2 ms | host stop 造出 burst，设备侧无解 |
 | 混合 | 需要按 burst 分类再判 |
+
+### 结果（`0e3da14f…`，22:09–22:10，一次 boot）
+
+| 项 | 值 |
+| --- | --- |
+| 时钟对齐 | 10 对 stopIO↔alt0，残差中位 **13.8 ms**、最大 27.4 ms |
+| host error / teardown | 7 次 error，6 次匹配到 teardown（600.085 那次没有停流）；停流在 error 后 3–5 ms |
+| 每串首条 miss 早于 error | **89.8 / 86.8 / 88.8 / 95.8 / 95.8 / 97.8 / 92.8 ms** |
+| 起串那条的 `since_cancel_ms` | 1581 / 1396 / 2383 / 351 / 1799 / 607 / 1275 ms（自发，不是 cancel） |
+| 串内间隔 | 20–25 ms，`since_cancel_ms` ≈ 21–24（正好一个 lead） |
+| 判定 | **miss-leads** |
+
+读法：第一帧漏服务发生在流健康的时候（距上次 cancel 0.35–2.4 s），约
+90 ms 后 host 的在飞 isoch 请求带着 transaction error 完成，`usbaudiod`
+随即停流。串里后续那些 20–25 ms 的 miss 是 app 的 cancel/repost 环，发生在
+host 已经注定失败之后，改变不了结果。
+
+本轮是诊断样本，不能当性能结论：10 段、宿主 WAV 14.519 s / 95.9% 方波、
+4 段静音 / 0.257 s（ring dump 的 SD 写会把每段之后的 re-arm 推后）。
 
 ## 操作（下一次实机，需另行通知开机）
 

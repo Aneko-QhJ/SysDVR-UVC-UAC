@@ -162,9 +162,12 @@
   不浅：`lockDelayMS 100`（100 ms，开场 ZLP 20>2 后从 24 升上来）；ZLP
   常态（一轮 88 次）不致命，**单个 transaction error 才致命**。→ v38 的
   ~2.5 s 残余是宿主固定 stop/start 代价，不是设备 re-arm 可调参数。
-  **因果仍未判**：62 次 miss 只有 3 次 host error。v42（v38 +
-  `-DUAC_U2_TICK_LOG`，离线已构建 `0e3da14f…`、95227 B，**未部署**）
-  用共享时钟判"首条 miss 是否早于 error"。详见
+  **因果已判定（v42，11-07 一次 boot）**：**miss 在前**——7 条 host error
+  每条前面 86.8–97.8 ms 已有一串 miss，起串那条自发（`since_cancel` 351–2383
+  ms），随后每 20–25 ms 一条；error 落在串的第 ~90 ms（在飞 isoch 请求完成时），
+  停流再晚 3–5 ms。→ **host stop 是对漏帧的反应，不是 burst 的制造者**；
+  但第一帧仍是宿主没取（code 23），设备侧拦不住，**v38 平台期成立**。
+  诊断样本（10 段、宿主 14.519 s）不作性能结论。详见
   [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
 - **8.9 s 长跑（v30e 两轮，稳态成立）**：r1 512/512 posts → 498 套（97.3%）、
   `span 8885`、89.7% / host 90.4%、5 次 code-23、`max_gap 92`；r2 494 套
@@ -412,12 +415,11 @@
 
 ## 下一步
 
-1. **v42 宿主时钟（离线已备，未部署）**：v38 + `-DUAC_U2_TICK_LOG`
-   （`0e3da14f…`、95227 B）给设备日志加开机毫秒；宿主用
-   `tools/uac_host_capture.py` 录 `log stream` + WAV，再用
-   `tools/uac_host_timeline.py` 对齐两侧时钟。判别：burst 首条 miss 比
-   host error 早 **>20 ms** → 设备侧是因；否则 host stop 造出 burst。
-   一次 boot、诊断样本；见 [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
+1. **v42 完成（11-07，一次 boot）：miss 在前，设备侧可动空间到此为止。**
+   首条漏帧是宿主没取那一帧（code 23），后续 cancel/repost 环只是反应。
+   剩下能选的方向只有换目标：更长稳态、Linux `snd-usb-audio` 互操作，
+   或接受 v38 的 16.5–16.8 s 平台。详见
+   [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
 2. **v30h 已达成形态**：alt 切换 440→15、15 段训练、1014 套、宿主 69% 占空。
    剩下的两个损失层：miss 率（~1.15 事件/s，仍高于 VM 0.67）和宿主侧
    14.21 s vs 16.22 s 的样本差。
@@ -446,9 +448,9 @@
 7. 次要：>10 s 样本要拆 probe 的 timeout/deadline；8 个 descriptor NOP 与
    字符串描述符仍未做。
 
-判定：形态已对；miss 恢复已压到宿主容忍之内。残余损失是宿主每收到一个
-isoch transaction error 就 stop/start（104–138 + 90–200 ms）；下一步先用
-v42 判因果，再谈 miss 率与 alt 切换，不再改流结构。
+判定：形态已对；因果已判（v42：一次自发漏帧 → ~90 ms 后 host isoch 请求
+报错 → stop/start 104–138 + 90–200 ms）。设备侧无法阻止第一帧漏服务，macOS
+路径的平台是 v38 的 16.5–16.8 s；再往前只能换目标，不再改流结构。
 
 ## 边界与纪律
 

@@ -164,6 +164,16 @@ def align(device_events, host_events):
     return stats_
 
 
+def _burst_group(mapped, wall):
+    """(when, rec) pairs before `wall`, cut back to the last >=200 ms gap."""
+    rows = [(when, rec) for when, rec in mapped if -0.8 <= when - wall <= 0.05]
+    start = 0
+    for i in range(1, len(rows)):
+        if rows[i][0] - rows[i - 1][0] >= 0.2:
+            start = i
+    return rows[start:]
+
+
 def correlate(device_events, records, host_events, offset):
     errors = [e for e in host_events if e["kind"] == "iso_error"]
     unique = []
@@ -172,17 +182,21 @@ def correlate(device_events, records, host_events, offset):
             unique.append(err)
     alt0 = [e for e in device_events if e["kind"] == "alt0"]
     alt1 = [e for e in device_events if e["kind"] == "alt1"]
+    mapped = sorted(((r["t"] + offset, r) for r in records), key=lambda x: x[0])
+    used = set()
     rows = []
     for err in unique:
         wall = err["t"]
-        after = [e for e in alt0 if wall <= e["t"] + offset <= wall + 1.5]
-        alt0_hit = after[0] if after else None
-        burst = []
-        if alt0_hit:
-            end = alt0_hit["t"] + offset
-            burst = [r for r in records
-                     if end - 0.6 <= r["t"] + offset <= end + 0.01]
-            burst.sort(key=lambda r: r["t"])
+        # the teardown is 0-30 ms after the error (dt_done_ms 0-20 in v38/v41);
+        # one alt0 can only answer one error.
+        alt0_hit = None
+        for cand in alt0:
+            when = cand["t"] + offset
+            if wall - 0.05 <= when <= wall + 0.3 and id(cand) not in used:
+                alt0_hit = cand
+                used.add(id(cand))
+                break
+        burst = [(when, rec) for when, rec in _burst_group(mapped, wall)]
         next_alt1 = None
         if alt0_hit:
             cands = [e for e in alt1
@@ -192,16 +206,18 @@ def correlate(device_events, records, host_events, offset):
             "error_at": wall,
             "alt0": alt0_hit["t"] + offset if alt0_hit else None,
             "alt1": next_alt1["t"] + offset if next_alt1 else None,
-            "burst": [{"t": r["t"] + offset, "idx": r["idx"],
-                       "dprev_ms": r["dprev_ms"],
-                       "since_cancel_ms": r["since_cancel_ms"],
-                       "infl": r["infl"], "st": r["st"]} for r in burst],
+            "teardown": alt0_hit is not None,
+            "burst": [{"t": when, "idx": rec["idx"],
+                       "dprev_ms": rec["dprev_ms"],
+                       "since_cancel_ms": rec["since_cancel_ms"],
+                       "infl": rec["infl"], "st": rec["st"]}
+                      for when, rec in burst],
             "first_miss_ms_before_error":
-                round((wall - (burst[0]["t"] + offset)) * 1000, 2) if burst else None,
+                round((wall - burst[0][0]) * 1000, 2) if burst else None,
             "last_miss_ms_before_error":
-                round((wall - (burst[-1]["t"] + offset)) * 1000, 2) if burst else None,
+                round((wall - burst[-1][0]) * 1000, 2) if burst else None,
             "burst_span_ms":
-                round((burst[-1]["t"] - burst[0]["t"]) * 1000, 2) if burst else None,
+                round((burst[-1][0] - burst[0][0]) * 1000, 2) if burst else None,
         })
     leads = [r["first_miss_ms_before_error"] for r in rows
              if r["first_miss_ms_before_error"] is not None]
