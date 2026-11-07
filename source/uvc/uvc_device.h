@@ -7,6 +7,12 @@
 // UVC Device State
 // ============================================================================
 
+#if defined(UAC_U2_PCM_SOURCE)
+/* v43: grc:d audio -> burst producer (defined in uvc_device.c) */
+void UacDevicePushPcm(const void* data, size_t size);
+uint32_t UacDevicePcmUnderrunBytes(void);
+#endif
+
 typedef enum {
     UVC_STATE_DISCONNECTED = 0,
     UVC_STATE_CONNECTED,

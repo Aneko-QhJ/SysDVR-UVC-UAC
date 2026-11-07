@@ -149,7 +149,10 @@
   是 `usbaudiod` 的策略，不是设备/协议问题。
 - **阶段结论（11-07，收束）**：macOS 收束在 v38 的 **16.5–16.8 s**；同一镜像在
   Linux `snd-usb-audio` 上完整 20 s、零静音；不再调 cave/lead/恢复参数。
-  可选后续只剩物理 Linux 复核与 USB 字符串描述符。
+- **v43 真实 PCM（离线已备，未部署）**：v38 + `-DUAC_U2_PCM_SOURCE`
+  （`6f5aeb12…`、94350 B）；`grc:d` 4096 B/21.3 ms → 64 KiB ring → 每套
+  3072 B/16 ms，欠载补静音、alt0 清空；音频线程改挂 UAC 流。
+  一次 boot 用 Linux `arecord` 验真实游戏音频。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。

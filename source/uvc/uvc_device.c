@@ -1,6 +1,7 @@
 #include <string.h>
 #include "uvc_device.h"
 #include "uac_standard.h"
+#include "pcm_ring.h"
 #ifdef ALT1_PROBE
 #include "alt1_probe_protocol.h"
 #endif
@@ -156,6 +157,15 @@ static u8 alignas(0x1000) g_audioEndpointBuffer[0x1000]; // Audio transfer stagi
 #error "UAC_U2_IN_FLIGHT must be 2..5 (the ring holds six 0x200 sets)"
 #endif
 static u8 alignas(0x1000) g_u2BurstBuffers[UAC_U2_TRAIN_POSTS][UAC_U2_BUF_BYTES];
+
+#if defined(UAC_U2_PCM_SOURCE)
+/* v43: real game audio instead of the 1 kHz pattern.  The grc:d audio thread
+   writes 4096 B chunks (21.3 ms) here and the burst poster drains 3072 B
+   (16 ms) per set; 64 KiB absorbs ~340 ms of scheduling jitter. */
+#define UAC_PCM_RING_BYTES 0x10000
+static u8 alignas(0x1000) g_pcmRingBuf[UAC_PCM_RING_BYTES];
+static PcmRing g_pcmRing;
+#endif
 #endif
 
 static UvcDeviceContext g_uvcCtx;
@@ -1354,6 +1364,9 @@ Result UvcDeviceInitialize(const UvcDeviceConfig* config)
 
     memset(&g_uacCtx, 0, sizeof(g_uacCtx));
     mutexInit(&g_uacCtx.audioMutex);
+#if defined(UAC_U2_PCM_SOURCE)
+    PcmRingInit(&g_pcmRing, g_pcmRingBuf, sizeof(g_pcmRingBuf));
+#endif
 
     if (hosversionAtLeast(5, 0, 0)) {
 #if (defined(UAC_DESCRIPTOR_PATCH) + defined(UAC_U2_BASE_PATCH) + \
@@ -2863,6 +2876,11 @@ static void _postUacBurst(void)
         while (posted < stream_posts && posted - completed < UAC_U2_IN_FLIGHT &&
                free_slot[next]) {
             u8 *buf = g_u2BurstBuffers[next];
+#if defined(UAC_U2_PCM_SOURCE)
+            /* real PCM: short reads are zero-filled (silence) and counted */
+            PcmRingReadFill(&g_pcmRing, buf, UAC_U2_BURST_BYTES);
+#endif
+#if !defined(UAC_U2_PCM_SOURCE)
             s16 *samples = (s16 *)buf;
             const u32 base = g_uacCtx.patternFrame;
             for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
@@ -2870,6 +2888,7 @@ static void _postUacBurst(void)
                 samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
             }
             g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
+#endif
             armDCacheFlush(buf, UAC_U2_BURST_BYTES);
 #if defined(UAC_U2_CURSOR_DIAG)
             _uacLogCursor("pre", posted + 1);
@@ -3109,6 +3128,11 @@ static void _postUacBurst(void)
             (unsigned long long)(max_gap_tick / 19200),
             (unsigned long long)(max_react_tick / 19200));
     }
+#if defined(UAC_U2_PCM_SOURCE)
+    LOG("UAC U2 pcm ring underrun=%llu overrun=%llu\n",
+        (unsigned long long)g_pcmRing.underrun_bytes,
+        (unsigned long long)g_pcmRing.overrun_bytes);
+#endif
 #if defined(UAC_U2_MISS_RING)
     /* v39/v41: only remember the train-end tick.  The dump runs at the next
        alt1, after the arm, so neither this train nor the next one waits for
@@ -3125,6 +3149,11 @@ static void _postUacBurst(void)
     u64 tPrev = svcGetSystemTick();
     for (u32 n = 0; n < UAC_U2_TRAIN_POSTS; ++n) {
         u8 *buf = g_u2BurstBuffers[n];
+#if defined(UAC_U2_PCM_SOURCE)
+        const u32 base = 0; /* the pattern phase does not exist in PCM builds */
+        PcmRingReadFill(&g_pcmRing, buf, UAC_U2_BURST_BYTES);
+#endif
+#if !defined(UAC_U2_PCM_SOURCE)
         s16 *samples = (s16 *)buf;
         const u32 base = g_uacCtx.patternFrame;
         for (u32 i = 0; i < UAC_U2_BURST_BYTES / sizeof(s16); ++i) {
@@ -3132,6 +3161,7 @@ static void _postUacBurst(void)
             samples[i] = ((frame / 24) & 1) ? 0x4000 : (s16)-0x4000;
         }
         g_uacCtx.patternFrame = base + UAC_U2_BURST_BYTES / sizeof(s16) / 2;
+#endif
         u32 seq = ++g_uacCtx.postSeq;
         LOG("UAC U2 post begin seq=%u/%u pattern=%u\n", seq,
             UAC_U2_TRAIN_POSTS, base);
@@ -3435,6 +3465,9 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
            that keeps cycling alt0/alt1 only costs one ring reset. */
         g_uacCtx.streamRequested = false;
 #endif
+#if defined(UAC_U2_PCM_SOURCE)
+        PcmRingReset(&g_pcmRing);
+#endif
 #ifdef UAC_U2_ALT_RETRIGGER
         /* v22: a host alt0 -> alt1 cycle re-installs the endpoint; let the
            next alt1 SET_CUR post a fresh burst again. */
@@ -3446,7 +3479,9 @@ static void _handleUacSetup(UsbDsInterface* iface, const UsbSetupPacket* setup)
            the reinstalled ring (crash at +0x1927c).  Flush and reap before
            the status stage so alt0 sees a quiet endpoint. */
         if (g_uacCtx.audioEndpointIn) {
+#if defined(UAC_U2_TICK_LOG)
             const u64 tick = svcGetSystemTick();
+#endif
             Result cancel = usbDsEndpoint_Cancel(g_uacCtx.audioEndpointIn);
             UsbDsReportData report;
             Result wait = eventWait(&g_uacCtx.audioEndpointIn->CompletionEvent,
@@ -3699,6 +3734,23 @@ bool UacDeviceIsStreaming(void)
     return g_uacCtx.initialized && g_uacCtx.streaming;
 #endif
 }
+
+#if defined(UAC_U2_PCM_SOURCE)
+/* v43: the grc:d audio thread hands 4096 B (21.3 ms) chunks to the burst
+   poster through the ring; the old per-packet sender below is not used. */
+void UacDevicePushPcm(const void* data, size_t size)
+{
+    if (!data || size == 0) {
+        return;
+    }
+    PcmRingWrite(&g_pcmRing, data, (uint32_t)size);
+}
+
+uint32_t UacDevicePcmUnderrunBytes(void)
+{
+    return (uint32_t)g_pcmRing.underrun_bytes;
+}
+#endif
 
 bool UacDeviceSendAudio(const void* data, size_t size, u64 timestamp)
 {

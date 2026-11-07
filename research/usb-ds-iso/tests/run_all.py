@@ -56,6 +56,8 @@ QUICK = [
     "test_uac_u2_miss_ring.py",
     "test_uac_u2_slead32.py",
     "test_uac_host_timeline.py",
+    "test_pcm_ring.py",
+    "test_uac_u2_pcm_source.py",
     "test_analyze_xhci_iso_trace.py",
 ]
 

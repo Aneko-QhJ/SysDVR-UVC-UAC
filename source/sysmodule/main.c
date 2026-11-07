@@ -119,6 +119,24 @@ static void AudioStreamThread(void* arg)
 
     LOG("Audio stream thread started\n");
 
+#if defined(UAC_U2_PCM_SOURCE)
+    /* v43: feed the U2 burst producer with real game audio from grc:d.  The
+       old per-packet UacDeviceSendAudio path is bypassed.  Do not wait for
+       the video stream: a host may open only the audio function. */
+    AudioFrame frame;
+    while (g_running) {
+        if (!UacDeviceIsStreaming()) {
+            svcSleepThread(10E+6);
+            continue;
+        }
+        if (!CaptureReadAudioFrame(&frame)) {
+            svcSleepThread(10E+6);
+            continue;
+        }
+        UacDevicePushPcm(frame.Data, frame.DataSize);
+    }
+    LOG("Audio stream thread exiting\n");
+#else
     // Wait for USB and video to be ready first
     while (g_running && !UvcDeviceIsStreaming()) {
         svcSleepThread(100E+6);  // 100ms
@@ -169,6 +187,7 @@ static void AudioStreamThread(void* arg)
     }
 
     LOG("Audio stream thread exiting\n");
+#endif
 }
 
 // ============================================================================

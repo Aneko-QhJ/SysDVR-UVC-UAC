@@ -61,3 +61,14 @@ bool UacDeviceIsStreaming(void);
  * @return true if sent successfully
  */
 bool UacDeviceSendAudio(const void* data, size_t size, u64 timestamp);
+
+#if defined(UAC_U2_PCM_SOURCE)
+/**
+ * Queue captured PCM (48 kHz stereo s16) for the U2 burst producer.
+ * Safe to call from the grc:d audio thread; never blocks.
+ */
+void UacDevicePushPcm(const void* data, size_t size);
+
+/** Total bytes the burst producer had to zero-fill (silence). */
+uint32_t UacDevicePcmUnderrunBytes(void);
+#endif

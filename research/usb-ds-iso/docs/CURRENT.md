@@ -425,7 +425,8 @@
 
 ## 阶段结论（2026-11-07，收束）
 
-UAC 复合设备在 macOS 上的这条研究线到此收束，没有未决实验：
+UAC 复合设备在 macOS 上的这条研究线到此收束；v43 的**真实 PCM 接入**已离线
+备好，等待一次 boot 验证（见“下一步”）：
 
 - **形态与平台**：v38（lead 20）是 macOS 最佳，宿主抓取 **16.5–16.8 s**（两轮），
   交付 19.1–19.4 s、静音 0–19 段。残余损失是 `usbaudiod` 对单个 isoch
@@ -438,11 +439,16 @@ UAC 复合设备在 macOS 上的这条研究线到此收束，没有未决实验
 - **未证明/保留**：物理 Linux 主机未测；字符串描述符未实现（宿主只见 VID/PID）；
   8 个 descriptor-parser NOP 未隔离；>20 s 稳态与时钟/反馈未做。
 
-## 下一步（可选，非活跃）
+## 下一步
 
-1. 物理 Linux 主机复核（去掉“虚拟 xHCI”这个保留条件）。
-2. 补 USB 字符串描述符（独立、低风险）；8 个 descriptor NOP 仍未隔离。
-3. 不再调 cave/lead/恢复参数——v37/v38/v40/v41/v42 已把这条路走到平台。
+1. **v43 真实 PCM（离线已备，未部署）**：v38 + `-DUAC_U2_PCM_SOURCE`，
+   NSP `6f5aeb12…`（94350 B）。`grc:d` 的 4096 B 块（21.3 ms）经 64 KiB
+   SPSC ring 供 burst producer 每套取 3072 B（16 ms）；欠载补静音并计数、
+   过载丢最旧、alt0 清空；音频线程改在 `UacDeviceIsStreaming()` 时启动。
+   一次 boot 用 Linux `arecord` 验真实游戏音频（看 `pcm ring underrun=`）。
+2. 物理 Linux 主机复核（去掉“虚拟 xHCI”这个保留条件）。
+3. 补 USB 字符串描述符（独立、低风险）；8 个 descriptor NOP 仍未隔离。
+4. 不再调 cave/lead/恢复参数——v37/v38/v40/v41/v42 已把这条路走到平台。
 
 判定：形态已对，因果已判。macOS 平台是 v38 的 16.5–16.8 s；Linux 侧完整交付。
 宿主侧证据与 Linux 对照的细节见 [UAC_U2_HOST_TIMELINE.md](UAC_U2_HOST_TIMELINE.md)。
