@@ -147,6 +147,9 @@
   `max_gap 39`），宿主 WAV **20.000 s、零静音**；内核打了 ~289 次
   `retire_capture_urb` 错误但**没有停流**。→ macOS 的"一次 error 就拆流"
   是 `usbaudiod` 的策略，不是设备/协议问题。
+- **阶段结论（11-07，收束）**：macOS 收束在 v38 的 **16.5–16.8 s**；同一镜像在
+  Linux `snd-usb-audio` 上完整 20 s、零静音；不再调 cave/lead/恢复参数。
+  可选后续只剩物理 Linux 复核与 USB 字符串描述符。
 - **参数调优到头**：arm 延迟（v30i）、在飞 4（v30j）、驱动 halt 快速恢复（v31）、
   keep-ring 恢复（v32）都是负结果。VM 数字（~90% 占空、0.67 次/s）只描述 probe 路径，不是真实宿主
   上限。
