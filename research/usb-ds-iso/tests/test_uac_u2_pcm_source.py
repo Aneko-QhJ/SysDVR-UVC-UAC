@@ -61,6 +61,14 @@ class UacU2PcmSourceTests(unittest.TestCase):
         # the old per-packet sender is gone from the PCM path
         self.assertNotIn("UacDeviceSendAudio(", body)
 
+    def test_video_thread_primes_grc_for_uac_only_streams(self):
+        # grc:d starts on the first Video transfer; a UAC-only host never opens
+        # the camera, so the video thread must keep the pipeline alive.
+        mark = self.main.index("v44: grc:d only starts producing")
+        self.assertIn("UacDeviceIsStreaming()", self.main[mark:mark + 900])
+        self.assertIn("CaptureReadVideoFrame(&frame);", self.main[mark:mark + 900])
+        self.assertLess(mark, self.main.index("svcSleepThread(50E+6);  // 50ms"))
+
     def test_push_api_is_declared_and_defined_guarded(self):
         self.assertIn("void UacDevicePushPcm(const void* data, size_t size);",
                       self.header)

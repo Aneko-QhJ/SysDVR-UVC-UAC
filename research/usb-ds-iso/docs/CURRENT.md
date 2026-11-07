@@ -441,11 +441,11 @@ UAC 复合设备在 macOS 上的这条研究线到此收束；v43 的**真实 PC
 
 ## 下一步
 
-1. **v43 真实 PCM（离线已备，未部署）**：v38 + `-DUAC_U2_PCM_SOURCE`，
-   NSP `6f5aeb12…`（94350 B）。`grc:d` 的 4096 B 块（21.3 ms）经 64 KiB
-   SPSC ring 供 burst producer 每套取 3072 B（16 ms）；欠载补静音并计数、
-   过载丢最旧、alt0 清空；音频线程改在 `UacDeviceIsStreaming()` 时启动。
-   一次 boot 用 Linux `arecord` 验真实游戏音频（看 `pcm ring underrun=`）。
+1. **v44 真实 PCM（已部署，待验）**：v43 首跑全零——`pcm ring underrun=
+   3987456`，ring 整轮为空；原因是 `grc:d` 管线要等第一次 Video transfer 才
+   懒初始化，只开音频的宿主从不开摄像头。v44（`3b7c45b1…`，94404 B）在视频
+   线程里对"UAC 在流、视频不在流"的情况读一帧并丢弃，把采集管线带起来。
+   下次 boot 用 Linux `arecord` 验真实游戏音频 + `pcm ring underrun=`。
 2. 物理 Linux 主机复核（去掉“虚拟 xHCI”这个保留条件）。
 3. 补 USB 字符串描述符（独立、低风险）；8 个 descriptor NOP 仍未隔离。
 4. 不再调 cave/lead/恢复参数——v37/v38/v40/v41/v42 已把这条路走到平台。

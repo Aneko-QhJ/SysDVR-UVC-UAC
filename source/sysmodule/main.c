@@ -83,6 +83,20 @@ static void VideoStreamThread(void* arg)
         UvcDeviceProcessRequests();
 
         if (!UvcDeviceIsStreaming()) {
+#if defined(UAC_U2_PCM_SOURCE)
+            /* v44: grc:d only starts producing once a Video transfer runs
+               (the lazy grcdServiceBegin hangs off it).  A UAC-only host never
+               opens the camera, so the audio transfer would block forever and
+               the PCM ring underruns the whole stream.  Keep the capture
+               pipeline alive by reading and discarding one frame here; this
+               thread stays the only video reader, so an actual camera client
+               still gets every frame. */
+            if (UacDeviceIsStreaming()) {
+                VideoFrame frame;
+                (void)CaptureReadVideoFrame(&frame);
+                continue;
+            }
+#endif
             svcSleepThread(50E+6);  // 50ms
             continue;
         }
