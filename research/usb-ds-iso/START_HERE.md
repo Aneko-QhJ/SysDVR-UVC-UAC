@@ -144,7 +144,9 @@
   上限。
 - **已知小缺口**：USB 字符串描述符未实现（宿主只显示 VID/PID）；
   8 个 descriptor-parser NOP 仍未隔离。
-- 卡：安全 `52069a44…` 已恢复并弹出（11-06 23:4x，v41 跑完）；VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v41 证据已归档。
+- 卡：**v42 `0e3da14f…` 已部署、已弹出、未开机**（11-07 21:5x；
+  备份 `52069a44…` 在 `private/card-cycles/20261107-u2-v42-host-clock/backup/`）；
+  VM 挂起；v30e 两轮 + macOS v30e…v30j + v31…v41 证据已归档。
 
 ## 文件角色
 
